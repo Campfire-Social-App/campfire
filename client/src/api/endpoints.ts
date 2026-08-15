@@ -3,6 +3,7 @@ import type {
   Attachment,
   Channel,
   ChannelType,
+  DMConversation,
   Invite,
   Message,
   MessagePage,
@@ -26,10 +27,15 @@ export const listMessages = (channelId: string, opts: { before?: string; limit?:
   return apiFetch<MessagePage>(`/api/channels/${channelId}/messages?${params.toString()}`);
 };
 
-export const sendMessage = (channelId: string, content: string, attachmentIds: string[] = []) =>
+export const sendMessage = (
+  channelId: string,
+  content: string,
+  attachmentIds: string[] = [],
+  replyToId?: string,
+) =>
   apiFetch<Message>(`/api/channels/${channelId}/messages`, {
     method: "POST",
-    body: { content, attachment_ids: attachmentIds },
+    body: { content, attachment_ids: attachmentIds, reply_to_id: replyToId ?? null },
   });
 
 export const editMessage = (messageId: string, content: string) =>
@@ -39,6 +45,15 @@ export const deleteMessage = (messageId: string) =>
   apiFetch<void>(`/api/messages/${messageId}`, { method: "DELETE" });
 
 export const uploadAttachment = (file: File) => apiUpload<Attachment>("/api/uploads", file);
+
+export const listDms = () => apiFetch<DMConversation[]>("/api/dms");
+
+/** Get-or-create the conversation with `userId` — safe to call on every click. */
+export const openDmWith = (userId: string) =>
+  apiFetch<DMConversation>("/api/dms", { method: "POST", body: { user_id: userId } });
+
+export const markDmRead = (channelId: string) =>
+  apiFetch<void>(`/api/dms/${channelId}/read`, { method: "POST" });
 
 export const listUsers = () => apiFetch<User[]>("/api/users");
 

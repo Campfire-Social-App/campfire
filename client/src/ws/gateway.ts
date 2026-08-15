@@ -5,10 +5,14 @@ import { useMessagesStore } from "@/state/messages";
 import { usePresenceStore } from "@/state/presence";
 import { useVoiceStore } from "@/state/voice";
 import { useUsersStore } from "@/state/users";
+import { useDmsStore } from "@/state/dms";
 import { playJoinSound, playLeaveSound } from "@/lib/sounds";
+import { messageMentionsUser } from "@/lib/mentions";
+import { notify } from "@/lib/notifications";
 import type {
   Channel,
   ChannelDeleteData,
+  DMConversation,
   GatewayEvent,
   Message,
   MessageDeleteData,
@@ -103,6 +107,29 @@ class GatewayClient {
     this.heartbeatTimer = null;
   }
 
+  /** Fires an OS notification for an incoming message the user should know about
+   * — a mention (directly or via @everyone), or any direct message, which is
+   * addressed to them by definition — unless they're already looking at it. */
+  private notifyIfRelevant(message: Message): void {
+    const currentUser = useAuthStore.getState().user;
+    if (!currentUser || message.author.id === currentUser.id) return;
+
+    const dmState = useDmsStore.getState();
+    const isDm = dmState.conversations.some((c) => c.id === message.channel_id);
+    if (!isDm && !messageMentionsUser(message.content, currentUser.username)) return;
+
+    const isViewing = isDm
+      ? dmState.activeDmId === message.channel_id
+      : useChannelsStore.getState().selectedChannelId === message.channel_id;
+    if (document.hasFocus() && isViewing) return;
+
+    const channel = useChannelsStore.getState().channels.find((c) => c.id === message.channel_id);
+    notify(
+      `${message.author.username}${!isDm && channel ? ` in #${channel.name}` : ""}`,
+      message.content,
+    );
+  }
+
   private handleMessage(event: GatewayEvent): void {
     switch (event.op) {
       case "READY": {
@@ -114,6 +141,7 @@ class GatewayClient {
           created_at: useAuthStore.getState().user?.created_at ?? new Date().toISOString(),
         });
         useChannelsStore.getState().setChannels(data.channels);
+        useDmsStore.getState().setConversations(data.dms);
         useVoiceStore.getState().setVoiceStates(data.voice_states);
         for (const userId of data.online_user_ids) usePresenceStore.getState().setOnline(userId);
         break;
@@ -122,6 +150,7 @@ class GatewayClient {
         const data = event.data as Message;
         useMessagesStore.getState().addMessage(data);
         useUsersStore.getState().upsertUser(data.author);
+        this.notifyIfRelevant(data);
         break;
       }
       case "MESSAGE_UPDATE": {
@@ -168,6 +197,11 @@ class GatewayClient {
         break;
       case "CHANNEL_DELETE":
         useChannelsStore.getState().removeChannel((event.data as ChannelDeleteData).id);
+        break;
+      case "DM_UPDATE":
+        // Arrives just before the DM's own MESSAGE_CREATE, so a conversation the
+        // recipient has never opened shows up in the rail before its first message.
+        useDmsStore.getState().upsertConversation(event.data as DMConversation);
         break;
     }
   }

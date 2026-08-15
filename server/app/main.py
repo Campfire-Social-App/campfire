@@ -6,7 +6,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, channels, invites, messages, server, uploads, users, voice, webhooks
+from app.api import (
+    auth,
+    channels,
+    dms,
+    invites,
+    messages,
+    server,
+    uploads,
+    users,
+    voice,
+    webhooks,
+)
 from app.core.config import get_settings
 from app.db import async_session_maker
 from app.gateway.router import router as gateway_router
@@ -47,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(channels.router)
     app.include_router(messages.router)
+    app.include_router(dms.router)
     app.include_router(uploads.router)
     app.include_router(voice.router)
     app.include_router(webhooks.router)

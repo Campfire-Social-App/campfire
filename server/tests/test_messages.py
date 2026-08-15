@@ -98,6 +98,58 @@ async def test_edit_and_delete_message_requires_ownership(
     assert delete_resp.status_code == 204
 
 
+async def test_reply_to_message(client: AsyncClient, admin_headers: dict[str, str]) -> None:
+    channel_id = await _create_text_channel(client, admin_headers)
+
+    original = await client.post(
+        f"/api/channels/{channel_id}/messages",
+        json={"content": "original message"},
+        headers=admin_headers,
+    )
+    original_id = original.json()["id"]
+
+    reply = await client.post(
+        f"/api/channels/{channel_id}/messages",
+        json={"content": "a reply", "reply_to_id": original_id},
+        headers=admin_headers,
+    )
+    assert reply.status_code == 201
+    reply_body = reply.json()
+    assert reply_body["reply_to"]["id"] == original_id
+    assert reply_body["reply_to"]["content"] == "original message"
+    assert reply_body["reply_to"]["has_attachments"] is False
+
+    # Deleting the original severs the link (SET NULL) rather than cascading
+    # to delete the reply too.
+    await client.delete(f"/api/messages/{original_id}", headers=admin_headers)
+    page = await client.get(f"/api/channels/{channel_id}/messages", headers=admin_headers)
+    messages = page.json()["messages"]
+    assert [m["content"] for m in messages] == ["a reply"]
+    assert messages[0]["reply_to"] is None
+
+
+async def test_reply_to_message_in_another_channel_rejected(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    channel_a = await _create_text_channel(client, admin_headers)
+    channel_b_resp = await client.post(
+        "/api/channels", json={"name": "outro", "type": "text"}, headers=admin_headers
+    )
+    channel_b = channel_b_resp.json()["id"]
+
+    original = await client.post(
+        f"/api/channels/{channel_a}/messages", json={"content": "hi"}, headers=admin_headers
+    )
+    original_id = original.json()["id"]
+
+    resp = await client.post(
+        f"/api/channels/{channel_b}/messages",
+        json={"content": "cross-channel reply", "reply_to_id": original_id},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 400
+
+
 async def test_cannot_post_message_to_voice_channel(
     client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:

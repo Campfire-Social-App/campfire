@@ -15,6 +15,9 @@ class GatewayEventType(StrEnum):
     CHANNEL_CREATE = "CHANNEL_CREATE"
     CHANNEL_UPDATE = "CHANNEL_UPDATE"
     CHANNEL_DELETE = "CHANNEL_DELETE"
+    # Upsert of one DM conversation, sent only to its participants — carries the
+    # per-viewer unread count, so it's built separately for each recipient.
+    DM_UPDATE = "DM_UPDATE"
 
 
 class GatewayEvent(BaseModel):

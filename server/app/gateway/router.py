@@ -1,3 +1,4 @@
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
@@ -6,9 +7,10 @@ from app.core.security import InvalidTokenError, TokenType, decode_token
 from app.db import async_session_maker
 from app.gateway.events import GatewayEvent, GatewayEventType
 from app.gateway.manager import manager
-from app.models.channel import Channel
+from app.models.channel import Channel, ChannelType
 from app.models.server_settings import SINGLETON_ID, ServerSettings
 from app.models.user import User
+from app.services import dm_service
 
 router = APIRouter()
 
@@ -28,8 +30,19 @@ async def _authenticate(websocket: WebSocket) -> User | None:
 
 async def _build_ready_payload(user: User) -> dict:
     async with async_session_maker() as db:
-        channels = (await db.execute(select(Channel).order_by(Channel.position))).scalars().all()
+        channels = (
+            (
+                await db.execute(
+                    select(Channel)
+                    .where(Channel.type != ChannelType.DM)
+                    .order_by(Channel.position)
+                )
+            )
+            .scalars()
+            .all()
+        )
         settings_row = await db.get(ServerSettings, SINGLETON_ID)
+        dms = await dm_service.list_conversations(db, user.id)
 
     return {
         "user": {"id": str(user.id), "username": user.username, "is_admin": user.is_admin},
@@ -46,6 +59,7 @@ async def _build_ready_payload(user: User) -> dict:
             }
             for c in channels
         ],
+        "dms": [d.model_dump(mode="json") for d in dms],
         "online_user_ids": [str(uid) for uid in manager.online_user_ids()],
         "voice_states": [
             {
@@ -58,6 +72,33 @@ async def _build_ready_payload(user: User) -> dict:
             for s in manager.all_voice_state()
         ],
     }
+
+
+async def _dispatch_typing(user: User, channel_id: str) -> None:
+    """Typing in a DM must reach only the other member — the same fan-out rule the
+    REST side applies to messages (see api/messages.py `_dispatch`)."""
+    event = GatewayEvent(
+        op=GatewayEventType.TYPING_START,
+        data={"user_id": str(user.id), "channel_id": channel_id},
+    )
+    try:
+        parsed_id = uuid.UUID(channel_id)
+    except ValueError:
+        return
+
+    async with async_session_maker() as db:
+        channel = await db.get(Channel, parsed_id)
+        if channel is None:
+            return
+        if channel.type != ChannelType.DM:
+            await manager.broadcast(event)
+            return
+        participants = await dm_service.participant_ids(db, parsed_id)
+
+    if user.id not in participants:
+        return
+    for participant_id in participants:
+        await manager.send_to_user(participant_id, event)
 
 
 @router.websocket("/gateway")
@@ -88,12 +129,7 @@ async def gateway_endpoint(websocket: WebSocket) -> None:
             elif op == "TYPING_START":
                 channel_id = message.get("data", {}).get("channel_id")
                 if channel_id:
-                    await manager.broadcast(
-                        GatewayEvent(
-                            op=GatewayEventType.TYPING_START,
-                            data={"user_id": str(user.id), "channel_id": str(channel_id)},
-                        )
-                    )
+                    await _dispatch_typing(user, str(channel_id))
     except WebSocketDisconnect:
         pass
     finally:

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.core.deps import AdminUser, CurrentUser, DbSession
 from app.gateway.events import GatewayEvent, GatewayEventType
 from app.gateway.manager import manager
-from app.models.channel import Channel
+from app.models.channel import Channel, ChannelType
 from app.schemas.channel import ChannelCreateRequest, ChannelRead, ChannelUpdateRequest
 
 router = APIRouter(prefix="/api/channels", tags=["channels"])
@@ -14,7 +14,10 @@ router = APIRouter(prefix="/api/channels", tags=["channels"])
 
 @router.get("", response_model=list[ChannelRead])
 async def list_channels(user: CurrentUser, db: DbSession) -> list[Channel]:
-    result = await db.execute(select(Channel).order_by(Channel.position))
+    # DM channels are channels too, but they're private and belong to /api/dms.
+    result = await db.execute(
+        select(Channel).where(Channel.type != ChannelType.DM).order_by(Channel.position)
+    )
     return list(result.scalars().all())
 
 
@@ -36,7 +39,8 @@ async def create_channel(payload: ChannelCreateRequest, admin: AdminUser, db: Db
 
 async def _get_channel_or_404(channel_id: uuid.UUID, db: DbSession) -> Channel:
     channel = await db.get(Channel, channel_id)
-    if channel is None:
+    # A DM isn't server furniture — admins can't rename or delete one from here.
+    if channel is None or channel.type == ChannelType.DM:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     return channel
 

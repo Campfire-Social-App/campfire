@@ -17,7 +17,9 @@ export interface AccessTokenResponse {
   token_type: string;
 }
 
-export type ChannelType = "text" | "voice";
+/** "dm" channels are never listed as server channels — they reach the client as
+ * DMConversation entries instead (see /api/dms). */
+export type ChannelType = "text" | "voice" | "dm";
 
 export interface Channel {
   id: string;
@@ -25,6 +27,16 @@ export interface Channel {
   type: ChannelType;
   position: number;
   created_at: string;
+}
+
+/** A 1:1 conversation as seen by the signed-in user: `id` is the underlying
+ * channel id (so the message endpoints take it as-is), `recipient` is the other
+ * member, and `unread_count` is relative to us. */
+export interface DMConversation {
+  id: string;
+  recipient: User;
+  last_message_at: string | null;
+  unread_count: number;
 }
 
 export interface Attachment {
@@ -36,6 +48,13 @@ export interface Attachment {
   created_at: string;
 }
 
+export interface MessageReplyPreview {
+  id: string;
+  author: User;
+  content: string;
+  has_attachments: boolean;
+}
+
 export interface Message {
   id: string;
   channel_id: string;
@@ -44,6 +63,7 @@ export interface Message {
   created_at: string;
   edited_at: string | null;
   attachments: Attachment[];
+  reply_to: MessageReplyPreview | null;
 }
 
 export interface MessagePage {
@@ -92,7 +112,8 @@ export type GatewayEventType =
   | "VOICE_STATE_UPDATE"
   | "CHANNEL_CREATE"
   | "CHANNEL_UPDATE"
-  | "CHANNEL_DELETE";
+  | "CHANNEL_DELETE"
+  | "DM_UPDATE";
 
 export interface GatewayEvent<T = unknown> {
   op: GatewayEventType;
@@ -103,6 +124,7 @@ export interface ReadyEventData {
   user: { id: string; username: string; is_admin: boolean };
   server: ServerSettings;
   channels: Channel[];
+  dms: DMConversation[];
   online_user_ids: string[];
   voice_states: VoiceParticipantState[];
 }

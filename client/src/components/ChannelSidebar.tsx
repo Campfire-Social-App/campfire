@@ -39,9 +39,14 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
   const voiceChannels = channels.filter((c) => c.type === "voice");
 
   const handleSelectVoice = async (channel: Channel) => {
-    selectChannel(channel.id);
     const { connectedChannelId } = useVoiceStore.getState();
-    if (connectedChannelId === channel.id) return;
+    // Already connected — this click means "show me the voice screen".
+    // Otherwise, just join and stay on whatever's currently open; switching
+    // to the voice screen is a separate, explicit second click.
+    if (connectedChannelId === channel.id) {
+      selectChannel(channel.id);
+      return;
+    }
     try {
       await joinVoiceChannel(channel.id);
     } catch (err) {
@@ -50,11 +55,11 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
   };
 
   return (
-    <div className="flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+    <div className="flex w-68 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button className="flex h-12 shrink-0 items-center justify-between border-b border-sidebar-border px-4 text-sidebar-foreground shadow-sm hover:bg-white/5">
-            <span className="truncate font-heading text-sm font-semibold">{serverName}</span>
+            <span className="min-w-0 truncate font-heading text-sm font-semibold">{serverName}</span>
             <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
@@ -155,7 +160,7 @@ function ChannelRow({
       )}
     >
       <Icon className={cn("size-4 shrink-0", active && "text-primary")} />
-      <span className="truncate">{channel.name}</span>
+      <span className="min-w-0 truncate">{channel.name}</span>
     </button>
   );
 }
@@ -179,7 +184,7 @@ function VoiceParticipants({ channelId }: { channelId: string }) {
                 status={onlineUserIds[p.user_id] ? "online" : "offline"}
                 ring={!!speakingUserIds[p.user_id]}
               />
-              <span className="truncate text-sm text-muted-foreground">{p.username}</span>
+              <span className="min-w-0 truncate text-sm text-muted-foreground">{p.username}</span>
               {p.muted ? (
                 <MicOff className="ml-auto size-3.5 text-muted-foreground" />
               ) : (
