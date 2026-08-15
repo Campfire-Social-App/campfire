@@ -1,0 +1,27 @@
+# Production config. Real key/secret and public domain come from env substitution
+# in docker-compose.yml (LIVEKIT_API_KEY / LIVEKIT_API_SECRET / LIVEKIT_DOMAIN).
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true
+
+keys:
+  $LIVEKIT_API_KEY: $LIVEKIT_API_SECRET
+
+webhook:
+  api_key: $LIVEKIT_API_KEY
+  urls:
+    - http://server:8000/api/webhooks/livekit
+
+# TURN embutido, compartilhando 443/TLS — evita rodar um coturn separado.
+# Confirmar nomes/portas exatos contra a versão do LiveKit em uso antes do deploy.
+turn:
+  enabled: true
+  domain: $LIVEKIT_DOMAIN
+  tls_port: 5349
+  external_tls: true
+
+log_level: info

@@ -1,0 +1,43 @@
+name: campfire-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: campfire
+      POSTGRES_PASSWORD: campfire
+      POSTGRES_DB: campfire
+    ports:
+      - "5432:5432"
+    volumes:
+      - campfire_dev_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campfire"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit/livekit.dev.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880" # HTTP/WS
+      - "7881:7881" # RTC TCP fallback
+      - "50000-50100:50000-50100/udp" # RTC UDP (dev range, small on purpose)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  campfire_dev_postgres:

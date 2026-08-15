@@ -1,0 +1,75 @@
+name: campfire
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-campfire}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: ${POSTGRES_DB:-campfire}
+    volumes:
+      - campfire_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-campfire}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?defina LIVEKIT_API_KEY no .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?defina LIVEKIT_API_SECRET no .env}
+      LIVEKIT_DOMAIN: ${LIVEKIT_DOMAIN:?defina LIVEKIT_DOMAIN no .env}
+    volumes:
+      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7881:7881" # RTC TCP fallback
+      - "50000-60000:50000-60000/udp" # RTC UDP
+      - "5349:5349" # TURN TLS
+
+  server:
+    build: ../server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-campfire}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-campfire}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      LIVEKIT_URL: wss://${LIVEKIT_DOMAIN}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      UPLOAD_DIR: /data/uploads
+      ENVIRONMENT: production
+    volumes:
+      - campfire_uploads:/data/uploads
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - server
+      - livekit
+    environment:
+      DOMAIN: ${DOMAIN:?defina DOMAIN no .env}
+      LIVEKIT_DOMAIN: ${LIVEKIT_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - campfire_caddy_data:/data
+      - campfire_caddy_config:/config
+
+volumes:
+  campfire_postgres:
+  campfire_uploads:
+  campfire_caddy_data:
+  campfire_caddy_config:

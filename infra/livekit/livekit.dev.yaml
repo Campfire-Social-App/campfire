@@ -1,0 +1,18 @@
+# Config for local development — non-secret dev keys, no TURN/TLS.
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+  use_external_ip: false
+
+keys:
+  devkey: devsecret1234567890devsecret
+
+webhook:
+  api_key: devkey
+  urls:
+    - http://host.docker.internal:8000/api/webhooks/livekit
+
+log_level: info

@@ -1,0 +1,20 @@
+# Secrets
+.env
+
+# Python
+server/.venv/
+server/__pycache__/
+server/**/__pycache__/
+server/.pytest_cache/
+server/.ruff_cache/
+server/*.egg-info/
+server/uploads/
+
+# Node / Tauri (client also has its own nested .gitignore)
+client/node_modules/
+client/dist/
+client/src-tauri/target/
+client/src-tauri/gen/
+
+# OS
+.DS_Store
