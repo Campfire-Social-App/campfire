@@ -1,0 +1,93 @@
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { Hash } from "lucide-react";
+import { useMessagesStore } from "@/state/messages";
+import { MessageItem } from "@/components/MessageItem";
+import { MessageComposer } from "@/components/MessageComposer";
+import { TypingIndicator } from "@/components/TypingIndicator";
+import type { Channel } from "@/lib/types";
+
+const GROUPING_WINDOW_MS = 5 * 60 * 1000;
+const LOAD_MORE_THRESHOLD_PX = 150;
+
+interface TextChannelViewProps {
+  channel: Channel;
+}
+
+export function TextChannelView({ channel }: TextChannelViewProps) {
+  const channelData = useMessagesStore((s) => s.byChannel[channel.id]);
+  const loadInitial = useMessagesStore((s) => s.loadInitial);
+  const loadMore = useMessagesStore((s) => s.loadMore);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevScrollHeight = useRef(0);
+  const prevMessageCount = useRef(0);
+  const stickToBottom = useRef(true);
+
+  useEffect(() => {
+    void loadInitial(channel.id);
+  }, [channel.id, loadInitial]);
+
+  const messages = channelData?.messages ?? [];
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (messages.length > prevMessageCount.current && stickToBottom.current) {
+      el.scrollTop = el.scrollHeight;
+    } else if (el.scrollHeight !== prevScrollHeight.current && !stickToBottom.current) {
+      // Older messages were prepended — keep the viewport anchored.
+      el.scrollTop += el.scrollHeight - prevScrollHeight.current;
+    }
+
+    prevScrollHeight.current = el.scrollHeight;
+    prevMessageCount.current = messages.length;
+  }, [messages.length]);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+
+    if (el.scrollTop < LOAD_MORE_THRESHOLD_PX) {
+      void loadMore(channel.id);
+    }
+  };
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 shadow-sm">
+        <Hash className="size-5 text-muted-foreground" />
+        <span className="font-semibold text-foreground">{channel.name}</span>
+      </header>
+
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pb-2">
+        {channelData?.loading && messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Carregando mensagens…
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-1 px-8 text-center">
+            <Hash className="size-10 text-muted-foreground" />
+            <p className="text-xl font-semibold text-foreground">Bem-vindo a #{channel.name}!</p>
+            <p className="text-sm text-muted-foreground">Este é o começo do canal.</p>
+          </div>
+        ) : (
+          messages.map((message, i) => {
+            const prev = messages[i - 1];
+            const showHeader =
+              !prev ||
+              prev.author.id !== message.author.id ||
+              new Date(message.created_at).getTime() - new Date(prev.created_at).getTime() >
+                GROUPING_WINDOW_MS;
+            return <MessageItem key={message.id} message={message} showHeader={showHeader} />;
+          })
+        )}
+      </div>
+
+      <TypingIndicator channelId={channel.id} />
+      <MessageComposer channel={channel} />
+    </div>
+  );
+}

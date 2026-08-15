@@ -1,0 +1,193 @@
+import { useState } from "react";
+import { ChevronDown, Hash, Mic, MicOff, Plus, UserPlus, Volume2 } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuthStore } from "@/state/auth";
+import { useChannelsStore } from "@/state/channels";
+import { useVoiceStore } from "@/state/voice";
+import { usePresenceStore } from "@/state/presence";
+import { CreateChannelDialog } from "@/components/CreateChannelDialog";
+import { InviteDialog } from "@/components/InviteDialog";
+import { UserAvatar } from "@/components/UserAvatar";
+import { UserBar } from "@/components/UserBar";
+import { joinVoiceChannel } from "@/livekit/voice";
+import { cn } from "@/lib/utils";
+import type { Channel } from "@/lib/types";
+import { toast } from "sonner";
+import { ApiError } from "@/lib/types";
+
+interface ChannelSidebarProps {
+  serverName: string;
+}
+
+export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
+  const channels = useChannelsStore((s) => s.channels);
+  const selectedChannelId = useChannelsStore((s) => s.selectedChannelId);
+  const selectChannel = useChannelsStore((s) => s.selectChannel);
+  const isAdmin = useAuthStore((s) => s.user?.is_admin ?? false);
+
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [createChannelOpen, setCreateChannelOpen] = useState(false);
+
+  const textChannels = channels.filter((c) => c.type === "text");
+  const voiceChannels = channels.filter((c) => c.type === "voice");
+
+  const handleSelectVoice = async (channel: Channel) => {
+    selectChannel(channel.id);
+    const { connectedChannelId } = useVoiceStore.getState();
+    if (connectedChannelId === channel.id) return;
+    try {
+      await joinVoiceChannel(channel.id);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Falha ao entrar no canal de voz.");
+    }
+  };
+
+  return (
+    <div className="flex w-60 shrink-0 flex-col bg-sidebar">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex h-12 shrink-0 items-center justify-between border-b border-sidebar-border px-4 font-semibold text-sidebar-foreground shadow-sm hover:bg-white/5">
+            <span className="truncate">{serverName}</span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-56">
+          <DropdownMenuItem onSelect={() => setInviteOpen(true)}>
+            <UserPlus className="size-4" /> Convidar pessoas
+          </DropdownMenuItem>
+          {isAdmin && (
+            <DropdownMenuItem onSelect={() => setCreateChannelOpen(true)}>
+              <Plus className="size-4" /> Criar canal
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <div className="flex-1 overflow-y-auto px-2 py-3">
+        <ChannelCategory
+          title="Canais de texto"
+          onCreate={isAdmin ? () => setCreateChannelOpen(true) : undefined}
+        >
+          {textChannels.map((channel) => (
+            <ChannelRow
+              key={channel.id}
+              channel={channel}
+              active={selectedChannelId === channel.id}
+              onClick={() => selectChannel(channel.id)}
+            />
+          ))}
+        </ChannelCategory>
+
+        <ChannelCategory
+          title="Canais de voz"
+          onCreate={isAdmin ? () => setCreateChannelOpen(true) : undefined}
+        >
+          {voiceChannels.map((channel) => (
+            <div key={channel.id}>
+              <ChannelRow
+                channel={channel}
+                active={selectedChannelId === channel.id}
+                onClick={() => void handleSelectVoice(channel)}
+              />
+              <VoiceParticipants channelId={channel.id} />
+            </div>
+          ))}
+        </ChannelCategory>
+      </div>
+
+      <UserBar />
+
+      <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} />
+      <CreateChannelDialog open={createChannelOpen} onOpenChange={setCreateChannelOpen} />
+    </div>
+  );
+}
+
+function ChannelCategory({
+  title,
+  onCreate,
+  children,
+}: {
+  title: string;
+  onCreate?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-4">
+      <div className="mb-1 flex items-center justify-between px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        <span>{title}</span>
+        {onCreate && (
+          <button onClick={onCreate} className="hover:text-foreground">
+            <Plus className="size-4" />
+          </button>
+        )}
+      </div>
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  );
+}
+
+function ChannelRow({
+  channel,
+  active,
+  onClick,
+}: {
+  channel: Channel;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const Icon = channel.type === "text" ? Hash : Volume2;
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground",
+        active && "bg-white/10 text-foreground",
+      )}
+    >
+      <Icon className="size-4 shrink-0" />
+      <span className="truncate">{channel.name}</span>
+    </button>
+  );
+}
+
+function VoiceParticipants({ channelId }: { channelId: string }) {
+  const participants = useVoiceStore(useShallow((s) => s.participantsInChannel(channelId)));
+  const speakingUserIds = useVoiceStore((s) => s.speakingUserIds);
+  const onlineUserIds = usePresenceStore((s) => s.onlineUserIds);
+
+  if (participants.length === 0) return null;
+
+  return (
+    <div className="ml-4 space-y-1 border-l border-sidebar-border pl-3 py-1">
+      {participants.map((p) => (
+        <Tooltip key={p.user_id}>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-2 py-0.5">
+              <UserAvatar
+                username={p.username}
+                size="sm"
+                status={onlineUserIds[p.user_id] ? "online" : "offline"}
+                ring={!!speakingUserIds[p.user_id]}
+              />
+              <span className="truncate text-sm text-muted-foreground">{p.username}</span>
+              {p.muted ? (
+                <MicOff className="ml-auto size-3.5 text-muted-foreground" />
+              ) : (
+                <Mic className="ml-auto size-3.5 text-transparent" />
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="right">{p.username}</TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}

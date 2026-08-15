@@ -25,11 +25,11 @@ O FastAPI cuida de autenticação, canais, mensagens e sinalização (WebSocket 
 
 ## Escopo atual (MVP)
 
-- [ ] Convite por link/código + registro de usuário
-- [ ] Login com sessão JWT (access + refresh)
-- [ ] Canais de texto (mensagens, anexos)
-- [ ] Gateway em tempo real (WebSocket) para mensagens e presença
-- [ ] Canais de voz via LiveKit (entrar/sair, mute, indicador de fala)
+- [x] Convite por link/código + registro de usuário
+- [x] Login com sessão JWT (access + refresh)
+- [x] Canais de texto (mensagens, anexos)
+- [x] Gateway em tempo real (WebSocket) para mensagens e presença
+- [x] Canais de voz via LiveKit (entrar/sair, mute, indicador de fala)
 - [ ] Empacotamento do cliente + guia de deploy em VPS
 
 Vídeo de câmera, compartilhamento de tela e modo live ficam para uma fase posterior — a infraestrutura de voz (LiveKit) já suporta os três nativamente, então essa fase é majoritariamente trabalho de cliente.
@@ -65,7 +65,10 @@ campfire/
 
 ## Desenvolvimento local
 
-Pré-requisitos: Docker, Node.js + pnpm, Rust (para o Tauri), Python 3.12+.
+Pré-requisitos: Docker, Node.js + npm, Rust (para o Tauri), Python 3.12+ + Poetry.
+
+No Linux, o `tauri dev`/`tauri build` também precisa das libs de sistema do WebView
+(`webkit2gtk`, `gtk3`, etc.) — veja https://tauri.app/start/prerequisites/#linux.
 
 ```bash
 # Stack de apoio (Postgres + LiveKit em modo dev)
@@ -73,13 +76,16 @@ docker compose -f infra/docker-compose.dev.yml up -d
 
 # Servidor
 cd server
+poetry install
 cp .env.example .env
-uvicorn app.main:app --reload
+poetry run alembic upgrade head
+poetry run python -m app.cli create-admin --username admin --password <senha>
+poetry run uvicorn app.main:app --reload
 
 # Cliente
 cd client
-pnpm install
-pnpm tauri dev
+npm install
+npm run tauri dev
 ```
 
 ---

@@ -1,0 +1,27 @@
+import { Flame } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+
+interface ServerRailProps {
+  serverName: string;
+}
+
+export function ServerRail({ serverName }: ServerRailProps) {
+  return (
+    <div className="flex w-[72px] shrink-0 flex-col items-center gap-2 bg-rail py-3">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            className={cn(
+              "flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground",
+              "transition-all hover:rounded-xl",
+            )}
+          >
+            <Flame className="size-6" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{serverName}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}

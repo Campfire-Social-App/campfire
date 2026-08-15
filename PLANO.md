@@ -154,14 +154,14 @@ Estado de voz (quem está em qual canal, mute/speaking) é **efêmero**: vive na
 
 - `infra/docker-compose.dev.yml`: `postgres`, `livekit` (config dev com chaves não-secretas), opcionalmente `adminer` para inspecionar o banco.
 - Server: `uvicorn app.main:app --reload` apontando para o Postgres/LiveKit do compose; CORS liberado para `tauri://localhost` em modo dev.
-- Client: `pnpm tauri dev` apontando para `http://localhost:8000`.
+- Client: `npm run tauri dev` apontando para `http://localhost:8000`.
 - `.env.example` documentando `DATABASE_URL`, `JWT_SECRET`, `LIVEKIT_API_KEY/SECRET/URL`, `UPLOAD_DIR`.
 
 ---
 
 ## 7. Marcos de construção (ordem recomendada)
 
-**M0 — Scaffold**: layout do repo, FastAPI com `/health`, Postgres+Alembic conectados, Tauri com shell React em branco. *Entrega*: `docker compose up` + `pnpm tauri dev` → janela abre e faz ping em `/health`.
+**M0 — Scaffold**: layout do repo, FastAPI com `/health`, Postgres+Alembic conectados, Tauri com shell React em branco. *Entrega*: `docker compose up` + `npm run tauri dev` → janela abre e faz ping em `/health`.
 
 **M1 — Auth & Invites**: models `User`/`Invite` + migrations, endpoints register/login/refresh, dependency de validação JWT, bootstrap do primeiro admin (via env/CLI), geração de convite. Cliente: telas de conectar-ao-servidor, registro via convite, login, persistência de token. *Entrega*: registrar via link de convite, logar, permanecer logado após reiniciar o app.
 
@@ -186,7 +186,7 @@ Estado de voz (quem está em qual canal, mute/speaking) é **efêmero**: vive na
 
 ## Verificação
 
-- M0: `docker compose -f infra/docker-compose.dev.yml up` sobe sem erro; `curl localhost:8000/health` retorna 200; `pnpm tauri dev` abre janela.
+- M0: `docker compose -f infra/docker-compose.dev.yml up` sobe sem erro; `curl localhost:8000/health` retorna 200; `npm run tauri dev` abre janela.
 - M1: fluxo manual completo de convite→registro→login→refresh via cliente real; teste automatizado (pytest) do endpoint de auth.
 - M2: dois clientes (duas instâncias do app, dois usuários) trocando mensagens em tempo real; teste automatizado de paginação de mensagens.
 - M3: teste manual de voz entre duas redes distintas (ex: uma via 4G/hotspot) para validar que o TURN embutido do LiveKit realmente resolve NAT restritivo — este é o teste mais crítico de todo o MVP, pois é o que valida a arquitetura de infra mínima proposta no documento original.
