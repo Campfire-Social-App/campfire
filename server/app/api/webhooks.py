@@ -17,14 +17,14 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
     try:
         event = get_webhook_receiver().receive(body.decode("utf-8"), authorization)
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Webhook inválido") from exc
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook") from exc
 
     if event.event == "participant_joined":
         try:
             user_id = uuid.UUID(event.participant.identity)
             channel_id = uuid.UUID(event.room.name)
         except ValueError:
-            logger.warning("Ignorando participant_joined com identity/room não-UUID")
+            logger.warning("Ignoring participant_joined with non-UUID identity/room")
             return
 
         # LiveKit already carries the username as the participant's display name

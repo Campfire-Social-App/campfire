@@ -5,6 +5,7 @@ import { useMessagesStore } from "@/state/messages";
 import { usePresenceStore } from "@/state/presence";
 import { useVoiceStore } from "@/state/voice";
 import { useUsersStore } from "@/state/users";
+import { playJoinSound, playLeaveSound } from "@/lib/sounds";
 import type {
   Channel,
   ChannelDeleteData,
@@ -148,9 +149,19 @@ class GatewayClient {
         else usePresenceStore.getState().setOffline(data.user_id);
         break;
       }
-      case "VOICE_STATE_UPDATE":
-        useVoiceStore.getState().applyVoiceStateUpdate(event.data as VoiceStateUpdateData);
+      case "VOICE_STATE_UPDATE": {
+        const data = event.data as VoiceStateUpdateData;
+        useVoiceStore.getState().applyVoiceStateUpdate(data);
+        // Our own join/leave sound plays directly from the LiveKit room lifecycle
+        // (see livekit/voice.ts) — here we only sound off for other participants
+        // in the voice channel we're currently connected to.
+        const isOwnUpdate = data.user_id === useAuthStore.getState().user?.id;
+        if (!isOwnUpdate && data.channel_id === useVoiceStore.getState().connectedChannelId) {
+          if (data.action === "joined") playJoinSound();
+          else if (data.action === "left") playLeaveSound();
+        }
         break;
+      }
       case "CHANNEL_CREATE":
       case "CHANNEL_UPDATE":
         useChannelsStore.getState().upsertChannel(event.data as Channel);

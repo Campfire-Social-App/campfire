@@ -27,7 +27,7 @@ export function LoginScreen({ onSwitchToRegister }: LoginScreenProps) {
     try {
       await login(username, password);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Falha ao entrar.";
+      const message = err instanceof ApiError ? err.message : "Failed to sign in.";
       toast.error(message);
     } finally {
       setLoading(false);
@@ -35,14 +35,14 @@ export function LoginScreen({ onSwitchToRegister }: LoginScreenProps) {
   };
 
   return (
-    <AuthShell title="Bem-vindo de volta" description={serverUrl ?? ""}>
+    <AuthShell title="Welcome back" description={serverUrl ?? ""}>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
-          <Label htmlFor="username">Usuário</Label>
+          <Label htmlFor="username">Username</Label>
           <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Senha</Label>
+          <Label htmlFor="password">Password</Label>
           <Input
             id="password"
             type="password"
@@ -53,15 +53,15 @@ export function LoginScreen({ onSwitchToRegister }: LoginScreenProps) {
 
         <Button type="submit" className="w-full" disabled={loading || !username || !password}>
           {loading && <Loader2 className="size-4 animate-spin" />}
-          Entrar
+          Sign in
         </Button>
 
         <div className="flex flex-col items-center gap-1 text-sm">
           <button type="button" onClick={onSwitchToRegister} className="text-primary hover:underline">
-            Tenho um convite — criar conta
+            I have an invite — create an account
           </button>
           <button type="button" onClick={clearServerUrl} className="text-muted-foreground hover:underline">
-            Trocar de servidor
+            Switch server
           </button>
         </div>
       </form>

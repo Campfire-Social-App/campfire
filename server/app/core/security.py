@@ -64,12 +64,12 @@ def decode_token(token: str, expected_type: TokenType) -> uuid.UUID:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     except jwt.PyJWTError as exc:
-        raise InvalidTokenError("token inválido ou expirado") from exc
+        raise InvalidTokenError("invalid or expired token") from exc
 
     if payload.get("type") != expected_type.value:
-        raise InvalidTokenError("tipo de token inesperado")
+        raise InvalidTokenError("unexpected token type")
 
     try:
         return uuid.UUID(payload["sub"])
     except (KeyError, ValueError) as exc:
-        raise InvalidTokenError("token malformado") from exc
+        raise InvalidTokenError("malformed token") from exc

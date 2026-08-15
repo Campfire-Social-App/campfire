@@ -38,7 +38,7 @@ export function MessageComposer({ channel }: MessageComposerProps) {
         setPendingAttachments((prev) => [...prev, attachment]);
       }
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Falha ao enviar arquivo.");
+      toast.error(err instanceof ApiError ? err.message : "Failed to upload file.");
     } finally {
       setUploading(false);
     }
@@ -57,7 +57,7 @@ export function MessageComposer({ channel }: MessageComposerProps) {
       setContent("");
       setPendingAttachments([]);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Falha ao enviar mensagem.");
+      toast.error(err instanceof ApiError ? err.message : "Failed to send message.");
     } finally {
       setSending(false);
     }
@@ -135,7 +135,7 @@ export function MessageComposer({ channel }: MessageComposerProps) {
                 void handleSend();
               }
             }}
-            placeholder={`Conversar em #${channel.name}`}
+            placeholder={`Message #${channel.name}`}
             className="max-h-40 min-h-6 flex-1 resize-none border-0 bg-transparent px-0 py-1 shadow-none focus-visible:ring-0 dark:bg-transparent"
             rows={1}
           />

@@ -28,7 +28,7 @@ export function ServerConnectScreen() {
       if (!res.ok) throw new Error();
       setServerUrl(normalized);
     } catch {
-      toast.error("Não foi possível conectar a esse servidor. Confira o endereço.");
+      toast.error("Couldn't connect to that server. Check the address.");
     } finally {
       setChecking(false);
     }
@@ -36,15 +36,15 @@ export function ServerConnectScreen() {
 
   return (
     <AuthShell
-      title="Conectar ao servidor"
-      description="Digite o endereço do servidor Campfire auto-hospedado ao qual você quer se conectar."
+      title="Connect to a server"
+      description="Enter the address of the self-hosted Campfire server you want to connect to."
     >
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
-          <Label htmlFor="server-url">Endereço do servidor</Label>
+          <Label htmlFor="server-url">Server address</Label>
           <Input
             id="server-url"
-            placeholder="campfire.meudominio.com"
+            placeholder="campfire.mydomain.com"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             autoFocus
@@ -53,7 +53,7 @@ export function ServerConnectScreen() {
 
         <Button type="submit" className="w-full" disabled={checking || !url.trim()}>
           {checking && <Loader2 className="size-4 animate-spin" />}
-          Conectar
+          Connect
         </Button>
       </form>
     </AuthShell>

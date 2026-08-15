@@ -25,7 +25,7 @@ def _attachment_url(attachment: Attachment) -> str:
 async def _get_text_channel_or_404(channel_id: uuid.UUID, db: DbSession) -> Channel:
     channel = await db.get(Channel, channel_id)
     if channel is None or channel.type != ChannelType.TEXT:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Canal de texto não encontrado")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Text channel not found")
     return channel
 
 
@@ -127,9 +127,9 @@ async def create_message(
 async def _get_own_message_or_404(message_id: uuid.UUID, user: CurrentUser, db: DbSession) -> Message:
     message = await db.get(Message, message_id)
     if message is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mensagem não encontrada")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
     if message.author_id != user.id and not user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     return message
 
 

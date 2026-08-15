@@ -30,7 +30,7 @@ export function CreateChannelDialog({ open, onOpenChange }: CreateChannelDialogP
       setName("");
       onOpenChange(false);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Falha ao criar canal.");
+      toast.error(err instanceof ApiError ? err.message : "Failed to create channel.");
     } finally {
       setLoading(false);
     }
@@ -41,7 +41,7 @@ export function CreateChannelDialog({ open, onOpenChange }: CreateChannelDialogP
       <DialogContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Criar canal</DialogTitle>
+            <DialogTitle>Create channel</DialogTitle>
           </DialogHeader>
 
           <div className="flex gap-2">
@@ -53,7 +53,7 @@ export function CreateChannelDialog({ open, onOpenChange }: CreateChannelDialogP
                 type === "text" && "border-primary bg-primary/10",
               )}
             >
-              <Hash className="size-4" /> Texto
+              <Hash className="size-4" /> Text
             </button>
             <button
               type="button"
@@ -63,24 +63,24 @@ export function CreateChannelDialog({ open, onOpenChange }: CreateChannelDialogP
                 type === "voice" && "border-primary bg-primary/10",
               )}
             >
-              <Volume2 className="size-4" /> Voz
+              <Volume2 className="size-4" /> Voice
             </button>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="channel-name">Nome do canal</Label>
+            <Label htmlFor="channel-name">Channel name</Label>
             <Input
               id="channel-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="novo-canal"
+              placeholder="new-channel"
               autoFocus
             />
           </div>
 
           <DialogFooter>
             <Button type="submit" disabled={loading || !name.trim()}>
-              Criar canal
+              Create channel
             </Button>
           </DialogFooter>
         </form>

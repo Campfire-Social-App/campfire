@@ -70,14 +70,14 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
               className="min-h-0 resize-none"
             />
             <p className="text-xs text-muted-foreground">
-              escape para cancelar · enter para salvar
+              escape to cancel · enter to save
             </p>
           </div>
         ) : (
           <p className="whitespace-pre-wrap break-words text-[15px] leading-snug text-foreground">
             {message.content}
             {message.edited_at && (
-              <span className="ml-1 text-[10px] text-muted-foreground">(editado)</span>
+              <span className="ml-1 text-[10px] text-muted-foreground">(edited)</span>
             )}
           </p>
         )}

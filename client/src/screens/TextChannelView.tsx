@@ -65,13 +65,13 @@ export function TextChannelView({ channel }: TextChannelViewProps) {
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pb-2">
         {channelData?.loading && messages.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Carregando mensagens…
+            Loading messages…
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 px-8 text-center">
             <Hash className="size-10 text-muted-foreground" />
-            <p className="text-xl font-semibold text-foreground">Bem-vindo a #{channel.name}!</p>
-            <p className="text-sm text-muted-foreground">Este é o começo do canal.</p>
+            <p className="text-xl font-semibold text-foreground">Welcome to #{channel.name}!</p>
+            <p className="text-sm text-muted-foreground">This is the beginning of the channel.</p>
           </div>
         ) : (
           messages.map((message, i) => {

@@ -35,17 +35,17 @@ async def register(payload: RegisterRequest, db: DbSession) -> AuthResponse:
     ).scalar_one_or_none()
 
     if invite is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Convite inválido")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid invite")
     if invite.expires_at is not None and invite.expires_at <= datetime.now(UTC):
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Convite expirado")
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invite expired")
     if invite.max_uses is not None and invite.uses_count >= invite.max_uses:
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Convite esgotado")
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invite exhausted")
 
     existing = (
         await db.execute(select(User).where(User.username == payload.username))
     ).scalar_one_or_none()
     if existing is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nome de usuário já em uso")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already in use")
 
     user = User(username=payload.username, password_hash=hash_password(payload.password))
     invite.uses_count += 1
@@ -69,7 +69,7 @@ async def login(payload: LoginRequest, db: DbSession) -> AuthResponse:
 
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário ou senha inválidos"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password"
         )
 
     return AuthResponse(
@@ -88,7 +88,7 @@ async def refresh(payload: RefreshRequest, db: DbSession) -> AccessTokenResponse
 
     user = await db.get(User, user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     return AccessTokenResponse(access_token=create_access_token(user.id))
 

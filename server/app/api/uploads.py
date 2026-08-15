@@ -34,7 +34,7 @@ async def upload_file(user: CurrentUser, db: DbSession, file: UploadFile) -> Att
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Tipo de arquivo não suportado: {file.content_type}",
+            detail=f"Unsupported file type: {file.content_type}",
         )
 
     upload_dir = Path(settings.upload_dir)
@@ -53,7 +53,7 @@ async def upload_file(user: CurrentUser, db: DbSession, file: UploadFile) -> Att
                 destination.unlink(missing_ok=True)
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail="Arquivo excede o tamanho máximo permitido",
+                    detail="File exceeds the maximum allowed size",
                 )
             await out_file.write(chunk)
 

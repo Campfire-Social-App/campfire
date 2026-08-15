@@ -95,6 +95,9 @@
     --dnd: #f23f43;
     --offline: #80848e;
     --ember: #f0b232;
+
+    --scrollbar-thumb: rgba(0, 0, 0, 0.18);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.32);
 }
 
 .dark {
@@ -139,6 +142,10 @@
     --dnd: #f0463f;
     --offline: #5b6489;
     --ember: #fbbf24;
+
+    /* Subtle at rest, warms to the campfire accent on hover. */
+    --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+    --scrollbar-thumb-hover: rgba(255, 154, 84, 0.4);
 }
 
 /* Layered radial-gradients: a warm campfire glow rising from the bottom,
@@ -179,4 +186,29 @@
   html {
     @apply font-sans;
     }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }

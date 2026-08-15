@@ -25,7 +25,7 @@ export function RegisterWithInviteScreen({ onSwitchToLogin }: RegisterWithInvite
     try {
       await register(inviteCode, username, password);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : "Falha ao criar conta.";
+      const message = err instanceof ApiError ? err.message : "Failed to create account.";
       toast.error(message);
     } finally {
       setLoading(false);
@@ -33,10 +33,10 @@ export function RegisterWithInviteScreen({ onSwitchToLogin }: RegisterWithInvite
   };
 
   return (
-    <AuthShell title="Criar conta" description="Você precisa de um convite para entrar.">
+    <AuthShell title="Create account" description="You need an invite to join.">
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
-          <Label htmlFor="invite-code">Código de convite</Label>
+          <Label htmlFor="invite-code">Invite code</Label>
           <Input
             id="invite-code"
             value={inviteCode}
@@ -45,18 +45,18 @@ export function RegisterWithInviteScreen({ onSwitchToLogin }: RegisterWithInvite
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="username">Usuário</Label>
+          <Label htmlFor="username">Username</Label>
           <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Senha</Label>
+          <Label htmlFor="password">Password</Label>
           <Input
             id="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">Mínimo de 8 caracteres.</p>
+          <p className="text-xs text-muted-foreground">At least 8 characters.</p>
         </div>
 
         <Button
@@ -65,12 +65,12 @@ export function RegisterWithInviteScreen({ onSwitchToLogin }: RegisterWithInvite
           disabled={loading || !inviteCode || !username || password.length < 8}
         >
           {loading && <Loader2 className="size-4 animate-spin" />}
-          Criar conta
+          Create account
         </Button>
 
         <div className="flex justify-center text-sm">
           <button type="button" onClick={onSwitchToLogin} className="text-primary hover:underline">
-            Já tenho uma conta
+            I already have an account
           </button>
         </div>
       </form>

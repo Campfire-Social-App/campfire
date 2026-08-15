@@ -45,7 +45,7 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
     try {
       await joinVoiceChannel(channel.id);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Falha ao entrar no canal de voz.");
+      toast.error(err instanceof ApiError ? err.message : "Failed to join the voice channel.");
     }
   };
 
@@ -60,11 +60,11 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56">
           <DropdownMenuItem onSelect={() => setInviteOpen(true)}>
-            <UserPlus className="size-4" /> Convidar pessoas
+            <UserPlus className="size-4" /> Invite people
           </DropdownMenuItem>
           {isAdmin && (
             <DropdownMenuItem onSelect={() => setCreateChannelOpen(true)}>
-              <Plus className="size-4" /> Criar canal
+              <Plus className="size-4" /> Create channel
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -72,7 +72,7 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
 
       <div className="flex-1 overflow-y-auto px-2 py-3">
         <ChannelCategory
-          title="Canais de texto"
+          title="Text channels"
           onCreate={isAdmin ? () => setCreateChannelOpen(true) : undefined}
         >
           {textChannels.map((channel) => (
@@ -86,7 +86,7 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
         </ChannelCategory>
 
         <ChannelCategory
-          title="Canais de voz"
+          title="Voice channels"
           onCreate={isAdmin ? () => setCreateChannelOpen(true) : undefined}
         >
           {voiceChannels.map((channel) => (

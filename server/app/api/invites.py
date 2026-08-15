@@ -34,6 +34,6 @@ async def list_invites(admin: AdminUser, db: DbSession) -> list[InviteRead]:
 async def delete_invite(invite_id: uuid.UUID, admin: AdminUser, db: DbSession) -> None:
     invite = await db.get(Invite, invite_id)
     if invite is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Convite não encontrado")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invite not found")
     await db.delete(invite)
     await db.commit()

@@ -17,11 +17,11 @@ export function TypingIndicator({ channelId }: { channelId: string }) {
   const typingUserIds = Object.keys(typing ?? {}).filter((id) => id !== currentUserId);
   if (typingUserIds.length === 0) return <div className="h-5" />;
 
-  const names = typingUserIds.map((id) => byId[id]?.username ?? "alguém");
+  const names = typingUserIds.map((id) => byId[id]?.username ?? "someone");
   const label =
     names.length === 1
-      ? `${names[0]} está digitando…`
-      : `${names.slice(0, -1).join(", ")} e ${names[names.length - 1]} estão digitando…`;
+      ? `${names[0]} is typing…`
+      : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} are typing…`;
 
   return <div className="h-5 px-4 text-xs text-muted-foreground">{label}</div>;
 }

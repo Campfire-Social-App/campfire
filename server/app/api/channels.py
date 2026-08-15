@@ -37,7 +37,7 @@ async def create_channel(payload: ChannelCreateRequest, admin: AdminUser, db: Db
 async def _get_channel_or_404(channel_id: uuid.UUID, db: DbSession) -> Channel:
     channel = await db.get(Channel, channel_id)
     if channel is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Canal não encontrado")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Channel not found")
     return channel
 
 

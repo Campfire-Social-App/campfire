@@ -4,7 +4,7 @@ import { ApiError, type AccessTokenResponse } from "@/lib/types";
 
 function getServerUrl(): string {
   const url = useSettingsStore.getState().serverUrl;
-  if (!url) throw new ApiError(0, "Nenhum servidor configurado");
+  if (!url) throw new ApiError(0, "No server configured");
   return url;
 }
 
@@ -13,7 +13,7 @@ let refreshPromise: Promise<string> | null = null;
 /** Calls /api/auth/refresh directly — never goes through apiFetch, to avoid recursion. */
 async function refreshAccessToken(): Promise<string> {
   const refreshToken = useAuthStore.getState().refreshToken;
-  if (!refreshToken) throw new ApiError(401, "Sem sessão para renovar");
+  if (!refreshToken) throw new ApiError(401, "No session to refresh");
 
   const res = await fetch(`${getServerUrl()}/api/auth/refresh`, {
     method: "POST",
@@ -23,7 +23,7 @@ async function refreshAccessToken(): Promise<string> {
 
   if (!res.ok) {
     useAuthStore.getState().logout();
-    throw new ApiError(res.status, "Sessão expirada");
+    throw new ApiError(res.status, "Session expired");
   }
 
   const body = (await res.json()) as AccessTokenResponse;

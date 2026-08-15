@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/voice", tags=["voice"])
 async def get_voice_token(channel_id: uuid.UUID, user: CurrentUser, db: DbSession) -> VoiceTokenResponse:
     channel = await db.get(Channel, channel_id)
     if channel is None or channel.type != ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Canal de voz não encontrado")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice channel not found")
 
     settings = get_settings()
     room = str(channel.id)

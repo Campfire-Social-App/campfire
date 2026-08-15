@@ -20,7 +20,7 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Não autenticado",
+            detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
@@ -34,7 +34,7 @@ async def get_current_user(
 
     user = await db.get(User, user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
 
 
@@ -43,7 +43,7 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 async def require_admin(user: CurrentUser) -> User:
     if not user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requer privilégio de admin")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privilege required")
     return user
 
 

@@ -22,7 +22,7 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
     createInvite()
       .then((invite) => setCode(invite.code))
       .catch((err) => {
-        toast.error(err instanceof ApiError ? err.message : "Falha ao gerar convite.");
+        toast.error(err instanceof ApiError ? err.message : "Failed to generate invite.");
         onOpenChange(false);
       })
       .finally(() => setLoading(false));
@@ -32,14 +32,14 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
   const copy = () => {
     if (!code) return;
     void navigator.clipboard.writeText(code);
-    toast.success("Código copiado.");
+    toast.success("Code copied.");
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Convidar alguém</DialogTitle>
+          <DialogTitle>Invite someone</DialogTitle>
         </DialogHeader>
         {loading ? (
           <div className="flex justify-center py-6">
@@ -48,7 +48,7 @@ export function InviteDialog({ open, onOpenChange }: InviteDialogProps) {
         ) : (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Compartilhe este código. Quem recebê-lo poderá criar uma conta neste servidor.
+              Share this code. Whoever receives it can create an account on this server.
             </p>
             <div className="flex gap-2">
               <Input readOnly value={code ?? ""} className="font-mono" />

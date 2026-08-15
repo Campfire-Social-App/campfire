@@ -48,7 +48,7 @@ export function ServerShell() {
         )
       ) : (
         <div className="flex flex-1 items-center justify-center text-muted-foreground">
-          Nenhum canal ainda. {channels.length === 0 && "Crie um para começar."}
+          No channel yet. {channels.length === 0 && "Create one to get started."}
         </div>
       )}
 

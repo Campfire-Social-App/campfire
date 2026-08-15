@@ -1,11 +1,29 @@
-import { Headphones, Mic, MicOff, PhoneOff, Settings, VolumeX } from "lucide-react";
+import {
+  Headphones,
+  Mic,
+  MicOff,
+  PhoneOff,
+  ScreenShare,
+  ScreenShareOff,
+  Settings,
+  Video,
+  VideoOff,
+  VolumeX,
+} from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/state/auth";
 import { useVoiceStore } from "@/state/voice";
 import { useChannelsStore } from "@/state/channels";
-import { leaveVoiceChannel, setDeafened, setMicrophoneMuted } from "@/livekit/voice";
+import {
+  leaveVoiceChannel,
+  setCameraEnabled,
+  setDeafened,
+  setMicrophoneMuted,
+  setScreenShareEnabled,
+} from "@/livekit/voice";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export function UserBar() {
   const user = useAuthStore((s) => s.user);
@@ -13,9 +31,30 @@ export function UserBar() {
   const connectionStatus = useVoiceStore((s) => s.connectionStatus);
   const localMuted = useVoiceStore((s) => s.localMuted);
   const localDeafened = useVoiceStore((s) => s.localDeafened);
+  const localCameraEnabled = useVoiceStore((s) => s.localCameraEnabled);
+  const localScreenShareEnabled = useVoiceStore((s) => s.localScreenShareEnabled);
   const channelName = useChannelsStore(
     (s) => s.channels.find((c) => c.id === connectedChannelId)?.name,
   );
+  const connected = connectionStatus === "connected";
+
+  const handleToggleCamera = async () => {
+    try {
+      await setCameraEnabled(!localCameraEnabled);
+    } catch {
+      toast.error("Couldn't access the camera.");
+    }
+  };
+
+  const handleToggleScreenShare = async () => {
+    try {
+      await setScreenShareEnabled(!localScreenShareEnabled);
+    } catch (err) {
+      // Cancelling the browser's share picker also rejects with NotAllowedError — not a real error.
+      if (err instanceof DOMException && err.name === "NotAllowedError") return;
+      toast.error("Couldn't share the screen.");
+    }
+  };
 
   if (!user) return null;
 
@@ -26,7 +65,7 @@ export function UserBar() {
           <div className="min-w-0">
             <p className="flex items-center gap-1.5 text-sm font-medium text-online">
               <span className="size-2 shrink-0 rounded-full bg-online" />
-              {connectionStatus === "connecting" ? "Conectando…" : "Voz conectada"}
+              {connectionStatus === "connecting" ? "Connecting…" : "Voice connected"}
             </p>
             <p className="truncate text-xs text-muted-foreground">{channelName ?? ""}</p>
           </div>
@@ -39,7 +78,7 @@ export function UserBar() {
                 <PhoneOff className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Desconectar</TooltipContent>
+            <TooltipContent>Disconnect</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -49,14 +88,14 @@ export function UserBar() {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {user.is_admin ? "Admin" : "Membro"}
+            {user.is_admin ? "Admin" : "Member"}
           </p>
         </div>
 
         <IconToggle
           active={localMuted}
           onClick={() => void setMicrophoneMuted(!localMuted)}
-          label={localMuted ? "Ativar microfone" : "Silenciar microfone"}
+          label={localMuted ? "Unmute microphone" : "Mute microphone"}
         >
           {localMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
         </IconToggle>
@@ -64,10 +103,36 @@ export function UserBar() {
         <IconToggle
           active={localDeafened}
           onClick={() => setDeafened(!localDeafened)}
-          label={localDeafened ? "Reativar áudio" : "Ensurdecer"}
+          label={localDeafened ? "Undeafen" : "Deafen"}
         >
           {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
         </IconToggle>
+
+        {connected && (
+          <IconToggle
+            active={localCameraEnabled}
+            activeClassName="bg-primary/15 text-primary"
+            onClick={() => void handleToggleCamera()}
+            label={localCameraEnabled ? "Turn off camera" : "Turn on camera"}
+          >
+            {localCameraEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
+          </IconToggle>
+        )}
+
+        {connected && (
+          <IconToggle
+            active={localScreenShareEnabled}
+            activeClassName="bg-primary/15 text-primary"
+            onClick={() => void handleToggleScreenShare()}
+            label={localScreenShareEnabled ? "Stop screen share" : "Share screen"}
+          >
+            {localScreenShareEnabled ? (
+              <ScreenShare className="size-4" />
+            ) : (
+              <ScreenShareOff className="size-4" />
+            )}
+          </IconToggle>
+        )}
 
         <Tooltip>
           <TooltipTrigger asChild>
@@ -75,7 +140,7 @@ export function UserBar() {
               <Settings className="size-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent>Configurações</TooltipContent>
+          <TooltipContent>Settings</TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -84,11 +149,13 @@ export function UserBar() {
 
 function IconToggle({
   active,
+  activeClassName = "bg-white/10 text-destructive",
   onClick,
   label,
   children,
 }: {
   active: boolean;
+  activeClassName?: string;
   onClick: () => void;
   label: string;
   children: React.ReactNode;
@@ -100,7 +167,7 @@ function IconToggle({
           onClick={onClick}
           className={cn(
             "flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-white/10 hover:text-foreground",
-            active && "bg-white/10 text-destructive",
+            active && activeClassName,
           )}
         >
           {children}
