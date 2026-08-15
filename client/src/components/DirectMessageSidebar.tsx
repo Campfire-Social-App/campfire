@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Plus } from "lucide-react";
+import { Phone, Plus } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { UserBar } from "@/components/UserBar";
 import { NewDirectMessageDialog } from "@/components/NewDirectMessageDialog";
 import { useDmsStore } from "@/state/dms";
 import { usePresenceStore } from "@/state/presence";
+import { useVoiceStore } from "@/state/voice";
 import { cn } from "@/lib/utils";
 import type { DMConversation } from "@/lib/types";
 
@@ -65,6 +66,9 @@ function ConversationRow({
   onClick: () => void;
 }) {
   const isOnline = usePresenceStore((s) => !!s.onlineUserIds[conversation.recipient.id]);
+  // Voice state for a DM only ever reaches its two members, so anyone in this
+  // room means a call in this conversation.
+  const inCall = useVoiceStore((s) => s.states.some((v) => v.channel_id === conversation.id));
   const unread = conversation.unread_count;
 
   return (
@@ -82,6 +86,7 @@ function ConversationRow({
         status={isOnline ? "online" : "offline"}
       />
       <span className="min-w-0 flex-1 truncate text-left">{conversation.recipient.username}</span>
+      {inCall && <Phone className="size-3.5 shrink-0 animate-pulse text-online" />}
       {unread > 0 ? (
         <span className="flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
           {unread > 99 ? "99+" : unread}

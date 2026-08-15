@@ -14,6 +14,8 @@ interface ChatPaneProps {
   /** Channel id to read and post in — a text channel or a DM conversation. */
   channelId: string;
   header: React.ReactNode;
+  /** Optional strip between the header and the history — the DM call stage. */
+  banner?: React.ReactNode;
   /** Shown in place of the message list before anything has been said. */
   empty: React.ReactNode;
   composerPlaceholder: string;
@@ -22,7 +24,13 @@ interface ChatPaneProps {
 /** The conversation surface itself: history, pagination, scroll anchoring,
  * reply state and the composer. Text channels and DMs differ only in their
  * header and empty state, so both drive this. */
-export function ChatPane({ channelId, header, empty, composerPlaceholder }: ChatPaneProps) {
+export function ChatPane({
+  channelId,
+  header,
+  banner,
+  empty,
+  composerPlaceholder,
+}: ChatPaneProps) {
   const channelData = useMessagesStore((s) => s.byChannel[channelId]);
   const loadInitial = useMessagesStore((s) => s.loadInitial);
   const loadMore = useMessagesStore((s) => s.loadMore);
@@ -72,6 +80,7 @@ export function ChatPane({ channelId, header, empty, composerPlaceholder }: Chat
   return (
     <div className="flex min-w-0 flex-1 flex-col">
       {header}
+      {banner}
 
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto pb-2">
         {channelData?.loading && messages.length === 0 ? (

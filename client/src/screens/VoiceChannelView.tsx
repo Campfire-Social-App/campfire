@@ -1,26 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { LogIn, Maximize2, Mic, MicOff, MonitorPlay, Volume2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { LogIn, Maximize2, Volume2, X } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
-import { UserAvatar } from "@/components/UserAvatar";
-import { useVoiceStore, type VideoTrack } from "@/state/voice";
+import { TileVisual, buildTiles, type CallTile } from "@/components/CallTiles";
+import { useVoiceStore } from "@/state/voice";
 import { usePresenceStore } from "@/state/presence";
 import { useAuthStore } from "@/state/auth";
 import { joinVoiceChannel } from "@/livekit/voice";
-import type { Channel, VoiceParticipantState } from "@/lib/types";
+import type { Channel } from "@/lib/types";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface VoiceChannelViewProps {
   channel: Channel;
-}
-
-interface Tile {
-  key: string;
-  kind: "camera" | "screen";
-  participant: VoiceParticipantState;
-  track: VideoTrack | null;
 }
 
 export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
@@ -36,16 +29,15 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
 
   const isThisChannelConnected = connectedChannelId === channel.id;
 
-  const tiles = useMemo<Tile[]>(() => {
-    const camTracks = isThisChannelConnected ? cameraTracks : {};
-    const scrTracks = isThisChannelConnected ? screenShareTracks : {};
-    return participants.flatMap((p) => {
-      const tile: Tile = { key: `cam:${p.user_id}`, kind: "camera", participant: p, track: camTracks[p.user_id] ?? null };
-      const screenTrack = scrTracks[p.user_id];
-      if (!screenTrack) return [tile];
-      return [tile, { key: `scr:${p.user_id}`, kind: "screen", participant: p, track: screenTrack } satisfies Tile];
-    });
-  }, [participants, cameraTracks, screenShareTracks, isThisChannelConnected]);
+  const tiles = useMemo<CallTile[]>(
+    () =>
+      buildTiles(
+        participants,
+        isThisChannelConnected ? cameraTracks : {},
+        isThisChannelConnected ? screenShareTracks : {},
+      ),
+    [participants, cameraTracks, screenShareTracks, isThisChannelConnected],
+  );
 
   const focusedTile = tiles.find((t) => t.key === focusedKey) ?? null;
   useEffect(() => {
@@ -182,106 +174,5 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
         )}
       </div>
     </div>
-  );
-}
-
-function TileVisual({
-  tile,
-  isOwn,
-  online,
-  large,
-  compact,
-  onAspectRatio,
-}: {
-  tile: Tile;
-  isOwn: boolean;
-  online: boolean;
-  large?: boolean;
-  compact?: boolean;
-  onAspectRatio?: (ratio: number) => void;
-}) {
-  const isScreen = tile.kind === "screen";
-
-  return (
-    <div className="relative size-full">
-      {tile.track ? (
-        <VideoTile
-          track={tile.track}
-          className="size-full bg-black object-contain"
-          mirror={!isScreen && isOwn}
-          onAspectRatio={onAspectRatio}
-        />
-      ) : (
-        <div className="flex size-full items-center justify-center bg-linear-to-br from-muted to-muted/60">
-          <UserAvatar
-            username={tile.participant.username}
-            size={large ? "lg" : "default"}
-            status={compact ? undefined : online ? "online" : "offline"}
-            className={cn(
-              large ? "size-32 *:text-4xl" : compact ? "size-10 *:text-base" : "size-24 *:text-2xl",
-            )}
-          />
-        </div>
-      )}
-
-      {!compact && (
-        <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-linear-to-t from-black/70 to-transparent px-2.5 py-2">
-          {isScreen ? (
-            <MonitorPlay className="size-3.5 text-white" />
-          ) : tile.participant.muted ? (
-            <MicOff className="size-3.5 text-destructive" />
-          ) : (
-            <Mic className="size-3.5 text-white/80" />
-          )}
-          <span className="truncate text-sm font-medium text-white">
-            {tile.participant.username}
-            {isScreen && " · screen"}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function VideoTile({
-  track,
-  className,
-  mirror,
-  onAspectRatio,
-}: {
-  track: VideoTrack;
-  className?: string;
-  mirror?: boolean;
-  onAspectRatio?: (ratio: number) => void;
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    track.attach(el);
-
-    const reportRatio = () => {
-      if (el.videoWidth && el.videoHeight) onAspectRatio?.(el.videoWidth / el.videoHeight);
-    };
-    el.addEventListener("loadedmetadata", reportRatio);
-    el.addEventListener("resize", reportRatio);
-    reportRatio();
-
-    return () => {
-      el.removeEventListener("loadedmetadata", reportRatio);
-      el.removeEventListener("resize", reportRatio);
-      track.detach(el);
-    };
-  }, [track, onAspectRatio]);
-
-  return (
-    <video
-      ref={videoRef}
-      autoPlay
-      playsInline
-      muted
-      className={cn(mirror && "-scale-x-100", className)}
-    />
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { CallCenter } from "@/components/CallCenter";
 import { ServerRail } from "@/components/ServerRail";
 import { ChannelSidebar } from "@/components/ChannelSidebar";
 import { DirectMessageSidebar } from "@/components/DirectMessageSidebar";
@@ -51,6 +52,7 @@ export function ServerShell() {
         <ServerRail serverName={serverName} />
         <DirectMessageSidebar />
         <DirectMessageView conversation={activeConversation} />
+        <CallCenter />
       </div>
     );
   }
@@ -73,6 +75,9 @@ export function ServerShell() {
       )}
 
       <MemberList />
+      {/* A call can ring while the server's channels are on screen, not just
+          from inside a conversation — so this lives outside the DM branch too. */}
+      <CallCenter />
     </div>
   );
 }

@@ -7,6 +7,20 @@ from app.gateway.events import GatewayEvent
 
 
 @dataclass
+class DMCallInvite:
+    """A DM call that is ringing but not yet answered.
+
+    Only the *ringing* phase lives here — once the call is accepted, who is in it
+    is answered by `voice_state` (the LiveKit room is the channel), so there is
+    no second source of truth for an ongoing call.
+    """
+
+    channel_id: uuid.UUID
+    caller_id: uuid.UUID
+    callee_id: uuid.UUID
+
+
+@dataclass
 class VoiceParticipantState:
     user_id: uuid.UUID
     channel_id: uuid.UUID
@@ -25,6 +39,8 @@ class ConnectionManager:
     def __init__(self) -> None:
         self._connections: dict[uuid.UUID, set[WebSocket]] = {}
         self.voice_state: dict[uuid.UUID, VoiceParticipantState] = {}
+        # Ringing DM calls, keyed by DM channel id — at most one per conversation.
+        self.dm_calls: dict[uuid.UUID, DMCallInvite] = {}
 
     async def connect(self, user_id: uuid.UUID, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -57,6 +73,22 @@ class ConnectionManager:
         for sockets in list(self._connections.values()):
             for ws in list(sockets):
                 await ws.send_json(payload)
+
+    def pending_call(self, channel_id: uuid.UUID) -> DMCallInvite | None:
+        return self.dm_calls.get(channel_id)
+
+    def set_pending_call(self, invite: DMCallInvite) -> None:
+        self.dm_calls[invite.channel_id] = invite
+
+    def clear_pending_call(self, channel_id: uuid.UUID) -> DMCallInvite | None:
+        return self.dm_calls.pop(channel_id, None)
+
+    def pending_calls_for_user(self, user_id: uuid.UUID) -> list[DMCallInvite]:
+        return [
+            invite
+            for invite in self.dm_calls.values()
+            if user_id in (invite.caller_id, invite.callee_id)
+        ]
 
     def voice_state_for_channel(self, channel_id: uuid.UUID) -> list[VoiceParticipantState]:
         return [s for s in self.voice_state.values() if s.channel_id == channel_id]

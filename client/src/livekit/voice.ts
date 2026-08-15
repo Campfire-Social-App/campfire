@@ -11,6 +11,7 @@ import {
   type RemoteVideoTrack,
 } from "livekit-client";
 import { getVoiceToken } from "@/api/endpoints";
+import { useDmsStore } from "@/state/dms";
 import { useVoiceStore } from "@/state/voice";
 import { playJoinSound, playLeaveSound } from "@/lib/sounds";
 
@@ -33,7 +34,15 @@ function setVideoTrackForSource(
   }
 }
 
-export async function joinVoiceChannel(channelId: string): Promise<void> {
+export interface JoinOptions {
+  /** Publish the camera as soon as we're in — how a video call starts as one. */
+  camera?: boolean;
+}
+
+export async function joinVoiceChannel(
+  channelId: string,
+  options: JoinOptions = {},
+): Promise<void> {
   await leaveVoiceChannel();
 
   useVoiceStore.getState().setConnection(channelId, "connecting");
@@ -102,6 +111,14 @@ export async function joinVoiceChannel(channelId: string): Promise<void> {
         publication.track as LocalVideoTrack | RemoteVideoTrack,
       );
     })
+    .on(RoomEvent.ParticipantDisconnected, () => {
+      // A 1:1 call is over the moment the other person leaves — unlike a voice
+      // channel, where sitting in an empty room waiting for someone is normal.
+      const isDm = useDmsStore
+        .getState()
+        .conversations.some((c) => c.id === useVoiceStore.getState().connectedChannelId);
+      if (isDm && nextRoom.remoteParticipants.size === 0) void leaveVoiceChannel();
+    })
     .on(RoomEvent.Disconnected, () => {
       cleanupAudioElements();
       // Only sound off if we'd actually finished joining — a mid-setup failure
@@ -117,6 +134,16 @@ export async function joinVoiceChannel(channelId: string): Promise<void> {
     await nextRoom.localParticipant.setMicrophoneEnabled(!useVoiceStore.getState().localMuted);
     useVoiceStore.getState().setConnection(channelId, "connected");
     playJoinSound();
+    if (options.camera) {
+      // After the join is committed: a camera that won't start (no device, denied
+      // permission) shouldn't take the call down with it — it lands as audio-only.
+      try {
+        await nextRoom.localParticipant.setCameraEnabled(true);
+        useVoiceStore.getState().setLocalCameraEnabled(true);
+      } catch {
+        useVoiceStore.getState().setLocalCameraEnabled(false);
+      }
+    }
   } catch (err) {
     cleanupAudioElements();
     useVoiceStore.getState().setConnection(null, "disconnected");

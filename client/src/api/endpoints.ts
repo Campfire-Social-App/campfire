@@ -52,6 +52,19 @@ export const listDms = () => apiFetch<DMConversation[]>("/api/dms");
 export const openDmWith = (userId: string) =>
   apiFetch<DMConversation>("/api/dms", { method: "POST", body: { user_id: userId } });
 
+/** Rings the other member. Joining the call itself is a separate step — the
+ * LiveKit room is the DM channel (see getVoiceToken). */
+export const startDmCall = (channelId: string) =>
+  apiFetch<void>(`/api/dms/${channelId}/call`, { method: "POST" });
+
+export const acceptDmCall = (channelId: string) =>
+  apiFetch<void>(`/api/dms/${channelId}/call/accept`, { method: "POST" });
+
+/** Ends a call that is still ringing — a cancel from the caller, a decline from
+ * the callee. A no-op once the call has been answered. */
+export const endDmCall = (channelId: string) =>
+  apiFetch<void>(`/api/dms/${channelId}/call`, { method: "DELETE" });
+
 export const markDmRead = (channelId: string) =>
   apiFetch<void>(`/api/dms/${channelId}/read`, { method: "POST" });
 

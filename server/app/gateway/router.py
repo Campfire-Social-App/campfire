@@ -2,11 +2,12 @@ import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import InvalidTokenError, TokenType, decode_token
 from app.db import async_session_maker
 from app.gateway.events import GatewayEvent, GatewayEventType
-from app.gateway.manager import manager
+from app.gateway.manager import VoiceParticipantState, manager
 from app.models.channel import Channel, ChannelType
 from app.models.server_settings import SINGLETON_ID, ServerSettings
 from app.models.user import User
@@ -28,6 +29,31 @@ async def _authenticate(websocket: WebSocket) -> User | None:
         return await db.get(User, user_id)
 
 
+async def _visible_voice_states(
+    db: AsyncSession, user: User
+) -> list[VoiceParticipantState]:
+    """Voice state minus the DM calls that aren't ours: a voice channel's roster
+    is public, a 1:1 call's is not (the same rule webhooks.py applies live)."""
+    states = manager.all_voice_state()
+    dm_channel_ids = {
+        c.id
+        for c in (
+            await db.execute(
+                select(Channel).where(
+                    Channel.type == ChannelType.DM,
+                    Channel.id.in_({s.channel_id for s in states}),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    }
+    mine = {
+        cid for cid in dm_channel_ids if await dm_service.is_participant(db, cid, user.id)
+    }
+    return [s for s in states if s.channel_id not in dm_channel_ids or s.channel_id in mine]
+
+
 async def _build_ready_payload(user: User) -> dict:
     async with async_session_maker() as db:
         channels = (
@@ -43,6 +69,7 @@ async def _build_ready_payload(user: User) -> dict:
         )
         settings_row = await db.get(ServerSettings, SINGLETON_ID)
         dms = await dm_service.list_conversations(db, user.id)
+        voice_states = await _visible_voice_states(db, user)
 
     return {
         "user": {"id": str(user.id), "username": user.username, "is_admin": user.is_admin},
@@ -69,7 +96,7 @@ async def _build_ready_payload(user: User) -> dict:
                 "muted": s.muted,
                 "speaking": s.speaking,
             }
-            for s in manager.all_voice_state()
+            for s in voice_states
         ],
     }
 
@@ -135,9 +162,25 @@ async def gateway_endpoint(websocket: WebSocket) -> None:
     finally:
         manager.disconnect(user.id, websocket)
         if not manager.is_connected(user.id):
+            await _cancel_pending_calls(user)
             await manager.broadcast(
                 GatewayEvent(
                     op=GatewayEventType.PRESENCE_UPDATE,
                     data={"user_id": str(user.id), "status": "offline"},
                 )
             )
+
+
+async def _cancel_pending_calls(user: User) -> None:
+    """Closing the app while a call is ringing has to stop the other side's ring —
+    otherwise it rings forever, waiting on a client that will never answer."""
+    for invite in manager.pending_calls_for_user(user.id):
+        manager.clear_pending_call(invite.channel_id)
+        is_caller = invite.caller_id == user.id
+        other_id = invite.callee_id if is_caller else invite.caller_id
+        # The caller vanishing is a cancelled call; the callee vanishing never
+        # became a refusal, so the caller is told they're unavailable instead.
+        action = "cancelled" if is_caller else "unavailable"
+        await manager.send_to_user(
+            other_id, dm_service.call_event(action, invite.channel_id, user.id, user.username)
+        )

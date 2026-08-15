@@ -18,6 +18,9 @@ class GatewayEventType(StrEnum):
     # Upsert of one DM conversation, sent only to its participants — carries the
     # per-viewer unread count, so it's built separately for each recipient.
     DM_UPDATE = "DM_UPDATE"
+    # Call signalling inside a DM (ring / accept / decline / cancel). Only the two
+    # members ever see it; the media itself rides on LiveKit, keyed by channel id.
+    DM_CALL = "DM_CALL"
 
 
 class GatewayEvent(BaseModel):

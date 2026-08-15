@@ -5,6 +5,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.gateway.events import GatewayEvent, GatewayEventType
+from app.gateway.manager import manager
 from app.models.channel import Channel, ChannelType
 from app.models.dm import DMParticipant
 from app.models.message import Message
@@ -67,6 +69,32 @@ async def is_participant(db: AsyncSession, channel_id: uuid.UUID, user_id: uuid.
     return row.first() is not None
 
 
+async def other_participant_id(
+    db: AsyncSession, channel_id: uuid.UUID, user_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The member on the other side of a 1:1 conversation, or None if the caller
+    isn't in it (or is somehow alone in it, e.g. the other account was deleted)."""
+    ids = await participant_ids(db, channel_id)
+    if user_id not in ids:
+        return None
+    return next((uid for uid in ids if uid != user_id), None)
+
+
+def call_event(
+    action: str, channel_id: uuid.UUID, actor_id: uuid.UUID, actor_username: str
+) -> GatewayEvent:
+    """Signalling frame for a DM call. `from` is whoever caused the transition —
+    the caller when ringing or cancelling, the callee when accepting or declining."""
+    return GatewayEvent(
+        op=GatewayEventType.DM_CALL,
+        data={
+            "action": action,
+            "channel_id": str(channel_id),
+            "from": {"id": str(actor_id), "username": actor_username},
+        },
+    )
+
+
 async def mark_read(db: AsyncSession, channel_id: uuid.UUID, user_id: uuid.UUID) -> None:
     participant = await db.get(DMParticipant, (channel_id, user_id))
     if participant is None:
@@ -113,6 +141,25 @@ async def to_conversation_read(
         last_message_at=last_message_at,
         unread_count=unread_count,
     )
+
+
+async def push_conversation_update(db: AsyncSession, channel: Channel) -> None:
+    """Upserts the conversation in each participant's rail. Unread counts are
+    per-viewer, so the payload is built once per member rather than broadcast.
+
+    Sent whenever a conversation gains something worth surfacing (a message, an
+    incoming call) — it's how a rail learns about a conversation its owner has
+    never opened."""
+    for user_id in await participant_ids(db, channel.id):
+        conversation = await to_conversation_read(db, channel, user_id)
+        if conversation is None:
+            continue
+        await manager.send_to_user(
+            user_id,
+            GatewayEvent(
+                op=GatewayEventType.DM_UPDATE, data=conversation.model_dump(mode="json")
+            ),
+        )
 
 
 async def list_conversations(db: AsyncSession, viewer_id: uuid.UUID) -> list[DMConversationRead]:

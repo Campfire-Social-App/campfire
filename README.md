@@ -31,6 +31,7 @@ O FastAPI cuida de autenticação, canais, mensagens e sinalização (WebSocket 
 - [x] Gateway em tempo real (WebSocket) para mensagens e presença
 - [x] Canais de voz via LiveKit (entrar/sair, mute, indicador de fala)
 - [x] Mensagens diretas 1:1 (conversas privadas, com não-lidas, na barra da esquerda)
+- [x] Chamadas de voz/vídeo dentro da DM (toque, aceitar/recusar, câmera e tela)
 - [ ] Empacotamento do cliente + guia de deploy em VPS
 
 Vídeo de câmera, compartilhamento de tela e modo live ficam para uma fase posterior — a infraestrutura de voz (LiveKit) já suporta os três nativamente, então essa fase é majoritariamente trabalho de cliente.

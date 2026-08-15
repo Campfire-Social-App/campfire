@@ -113,7 +113,8 @@ export type GatewayEventType =
   | "CHANNEL_CREATE"
   | "CHANNEL_UPDATE"
   | "CHANNEL_DELETE"
-  | "DM_UPDATE";
+  | "DM_UPDATE"
+  | "DM_CALL";
 
 export interface GatewayEvent<T = unknown> {
   op: GatewayEventType;
@@ -144,6 +145,15 @@ export interface VoiceStateUpdateData {
   user_id?: string;
   username?: string;
   channel_id: string | null;
+}
+
+/** A step in a DM call's ring: `from` is whoever caused it — the caller when
+ * ringing or cancelling, the callee when accepting or declining. Once a call is
+ * answered it leaves this channel entirely and lives as LiveKit room state. */
+export interface DMCallData {
+  action: "ringing" | "accepted" | "declined" | "cancelled" | "unavailable";
+  channel_id: string;
+  from: { id: string; username: string };
 }
 
 export interface MessageDeleteData {

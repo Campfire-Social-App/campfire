@@ -55,22 +55,6 @@ async def _dispatch(channel: Channel, event: GatewayEvent, db: DbSession) -> Non
         await manager.broadcast(event)
 
 
-async def _push_dm_conversation(channel: Channel, db: DbSession) -> None:
-    """Pushes the conversation to each participant's DM list. Sent alongside every
-    DM message: it's how the recipient's rail learns about a conversation they've
-    never opened, and it keeps unread counts authoritative (they're per-viewer)."""
-    for user_id in await dm_service.participant_ids(db, channel.id):
-        conversation = await dm_service.to_conversation_read(db, channel, user_id)
-        if conversation is None:
-            continue
-        await manager.send_to_user(
-            user_id,
-            GatewayEvent(
-                op=GatewayEventType.DM_UPDATE, data=conversation.model_dump(mode="json")
-            ),
-        )
-
-
 async def _to_reply_preview(reply_to_id: uuid.UUID, db: DbSession) -> MessageReplyPreview | None:
     parent = await db.get(Message, reply_to_id)
     if parent is None:
@@ -195,7 +179,7 @@ async def create_message(
     if channel.type == ChannelType.DM:
         # Before the message itself, so the recipient's client has somewhere to
         # put it if this is the first they've heard of the conversation.
-        await _push_dm_conversation(channel, db)
+        await dm_service.push_conversation_update(db, channel)
     await _dispatch(
         channel,
         GatewayEvent(op=GatewayEventType.MESSAGE_CREATE, data=result.model_dump(mode="json")),
@@ -256,4 +240,4 @@ async def delete_message(message_id: uuid.UUID, user: CurrentUser, db: DbSession
     if channel.type == ChannelType.DM:
         # The deleted message may have been the conversation's last — refresh the
         # preview/unread state in both rails.
-        await _push_dm_conversation(channel, db)
+        await dm_service.push_conversation_update(db, channel)

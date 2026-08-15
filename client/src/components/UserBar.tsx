@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useAuthStore } from "@/state/auth";
 import { useVoiceStore } from "@/state/voice";
 import { useChannelsStore } from "@/state/channels";
+import { useDmsStore } from "@/state/dms";
 import {
   leaveVoiceChannel,
   setCameraEnabled,
@@ -36,6 +37,11 @@ export function UserBar() {
   const localScreenShareEnabled = useVoiceStore((s) => s.localScreenShareEnabled);
   const channelName = useChannelsStore(
     (s) => s.channels.find((c) => c.id === connectedChannelId)?.name,
+  );
+  // A DM call's room is the conversation, which has no channel name — label it
+  // with whoever is on the other end instead.
+  const dmRecipient = useDmsStore(
+    (s) => s.conversations.find((c) => c.id === connectedChannelId)?.recipient.username,
   );
   const inVoice = connectionStatus !== "disconnected";
   const connected = connectionStatus === "connected";
@@ -71,9 +77,15 @@ export function UserBar() {
             <div className="min-w-0">
               <p className="flex items-center gap-1.5 text-sm font-medium text-online">
                 <Wifi className="size-3.5 shrink-0" />
-                {connectionStatus === "connecting" ? "Connecting…" : "Voice connected"}
+                {connectionStatus === "connecting"
+                  ? "Connecting…"
+                  : dmRecipient
+                    ? "In call"
+                    : "Voice connected"}
               </p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{channelName ?? ""}</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {channelName ?? dmRecipient ?? ""}
+              </p>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <Tooltip>

@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
@@ -139,3 +141,91 @@ async def test_dm_channels_cannot_be_created_or_deleted_as_channels(
 
     dm = await client.post("/api/dms", json={"user_id": str(bob.id)}, headers=_headers(alice))
     assert (await client.delete(f"/api/channels/{dm.json()['id']}", headers=admin_headers)).status_code == 404
+
+
+@pytest.fixture(autouse=True)
+def _clear_calls():
+    """`manager` is a process-wide singleton — a ring left behind by one test
+    would otherwise be found by the next one."""
+    from app.gateway.manager import manager
+
+    manager.dm_calls.clear()
+    yield
+    manager.dm_calls.clear()
+
+
+async def _open_dm(client: AsyncClient, caller, callee) -> str:
+    resp = await client.post("/api/dms", json={"user_id": str(callee.id)}, headers=_headers(caller))
+    return resp.json()["id"]
+
+
+async def test_call_rings_then_is_accepted(client: AsyncClient, alice, bob) -> None:
+    from app.gateway.manager import manager
+
+    dm_id = await _open_dm(client, alice, bob)
+
+    ring = await client.post(f"/api/dms/{dm_id}/call", headers=_headers(alice))
+    assert ring.status_code == 204
+    invite = manager.pending_call(uuid.UUID(dm_id))
+    assert invite is not None
+    assert (invite.caller_id, invite.callee_id) == (alice.id, bob.id)
+
+    accept = await client.post(f"/api/dms/{dm_id}/call/accept", headers=_headers(bob))
+    assert accept.status_code == 204
+    # The ring is over; who is actually on the call is LiveKit's answer from here.
+    assert manager.pending_call(uuid.UUID(dm_id)) is None
+
+
+async def test_caller_cannot_accept_their_own_call(client: AsyncClient, alice, bob) -> None:
+    dm_id = await _open_dm(client, alice, bob)
+    await client.post(f"/api/dms/{dm_id}/call", headers=_headers(alice))
+
+    resp = await client.post(f"/api/dms/{dm_id}/call/accept", headers=_headers(alice))
+    assert resp.status_code == 404
+
+
+async def test_accept_without_a_ring_is_404(client: AsyncClient, alice, bob) -> None:
+    dm_id = await _open_dm(client, alice, bob)
+    resp = await client.post(f"/api/dms/{dm_id}/call/accept", headers=_headers(bob))
+    assert resp.status_code == 404
+
+
+async def test_hanging_up_is_idempotent(client: AsyncClient, alice, bob) -> None:
+    from app.gateway.manager import manager
+
+    dm_id = await _open_dm(client, alice, bob)
+    await client.post(f"/api/dms/{dm_id}/call", headers=_headers(alice))
+
+    declined = await client.delete(f"/api/dms/{dm_id}/call", headers=_headers(bob))
+    assert declined.status_code == 204
+    assert manager.pending_call(uuid.UUID(dm_id)) is None
+
+    again = await client.delete(f"/api/dms/{dm_id}/call", headers=_headers(bob))
+    assert again.status_code == 204
+
+
+async def test_simultaneous_calls_keep_the_first_ring(client: AsyncClient, alice, bob) -> None:
+    from app.gateway.manager import manager
+
+    dm_id = await _open_dm(client, alice, bob)
+    await client.post(f"/api/dms/{dm_id}/call", headers=_headers(alice))
+
+    clash = await client.post(f"/api/dms/{dm_id}/call", headers=_headers(bob))
+    assert clash.status_code == 409
+    assert manager.pending_call(uuid.UUID(dm_id)).caller_id == alice.id
+
+    # Alice re-ringing her own invite stays fine (a reconnected client re-lights).
+    again = await client.post(f"/api/dms/{dm_id}/call", headers=_headers(alice))
+    assert again.status_code == 204
+
+
+async def test_outsiders_cannot_touch_a_call(
+    client: AsyncClient, alice, bob, admin_headers: dict[str, str]
+) -> None:
+    dm_id = await _open_dm(client, alice, bob)
+
+    assert (await client.post(f"/api/dms/{dm_id}/call", headers=admin_headers)).status_code == 404
+    assert (
+        await client.post(f"/api/dms/{dm_id}/call/accept", headers=admin_headers)
+    ).status_code == 404
+    assert (await client.delete(f"/api/dms/{dm_id}/call", headers=admin_headers)).status_code == 404

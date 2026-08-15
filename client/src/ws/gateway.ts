@@ -6,12 +6,16 @@ import { usePresenceStore } from "@/state/presence";
 import { useVoiceStore } from "@/state/voice";
 import { useUsersStore } from "@/state/users";
 import { useDmsStore } from "@/state/dms";
+import { useCallsStore } from "@/state/calls";
+import { leaveVoiceChannel } from "@/livekit/voice";
 import { playJoinSound, playLeaveSound } from "@/lib/sounds";
 import { messageMentionsUser } from "@/lib/mentions";
 import { notify } from "@/lib/notifications";
+import { toast } from "sonner";
 import type {
   Channel,
   ChannelDeleteData,
+  DMCallData,
   DMConversation,
   GatewayEvent,
   Message,
@@ -130,6 +134,37 @@ class GatewayClient {
     );
   }
 
+  /** Ring lifecycle. The tones themselves are left to the CallCenter, which
+   * watches the store — so a signal frame never has to know about audio. */
+  private handleCallSignal(data: DMCallData): void {
+    const calls = useCallsStore.getState();
+
+    switch (data.action) {
+      case "ringing":
+        calls.setIncoming(data.channel_id, data.from);
+        notify(data.from.username, "Incoming call");
+        break;
+      case "accepted":
+        // They're joining the room we're already in — nothing to do but stop waiting.
+        calls.clearOutgoing(data.channel_id);
+        break;
+      case "declined":
+      case "unavailable":
+        calls.clearOutgoing(data.channel_id);
+        void leaveVoiceChannel();
+        toast(
+          data.action === "declined"
+            ? `${data.from.username} declined the call.`
+            : `${data.from.username} is unavailable.`,
+        );
+        break;
+      case "cancelled":
+        calls.clearIncoming(data.channel_id);
+        toast(`Missed call from ${data.from.username}.`);
+        break;
+    }
+  }
+
   private handleMessage(event: GatewayEvent): void {
     switch (event.op) {
       case "READY": {
@@ -198,6 +233,10 @@ class GatewayClient {
       case "CHANNEL_DELETE":
         useChannelsStore.getState().removeChannel((event.data as ChannelDeleteData).id);
         break;
+      case "DM_CALL": {
+        this.handleCallSignal(event.data as DMCallData);
+        break;
+      }
       case "DM_UPDATE":
         // Arrives just before the DM's own MESSAGE_CREATE, so a conversation the
         // recipient has never opened shows up in the rail before its first message.
