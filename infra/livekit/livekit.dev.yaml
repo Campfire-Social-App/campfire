@@ -6,9 +6,14 @@ rtc:
   port_range_start: 50000
   port_range_end: 50100
   use_external_ip: false
+  # Without this, LiveKit advertises the container's internal Docker IP as the
+  # ICE candidate address, which isn't reachable from outside Docker (client
+  # connects but media/ICE never completes). 127.0.0.1 works because ports are
+  # published to the host and WSL2 forwards both TCP and UDP for localhost.
+  node_ip: 127.0.0.1
 
 keys:
-  devkey: devsecret1234567890devsecret
+  devkey: 324a9697e5bbde9de2844644ac03966ceab4bf67
 
 webhook:
   api_key: devkey

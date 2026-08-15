@@ -8,7 +8,17 @@ class Settings(BaseSettings):
 
     # App
     environment: str = "development"
-    cors_origins: list[str] = ["tauri://localhost", "http://localhost:1420"]
+    # tauri://localhost -> macOS/Linux Tauri webview origin.
+    # http://tauri.localhost -> Windows/Android Tauri webview origin (WebView2/
+    # Android WebView can't use custom schemes directly, so Tauri falls back to
+    # this http://<scheme>.localhost form there — see tauri-apps/tauri
+    # crates/tauri/src/manager/mod.rs `tauri_protocol_url`).
+    # http://localhost:1420 -> `npm run dev` / `tauri dev`.
+    cors_origins: list[str] = [
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "http://localhost:1420",
+    ]
 
     # Database
     database_url: str = "postgresql+asyncpg://campfire:campfire@localhost:5432/campfire"
@@ -30,7 +40,7 @@ class Settings(BaseSettings):
     # LiveKit
     livekit_url: str = "ws://localhost:7880"
     livekit_api_key: str = "devkey"
-    livekit_api_secret: str = "devsecret1234567890devsecret"
+    livekit_api_secret: str = "324a9697e5bbde9de2844644ac03966ceab4bf67"
 
 
 @lru_cache
