@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Flame, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthShell } from "@/components/AuthShell";
 import { useAuthStore } from "@/state/auth";
 import { useSettingsStore } from "@/state/settings";
 import { ApiError } from "@/lib/types";
@@ -34,16 +35,8 @@ export function LoginScreen({ onSwitchToRegister }: LoginScreenProps) {
   };
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-background">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-8 shadow-lg">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <Flame className="size-7" />
-          </div>
-          <h1 className="text-xl font-semibold text-foreground">Bem-vindo de volta</h1>
-          <p className="text-sm text-muted-foreground break-all">{serverUrl}</p>
-        </div>
-
+    <AuthShell title="Bem-vindo de volta" description={serverUrl ?? ""}>
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="username">Usuário</Label>
           <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
@@ -64,22 +57,14 @@ export function LoginScreen({ onSwitchToRegister }: LoginScreenProps) {
         </Button>
 
         <div className="flex flex-col items-center gap-1 text-sm">
-          <button
-            type="button"
-            onClick={onSwitchToRegister}
-            className="text-primary hover:underline"
-          >
+          <button type="button" onClick={onSwitchToRegister} className="text-primary hover:underline">
             Tenho um convite — criar conta
           </button>
-          <button
-            type="button"
-            onClick={clearServerUrl}
-            className="text-muted-foreground hover:underline"
-          >
+          <button type="button" onClick={clearServerUrl} className="text-muted-foreground hover:underline">
             Trocar de servidor
           </button>
         </div>
       </form>
-    </div>
+    </AuthShell>
   );
 }

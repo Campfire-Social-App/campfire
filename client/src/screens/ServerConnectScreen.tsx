@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Flame, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthShell } from "@/components/AuthShell";
 import { useSettingsStore } from "@/state/settings";
 import { toast } from "sonner";
 
@@ -34,18 +35,11 @@ export function ServerConnectScreen() {
   };
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-background">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-8 shadow-lg">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <Flame className="size-7" />
-          </div>
-          <h1 className="text-xl font-semibold text-foreground">Conectar ao servidor</h1>
-          <p className="text-sm text-muted-foreground">
-            Digite o endereço do servidor Campfire auto-hospedado ao qual você quer se conectar.
-          </p>
-        </div>
-
+    <AuthShell
+      title="Conectar ao servidor"
+      description="Digite o endereço do servidor Campfire auto-hospedado ao qual você quer se conectar."
+    >
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="server-url">Endereço do servidor</Label>
           <Input
@@ -62,6 +56,6 @@ export function ServerConnectScreen() {
           Conectar
         </Button>
       </form>
-    </div>
+    </AuthShell>
   );
 }

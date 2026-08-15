@@ -56,7 +56,8 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                 <div
                   className={cn(
                     "flex size-20 items-center justify-center rounded-full ring-4 ring-transparent transition-all",
-                    speakingUserIds[p.user_id] && "ring-online",
+                    speakingUserIds[p.user_id] &&
+                      "ring-primary shadow-[0_0_20px_2px_rgba(255,122,61,0.45)]",
                   )}
                 >
                   <UserAvatar

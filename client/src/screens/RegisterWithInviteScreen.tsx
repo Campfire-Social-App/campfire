@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Flame, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthShell } from "@/components/AuthShell";
 import { useAuthStore } from "@/state/auth";
 import { ApiError } from "@/lib/types";
 import { toast } from "sonner";
@@ -32,16 +33,8 @@ export function RegisterWithInviteScreen({ onSwitchToLogin }: RegisterWithInvite
   };
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-background">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6 rounded-lg border border-border bg-card p-8 shadow-lg">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
-            <Flame className="size-7" />
-          </div>
-          <h1 className="text-xl font-semibold text-foreground">Criar conta</h1>
-          <p className="text-sm text-muted-foreground">Você precisa de um convite para entrar.</p>
-        </div>
-
+    <AuthShell title="Criar conta" description="Você precisa de um convite para entrar.">
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="invite-code">Código de convite</Label>
           <Input
@@ -81,6 +74,6 @@ export function RegisterWithInviteScreen({ onSwitchToLogin }: RegisterWithInvite
           </button>
         </div>
       </form>
-    </div>
+    </AuthShell>
   );
 }

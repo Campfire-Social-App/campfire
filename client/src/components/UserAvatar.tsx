@@ -1,15 +1,17 @@
 import { Avatar, AvatarBadge, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
+// Fire embers mixed with night-sky tones, so avatars stay distinguishable
+// without clashing with the primary campfire-orange accent used for UI chrome.
 const PALETTE = [
-  "bg-[#f23f43]",
-  "bg-[#f0b232]",
-  "bg-[#23a55a]",
-  "bg-[#3ba55c]",
-  "bg-[#5865f2]",
-  "bg-[#eb459e]",
+  "bg-[#f0463f]",
+  "bg-[#fbbf24]",
+  "bg-[#ff9d42]",
+  "bg-[#4ade80]",
+  "bg-[#38bdf8]",
   "bg-[#9c84ef]",
-  "bg-[#00a8fc]",
+  "bg-[#f472b6]",
+  "bg-[#2dd4bf]",
 ];
 
 function colorFor(username: string): string {
@@ -32,7 +34,13 @@ interface UserAvatarProps {
 
 export function UserAvatar({ username, size = "default", status, ring, className }: UserAvatarProps) {
   return (
-    <Avatar size={size} className={cn(ring && "ring-2 ring-online ring-offset-2 ring-offset-background", className)}>
+    <Avatar
+      size={size}
+      className={cn(
+        ring && "ring-2 ring-primary shadow-[0_0_12px_1px_var(--primary)] ring-offset-2 ring-offset-background",
+        className,
+      )}
+    >
       <AvatarFallback className={cn(colorFor(username), "font-semibold text-white")}>
         {initialsFor(username)}
       </AvatarFallback>

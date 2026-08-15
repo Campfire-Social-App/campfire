@@ -13,8 +13,8 @@ export function ServerRail({ serverName }: ServerRailProps) {
         <TooltipTrigger asChild>
           <button
             className={cn(
-              "flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground",
-              "transition-all hover:rounded-xl",
+              "flex size-12 items-center justify-center rounded-2xl bg-linear-to-br from-amber-400 via-orange-500 to-red-600 text-white",
+              "shadow-[0_0_18px_1px_rgba(255,122,61,0.35)] transition-all hover:rounded-xl hover:shadow-[0_0_26px_3px_rgba(255,122,61,0.5)]",
             )}
           >
             <Flame className="size-6" />
