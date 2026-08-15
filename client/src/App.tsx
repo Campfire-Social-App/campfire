@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { TitleBar } from "@/components/TitleBar";
 import { useHydration } from "@/lib/useHydration";
 import { useAuthStore } from "@/state/auth";
 import { useSettingsStore } from "@/state/settings";
@@ -12,7 +13,7 @@ import { ServerShell } from "@/screens/ServerShell";
 
 function Splash() {
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-background">
+    <div className="flex h-full w-full items-center justify-center bg-background">
       <Loader2 className="size-6 animate-spin text-muted-foreground" />
     </div>
   );
@@ -52,7 +53,10 @@ function App() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      {content}
+      <div className="flex h-screen w-screen flex-col overflow-hidden bg-background">
+        <TitleBar />
+        <div className="min-h-0 flex-1">{content}</div>
+      </div>
       <Toaster theme="dark" position="bottom-right" />
     </TooltipProvider>
   );

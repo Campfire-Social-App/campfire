@@ -43,7 +43,7 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
     <div className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 shadow-sm">
         <Volume2 className="size-5 text-muted-foreground" />
-        <span className="font-semibold text-foreground">{channel.name}</span>
+        <span className="font-heading text-sm font-semibold text-foreground">{channel.name}</span>
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center gap-6 overflow-y-auto p-8">

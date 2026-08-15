@@ -79,16 +79,19 @@ export function MessageComposer({ channel }: MessageComposerProps) {
     >
       <div
         className={cn(
-          "rounded-lg border border-transparent bg-muted",
+          // Soft-cornered outline rather than a pill, and no fill of its own —
+          // the shell's glow reads straight through it. Only the hairline
+          // defines the field, warming to ember on focus.
+          "overflow-hidden rounded-[14px] border border-glass-border transition-colors focus-within:border-ember-tint-border",
           dragActive && "border-primary border-dashed",
         )}
       >
         {(pendingAttachments.length > 0 || uploading) && (
-          <div className="flex flex-wrap gap-2 border-b border-border p-2">
+          <div className="flex flex-wrap gap-2 border-b border-glass-border p-2">
             {pendingAttachments.map((att) => (
               <div
                 key={att.id}
-                className="flex items-center gap-1 rounded-md bg-card px-2 py-1 text-xs text-foreground"
+                className="flex items-center gap-1 rounded-md bg-glass px-2 py-1 text-xs text-foreground"
               >
                 {att.filename}
                 <button
@@ -105,7 +108,7 @@ export function MessageComposer({ channel }: MessageComposerProps) {
           </div>
         )}
 
-        <div className="flex items-end gap-2 px-3 py-2.5">
+        <div className="flex items-end gap-2.5 px-4.5 py-3.5">
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex size-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
@@ -136,7 +139,7 @@ export function MessageComposer({ channel }: MessageComposerProps) {
               }
             }}
             placeholder={`Message #${channel.name}`}
-            className="max-h-40 min-h-6 flex-1 resize-none border-0 bg-transparent px-0 py-1 shadow-none focus-visible:ring-0 dark:bg-transparent"
+            className="max-h-40 min-h-6 flex-1 resize-none border-0 bg-transparent px-0 py-1 text-[14.5px] shadow-none placeholder:text-muted-foreground focus-visible:ring-0 dark:bg-transparent"
             rows={1}
           />
 

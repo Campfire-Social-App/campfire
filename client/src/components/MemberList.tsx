@@ -17,7 +17,7 @@ export function MemberList() {
   const offline = users.filter((u) => !onlineUserIds[u.id]);
 
   return (
-    <div className="w-60 shrink-0 overflow-y-auto bg-sidebar px-3 py-4">
+    <div className="w-60 shrink-0 overflow-y-auto border-l border-sidebar-border bg-sidebar px-3 py-4">
       <MemberGroup title={`Online — ${online.length}`} users={online} status="online" />
       <MemberGroup title={`Offline — ${offline.length}`} users={offline} status="offline" />
     </div>

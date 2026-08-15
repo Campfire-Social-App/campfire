@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils";
 
 // Fire embers mixed with night-sky tones, so avatars stay distinguishable
 // without clashing with the primary campfire-orange accent used for UI chrome.
+// TEXT_PALETTE is the same hues as text-* classes, index-paired with PALETTE,
+// so a username in the message list matches that user's avatar color.
 const PALETTE = [
   "bg-[#f0463f]",
   "bg-[#fbbf24]",
@@ -14,10 +16,29 @@ const PALETTE = [
   "bg-[#2dd4bf]",
 ];
 
-function colorFor(username: string): string {
+const TEXT_PALETTE = [
+  "text-[#f0463f]",
+  "text-[#fbbf24]",
+  "text-[#ff9d42]",
+  "text-[#4ade80]",
+  "text-[#38bdf8]",
+  "text-[#9c84ef]",
+  "text-[#f472b6]",
+  "text-[#2dd4bf]",
+];
+
+function paletteIndex(username: string): number {
   let hash = 0;
   for (let i = 0; i < username.length; i++) hash = (hash << 5) - hash + username.charCodeAt(i);
-  return PALETTE[Math.abs(hash) % PALETTE.length];
+  return Math.abs(hash) % PALETTE.length;
+}
+
+function colorFor(username: string): string {
+  return PALETTE[paletteIndex(username)];
+}
+
+export function usernameColorFor(username: string): string {
+  return TEXT_PALETTE[paletteIndex(username)];
 }
 
 function initialsFor(username: string): string {

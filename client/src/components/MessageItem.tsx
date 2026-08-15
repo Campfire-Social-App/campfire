@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { Pencil, Trash2 } from "lucide-react";
-import { UserAvatar } from "@/components/UserAvatar";
+import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/state/auth";
 import { editMessage, deleteMessage } from "@/api/endpoints";
@@ -21,7 +21,8 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
 
-  const canModify = currentUser?.id === message.author.id || currentUser?.is_admin;
+  const isOwn = currentUser?.id === message.author.id;
+  const canModify = isOwn || currentUser?.is_admin;
 
   const saveEdit = async () => {
     const trimmed = draft.trim();
@@ -31,29 +32,39 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
     setEditing(false);
   };
 
+  const time = format(new Date(message.created_at), "HH:mm");
+
   return (
     <div
       className={cn(
-        "group flex gap-3 px-4 py-0.5 hover:bg-white/[0.02]",
-        showHeader ? "mt-3 pt-1.5" : "",
+        // Flat, always-left-aligned row that highlights on hover — no bubble,
+        // no reversed layout for own messages.
+        "group relative flex gap-3 px-4 py-0.5 hover:bg-white/2.5",
+        showHeader ? "mt-3" : "",
       )}
     >
-      <div className="w-10 shrink-0">
-        {showHeader && <UserAvatar username={message.author.username} />}
+      <div className="w-9 shrink-0 pt-0.5 text-center">
+        {showHeader ? (
+          <UserAvatar username={message.author.username} />
+        ) : (
+          <span className="text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+            {time}
+          </span>
+        )}
       </div>
 
       <div className="min-w-0 flex-1">
         {showHeader && (
           <div className="flex items-baseline gap-2">
-            <span className="font-medium text-foreground">{message.author.username}</span>
-            <span className="text-xs text-muted-foreground">
-              {format(new Date(message.created_at), "dd/MM/yyyy HH:mm")}
+            <span className={cn("text-[15px] font-semibold", usernameColorFor(message.author.username))}>
+              {isOwn ? "You" : message.author.username}
             </span>
+            <span className="text-[11px] text-muted-foreground">{time}</span>
           </div>
         )}
 
         {editing ? (
-          <div className="space-y-1 pt-0.5">
+          <div className="mt-0.5 max-w-lg space-y-1">
             <Textarea
               autoFocus
               value={draft}
@@ -67,17 +78,15 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
                   setDraft(message.content);
                 }
               }}
-              className="min-h-0 resize-none"
+              className="min-h-0 resize-none rounded-md border-glass-border bg-glass p-2 shadow-none focus-visible:ring-0"
             />
-            <p className="text-xs text-muted-foreground">
-              escape to cancel · enter to save
-            </p>
+            <p className="text-xs text-muted-foreground">escape to cancel · enter to save</p>
           </div>
         ) : (
-          <p className="whitespace-pre-wrap break-words text-[15px] leading-snug text-foreground">
+          <p className="text-[15px] leading-snug wrap-break-word whitespace-pre-wrap text-foreground">
             {message.content}
             {message.edited_at && (
-              <span className="ml-1 text-[10px] text-muted-foreground">(edited)</span>
+              <span className="ml-1.5 text-[10px] text-muted-foreground">(edited)</span>
             )}
           </p>
         )}
@@ -90,7 +99,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
                   key={att.id}
                   src={resolveAssetUrl(att.url)}
                   alt={att.filename}
-                  className="max-h-72 max-w-xs rounded-md border border-border object-contain"
+                  className="max-h-72 max-w-xs rounded-md border border-glass-border object-contain"
                 />
               ) : (
                 <a
@@ -98,7 +107,7 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
                   href={resolveAssetUrl(att.url)}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-md border border-border bg-card px-3 py-2 text-sm text-primary hover:underline"
+                  className="rounded-md border border-glass-border bg-glass px-3 py-2 text-sm text-primary hover:underline"
                 >
                   {att.filename}
                 </a>
@@ -109,7 +118,11 @@ export function MessageItem({ message, showHeader }: MessageItemProps) {
       </div>
 
       {canModify && !editing && (
-        <div className="hidden shrink-0 items-start gap-1 group-hover:flex">
+        // Stays mounted (as flex, not display:none) at all times so it never
+        // enters/leaves the layout tree on hover — toggling display instead of
+        // opacity here made the scrollable message list's content bounds
+        // recompute on every hover, which visibly resized/jumped the list.
+        <div className="pointer-events-none absolute -top-3 right-4 flex items-center gap-0.5 rounded-md border border-glass-border bg-popover p-0.5 opacity-0 shadow-md transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
           <button
             onClick={() => setEditing(true)}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground"

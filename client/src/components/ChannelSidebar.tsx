@@ -50,11 +50,11 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
   };
 
   return (
-    <div className="flex w-60 shrink-0 flex-col bg-sidebar">
+    <div className="flex w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex h-12 shrink-0 items-center justify-between border-b border-sidebar-border px-4 font-semibold text-sidebar-foreground shadow-sm hover:bg-white/5">
-            <span className="truncate">{serverName}</span>
+          <button className="flex h-12 shrink-0 items-center justify-between border-b border-sidebar-border px-4 text-sidebar-foreground shadow-sm hover:bg-white/5">
+            <span className="truncate font-heading text-sm font-semibold">{serverName}</span>
             <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
@@ -148,11 +148,13 @@ function ChannelRow({
     <button
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground",
-        active && "bg-white/10 text-foreground",
+        "flex w-full items-center gap-1.5 rounded-lg border border-transparent px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground",
+        // Half-strength ember tint — enough to read as selected without
+        // competing with the chat pane.
+        active && "border-ember-tint-border/75 bg-ember-tint/50 font-semibold text-foreground",
       )}
     >
-      <Icon className="size-4 shrink-0" />
+      <Icon className={cn("size-4 shrink-0", active && "text-primary")} />
       <span className="truncate">{channel.name}</span>
     </button>
   );

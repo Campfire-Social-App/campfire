@@ -8,7 +8,7 @@ interface ServerRailProps {
 
 export function ServerRail({ serverName }: ServerRailProps) {
   return (
-    <div className="flex w-[72px] shrink-0 flex-col items-center gap-2 bg-rail py-3">
+    <div className="flex w-[72px] shrink-0 flex-col items-center gap-2 border-r border-sidebar-border bg-rail py-3">
       <Tooltip>
         <TooltipTrigger asChild>
           <button
