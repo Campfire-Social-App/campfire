@@ -10,12 +10,22 @@ import {
   type LocalVideoTrack,
   type RemoteVideoTrack,
 } from "livekit-client";
+import { toast } from "sonner";
 import { getVoiceToken } from "@/api/endpoints";
+import {
+  isNativeCaptureAvailable,
+  startNativeCapture,
+  type CaptureQuality,
+  type NativeCapture,
+} from "@/lib/screenCapture";
 import { useDmsStore } from "@/state/dms";
 import { useVoiceStore } from "@/state/voice";
 import { playJoinSound, playLeaveSound } from "@/lib/sounds";
 
 let room: Room | null = null;
+/** Set while the screen share is coming from our own capture rather than the
+ * WebView's — it owns a Rust capture thread that has to be torn down with it. */
+let nativeCapture: NativeCapture | null = null;
 /** Remote audio elements keyed by track SID, so they can be torn down on unsubscribe. */
 const audioElements = new Map<string, HTMLMediaElement>();
 
@@ -120,6 +130,7 @@ export async function joinVoiceChannel(
       if (isDm && nextRoom.remoteParticipants.size === 0) void leaveVoiceChannel();
     })
     .on(RoomEvent.Disconnected, () => {
+      void stopNativeCapture();
       cleanupAudioElements();
       // Only sound off if we'd actually finished joining — a mid-setup failure
       // (e.g. mic permission denied) disconnects too, but never played a join sound.
@@ -160,6 +171,7 @@ export async function leaveVoiceChannel(): Promise<void> {
   if (!room) return;
   const current = room;
   room = null;
+  await stopNativeCapture();
   await current.disconnect();
   cleanupAudioElements();
   useVoiceStore.getState().setConnection(null, "disconnected");
@@ -186,15 +198,84 @@ export async function setCameraEnabled(enabled: boolean): Promise<void> {
   }
 }
 
-export async function setScreenShareEnabled(enabled: boolean): Promise<void> {
+/** Shares a source the user picked in our own picker: the frames come from Rust
+ * (see lib/screenCapture.ts) and are published as a normal screen-share track,
+ * so the receiving end can't tell it apart from a WebView capture. */
+export async function startNativeScreenShare(
+  sourceId: string,
+  quality: CaptureQuality,
+  fps: number,
+): Promise<void> {
+  if (!room) return;
+  const currentRoom = room;
+
+  await stopScreenShare();
+  const capture = await startNativeCapture(sourceId, quality, fps, (message) => {
+    // The capture died on its own (window closed, device lost) — the track is
+    // still published but nothing will ever feed it again.
+    toast.error(message);
+    void stopScreenShare();
+  });
+
+  try {
+    await currentRoom.localParticipant.publishTrack(capture.track, {
+      name: "screen",
+      source: Track.Source.ScreenShare,
+      // Screen content degrades badly when scaled: drop frames before pixels.
+      simulcast: false,
+      degradationPreference: "maintain-resolution",
+      videoEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: fps },
+    });
+  } catch (err) {
+    await capture.stop();
+    throw err;
+  }
+
+  nativeCapture = capture;
+  useVoiceStore.getState().setLocalScreenShareEnabled(true);
+}
+
+/** What the share button calls: our own picker in the desktop app, the WebView's
+ * built-in one in a browser, where native capture isn't reachable. */
+export async function requestScreenShare(): Promise<void> {
+  if (isNativeCaptureAvailable()) {
+    useVoiceStore.getState().setScreenPickerOpen(true);
+    return;
+  }
+  await startWebViewScreenShare();
+}
+
+/** The WebView's own picker — the fallback outside the desktop app. */
+export async function startWebViewScreenShare(): Promise<void> {
   if (!room) return;
   try {
-    await room.localParticipant.setScreenShareEnabled(enabled, { audio: true });
-    useVoiceStore.getState().setLocalScreenShareEnabled(enabled);
+    await room.localParticipant.setScreenShareEnabled(true, { audio: true });
+    useVoiceStore.getState().setLocalScreenShareEnabled(true);
   } catch (err) {
     useVoiceStore.getState().setLocalScreenShareEnabled(false);
     throw err;
   }
+}
+
+export async function stopScreenShare(): Promise<void> {
+  const capture = nativeCapture;
+  nativeCapture = null;
+
+  if (capture) {
+    await room?.localParticipant.unpublishTrack(capture.track).catch(() => {});
+    await capture.stop();
+  } else {
+    await room?.localParticipant.setScreenShareEnabled(false).catch(() => {});
+  }
+  useVoiceStore.getState().setLocalScreenShareEnabled(false);
+}
+
+/** Tears down the Rust capture without touching the room — for paths where the
+ * room is already gone (disconnected) and unpublishing would be meaningless. */
+async function stopNativeCapture(): Promise<void> {
+  const capture = nativeCapture;
+  nativeCapture = null;
+  if (capture) await capture.stop();
 }
 
 function cleanupAudioElements(): void {

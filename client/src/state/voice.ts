@@ -13,6 +13,8 @@ interface VoiceState {
   localDeafened: boolean;
   localCameraEnabled: boolean;
   localScreenShareEnabled: boolean;
+  /** Our own source picker — global, since the share button lives in two places. */
+  screenPickerOpen: boolean;
   speakingUserIds: Record<string, true>;
   /** Camera/screen-share video tracks keyed by participant user id. */
   cameraTracks: Record<string, VideoTrack>;
@@ -25,6 +27,7 @@ interface VoiceState {
   setLocalDeafened: (deafened: boolean) => void;
   setLocalCameraEnabled: (enabled: boolean) => void;
   setLocalScreenShareEnabled: (enabled: boolean) => void;
+  setScreenPickerOpen: (open: boolean) => void;
   setSpeaking: (userIds: string[]) => void;
   setCameraTrack: (userId: string, track: VideoTrack | null) => void;
   setScreenShareTrack: (userId: string, track: VideoTrack | null) => void;
@@ -39,6 +42,7 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
   localDeafened: false,
   localCameraEnabled: false,
   localScreenShareEnabled: false,
+  screenPickerOpen: false,
   speakingUserIds: {},
   cameraTracks: {},
   screenShareTracks: {},
@@ -73,6 +77,7 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
       connectionStatus: status,
       ...(status === "disconnected"
         ? {
+            screenPickerOpen: false,
             speakingUserIds: {},
             cameraTracks: {},
             screenShareTracks: {},
@@ -86,6 +91,7 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
   setLocalDeafened: (deafened) => set({ localDeafened: deafened }),
   setLocalCameraEnabled: (enabled) => set({ localCameraEnabled: enabled }),
   setLocalScreenShareEnabled: (enabled) => set({ localScreenShareEnabled: enabled }),
+  setScreenPickerOpen: (open) => set({ screenPickerOpen: open }),
 
   setSpeaking: (userIds) =>
     set({ speakingUserIds: Object.fromEntries(userIds.map((id) => [id, true])) }),
