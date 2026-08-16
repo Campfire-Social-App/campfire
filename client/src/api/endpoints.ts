@@ -17,6 +17,9 @@ export const listChannels = () => apiFetch<Channel[]>("/api/channels");
 export const createChannel = (name: string, type: ChannelType) =>
   apiFetch<Channel>("/api/channels", { method: "POST", body: { name, type } });
 
+export const updateChannel = (id: string, name: string) =>
+  apiFetch<Channel>(`/api/channels/${id}`, { method: "PATCH", body: { name } });
+
 export const deleteChannel = (id: string) =>
   apiFetch<void>(`/api/channels/${id}`, { method: "DELETE" });
 

@@ -12,6 +12,7 @@ import { useAuthStore } from "@/state/auth";
 import { useChannelsStore } from "@/state/channels";
 import { useVoiceStore } from "@/state/voice";
 import { usePresenceStore } from "@/state/presence";
+import { ChannelMenu } from "@/components/ChannelMenu";
 import { CreateChannelDialog } from "@/components/CreateChannelDialog";
 import { InviteDialog } from "@/components/InviteDialog";
 import { UserAvatar } from "@/components/UserAvatar";
@@ -81,12 +82,13 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
           onCreate={isAdmin ? () => setCreateChannelOpen(true) : undefined}
         >
           {textChannels.map((channel) => (
-            <ChannelRow
-              key={channel.id}
-              channel={channel}
-              active={selectedChannelId === channel.id}
-              onClick={() => selectChannel(channel.id)}
-            />
+            <ChannelMenu key={channel.id} channel={channel}>
+              <ChannelRow
+                channel={channel}
+                active={selectedChannelId === channel.id}
+                onClick={() => selectChannel(channel.id)}
+              />
+            </ChannelMenu>
           ))}
         </ChannelCategory>
 
@@ -96,11 +98,13 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
         >
           {voiceChannels.map((channel) => (
             <div key={channel.id}>
-              <ChannelRow
-                channel={channel}
-                active={selectedChannelId === channel.id}
-                onClick={() => void handleSelectVoice(channel)}
-              />
+              <ChannelMenu channel={channel}>
+                <ChannelRow
+                  channel={channel}
+                  active={selectedChannelId === channel.id}
+                  onClick={() => void handleSelectVoice(channel)}
+                />
+              </ChannelMenu>
               <VoiceParticipants channelId={channel.id} />
             </div>
           ))}
