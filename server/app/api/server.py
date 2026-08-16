@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.core.config import get_settings
 from app.core.deps import AdminUser, DbSession
 from app.models.server_settings import SINGLETON_ID, ServerSettings
 from app.schemas.server_settings import ServerSettingsRead, ServerSettingsUpdate
@@ -17,15 +18,23 @@ async def _get_or_create_settings(db: DbSession) -> ServerSettings:
     return settings_row
 
 
+def _to_read(settings_row: ServerSettings) -> ServerSettingsRead:
+    return ServerSettingsRead(
+        name=settings_row.name,
+        icon_url=settings_row.icon_url,
+        max_upload_bytes=get_settings().max_upload_bytes,
+    )
+
+
 @router.get("", response_model=ServerSettingsRead)
-async def get_server_settings(db: DbSession) -> ServerSettings:
-    return await _get_or_create_settings(db)
+async def get_server_settings(db: DbSession) -> ServerSettingsRead:
+    return _to_read(await _get_or_create_settings(db))
 
 
 @router.patch("", response_model=ServerSettingsRead)
 async def update_server_settings(
     payload: ServerSettingsUpdate, admin: AdminUser, db: DbSession
-) -> ServerSettings:
+) -> ServerSettingsRead:
     settings_row = await _get_or_create_settings(db)
     if payload.name is not None:
         settings_row.name = payload.name
@@ -34,4 +43,4 @@ async def update_server_settings(
     db.add(settings_row)
     await db.commit()
     await db.refresh(settings_row)
-    return settings_row
+    return _to_read(settings_row)

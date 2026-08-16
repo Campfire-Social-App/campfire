@@ -4,6 +4,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.security import InvalidTokenError, TokenType, decode_token
 from app.db import async_session_maker
 from app.gateway.events import GatewayEvent, GatewayEventType
@@ -76,6 +77,7 @@ async def _build_ready_payload(user: User) -> dict:
         "server": {
             "name": settings_row.name if settings_row else "Campfire",
             "icon_url": settings_row.icon_url if settings_row else None,
+            "max_upload_bytes": get_settings().max_upload_bytes,
         },
         "channels": [
             {

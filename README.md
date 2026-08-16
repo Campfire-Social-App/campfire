@@ -28,6 +28,7 @@ O FastAPI cuida de autenticação, canais, mensagens e sinalização (WebSocket 
 - [x] Convite por link/código + registro de usuário
 - [x] Login com sessão JWT (access + refresh)
 - [x] Canais de texto (mensagens, anexos)
+- [x] Fotos, vídeos e arquivos (colar print, progresso, preview/player, download com nome original)
 - [x] Gateway em tempo real (WebSocket) para mensagens e presença
 - [x] Canais de voz via LiveKit (entrar/sair, mute, indicador de fala)
 - [x] Mensagens diretas 1:1 (conversas privadas, com não-lidas, na barra da esquerda)

@@ -44,7 +44,8 @@ export const editMessage = (messageId: string, content: string) =>
 export const deleteMessage = (messageId: string) =>
   apiFetch<void>(`/api/messages/${messageId}`, { method: "DELETE" });
 
-export const uploadAttachment = (file: File) => apiUpload<Attachment>("/api/uploads", file);
+export const uploadAttachment = (file: File, onProgress?: (fraction: number) => void) =>
+  apiUpload<Attachment>("/api/uploads", file, onProgress);
 
 export const listDms = () => apiFetch<DMConversation[]>("/api/dms");
 

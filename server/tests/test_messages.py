@@ -162,3 +162,66 @@ async def test_cannot_post_message_to_voice_channel(
         f"/api/channels/{channel_id}/messages", json={"content": "oi"}, headers=admin_headers
     )
     assert post_resp.status_code == 404
+
+
+async def test_a_message_can_be_attachments_alone(
+    client: AsyncClient, admin_headers: dict[str, str], tmp_path, monkeypatch
+) -> None:
+    """A photo is a message on its own — no caption required."""
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+    get_settings.cache_clear()
+    try:
+        channel = await client.post(
+            "/api/channels", json={"name": "fotos", "type": "text"}, headers=admin_headers
+        )
+        upload = await client.post(
+            "/api/uploads",
+            files={"file": ("ferias.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+            headers=admin_headers,
+        )
+
+        resp = await client.post(
+            f"/api/channels/{channel.json()['id']}/messages",
+            json={"attachment_ids": [upload.json()["id"]]},
+            headers=admin_headers,
+        )
+
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["content"] == ""
+        assert [a["filename"] for a in body["attachments"]] == ["ferias.png"]
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_a_message_with_neither_text_nor_attachments_is_rejected(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    channel = await client.post(
+        "/api/channels", json={"name": "vazio", "type": "text"}, headers=admin_headers
+    )
+
+    for payload in ({}, {"content": "   "}, {"content": "", "attachment_ids": []}):
+        resp = await client.post(
+            f"/api/channels/{channel.json()['id']}/messages", json=payload, headers=admin_headers
+        )
+        assert resp.status_code == 422, (payload, resp.text)
+
+
+async def test_attachment_only_message_needs_attachments_that_exist(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Ids that aren't ours are dropped — with no text, that would otherwise
+    leave a blank message in the channel."""
+    channel = await client.post(
+        "/api/channels", json={"name": "sumidos", "type": "text"}, headers=admin_headers
+    )
+
+    resp = await client.post(
+        f"/api/channels/{channel.json()['id']}/messages",
+        json={"attachment_ids": ["00000000-0000-0000-0000-000000000000"]},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 400

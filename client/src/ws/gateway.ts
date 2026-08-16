@@ -6,6 +6,7 @@ import { usePresenceStore } from "@/state/presence";
 import { useVoiceStore } from "@/state/voice";
 import { useUsersStore } from "@/state/users";
 import { useDmsStore } from "@/state/dms";
+import { useServerStore } from "@/state/server";
 import { useCallsStore } from "@/state/calls";
 import { leaveVoiceChannel } from "@/livekit/voice";
 import { playJoinSound, playLeaveSound } from "@/lib/sounds";
@@ -130,7 +131,8 @@ class GatewayClient {
     const channel = useChannelsStore.getState().channels.find((c) => c.id === message.channel_id);
     notify(
       `${message.author.username}${!isDm && channel ? ` in #${channel.name}` : ""}`,
-      message.content,
+      message.content.trim() ||
+        (message.attachments.length > 1 ? "Sent attachments" : "Sent an attachment"),
     );
   }
 
@@ -175,6 +177,7 @@ class GatewayClient {
           is_admin: data.user.is_admin,
           created_at: useAuthStore.getState().user?.created_at ?? new Date().toISOString(),
         });
+        useServerStore.getState().setServer(data.server);
         useChannelsStore.getState().setChannels(data.channels);
         useDmsStore.getState().setConversations(data.dms);
         useVoiceStore.getState().setVoiceStates(data.voice_states);

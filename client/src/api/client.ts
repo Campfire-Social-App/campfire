@@ -82,29 +82,45 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   return (await res.json()) as T;
 }
 
-export async function apiUpload<T>(path: string, file: File): Promise<T> {
+/** XHR rather than fetch: it's the only one that reports upload progress, which
+ * a 25MB video very much needs. */
+export async function apiUpload<T>(
+  path: string,
+  file: File,
+  onProgress?: (fraction: number) => void,
+): Promise<T> {
   const token = useAuthStore.getState().accessToken;
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${getServerUrl()}${path}`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    body: formData,
+  return new Promise<T>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${getServerUrl()}${path}`);
+    if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(event.loaded / event.total);
+    };
+
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve(JSON.parse(request.responseText) as T);
+        return;
+      }
+      let detail = request.statusText;
+      try {
+        const body = JSON.parse(request.responseText) as { detail?: string };
+        if (body.detail) detail = body.detail;
+      } catch {
+        // response had no JSON body
+      }
+      reject(new ApiError(request.status, detail));
+    };
+    request.onerror = () => reject(new ApiError(0, "Upload failed"));
+    request.onabort = () => reject(new ApiError(0, "Upload cancelled"));
+
+    request.send(formData);
   });
-
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const errBody = (await res.json()) as { detail?: string };
-      if (errBody.detail) detail = errBody.detail;
-    } catch {
-      // no JSON body
-    }
-    throw new ApiError(res.status, detail);
-  }
-
-  return (await res.json()) as T;
 }
 
 export function resolveAssetUrl(path: string): string {

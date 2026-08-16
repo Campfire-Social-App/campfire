@@ -25,10 +25,6 @@ from app.services import dm_service
 router = APIRouter(tags=["messages"])
 
 
-def _attachment_url(attachment: Attachment) -> str:
-    return f"/uploads/{attachment.storage_path}"
-
-
 async def _get_readable_channel_or_404(
     channel_id: uuid.UUID, user: CurrentUser, db: DbSession
 ) -> Channel:
@@ -88,17 +84,7 @@ async def _to_message_read(message: Message, db: DbSession) -> MessageRead:
         content=message.content,
         created_at=message.created_at,
         edited_at=message.edited_at,
-        attachments=[
-            AttachmentRead(
-                id=a.id,
-                filename=a.filename,
-                content_type=a.content_type,
-                size_bytes=a.size_bytes,
-                url=_attachment_url(a),
-                created_at=a.created_at,
-            )
-            for a in attachments
-        ],
+        attachments=[AttachmentRead.from_model(a) for a in attachments],
         reply_to=reply_to,
     )
 
@@ -168,6 +154,14 @@ async def create_message(
             .scalars()
             .all()
         )
+        # Ids that aren't ours (or are already spoken for) are dropped silently,
+        # which for a message with no text of its own would leave nothing at all.
+        if not attachments and not payload.content.strip():
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="None of those attachments are available to post",
+            )
         for attachment in attachments:
             attachment.message_id = message.id
             db.add(attachment)

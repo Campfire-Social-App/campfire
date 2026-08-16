@@ -84,6 +84,9 @@ export interface Invite {
 export interface ServerSettings {
   name: string;
   icon_url: string | null;
+  /** Upload ceiling of this deployment — the client turns away bigger files
+   * itself rather than spending an upload to be told no. */
+  max_upload_bytes: number;
 }
 
 export interface VoiceTokenResponse {

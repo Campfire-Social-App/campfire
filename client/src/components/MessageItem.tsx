@@ -1,18 +1,16 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { CornerUpLeft, Pencil, Reply, Trash2 } from "lucide-react";
+import { AttachmentList } from "@/components/AttachmentList";
 import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/state/auth";
 import { useUsersStore } from "@/state/users";
 import { useChannelsStore } from "@/state/channels";
 import { editMessage, deleteMessage } from "@/api/endpoints";
-import { resolveAssetUrl } from "@/api/client";
 import type { Channel, Message } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { messageMentionsUser, splitMentions } from "@/lib/mentions";
-
-const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 interface MessageItemProps {
   message: Message;
@@ -118,42 +116,25 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
             <p className="text-xs text-muted-foreground">escape to cancel · enter to save</p>
           </div>
         ) : (
-          <p className="text-[15px] leading-snug wrap-break-word whitespace-pre-wrap text-foreground">
-            <MentionText
-              content={message.content}
-              knownUsernames={knownUsernames}
-              channelsByName={channelsByName}
-              currentUsername={currentUser?.username}
-            />
-            {message.edited_at && (
-              <span className="ml-1.5 text-[10px] text-muted-foreground">(edited)</span>
-            )}
-          </p>
+          // A message can be attachments alone — an empty paragraph would still
+          // take up a line under the author's name.
+          message.content.trim() && (
+            <p className="text-[15px] leading-snug wrap-break-word whitespace-pre-wrap text-foreground">
+              <MentionText
+                content={message.content}
+                knownUsernames={knownUsernames}
+                channelsByName={channelsByName}
+                currentUsername={currentUser?.username}
+              />
+              {message.edited_at && (
+                <span className="ml-1.5 text-[10px] text-muted-foreground">(edited)</span>
+              )}
+            </p>
+          )
         )}
 
         {message.attachments.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            {message.attachments.map((att) =>
-              IMAGE_TYPES.has(att.content_type) ? (
-                <img
-                  key={att.id}
-                  src={resolveAssetUrl(att.url)}
-                  alt={att.filename}
-                  className="max-h-72 max-w-xs rounded-md border border-glass-border object-contain"
-                />
-              ) : (
-                <a
-                  key={att.id}
-                  href={resolveAssetUrl(att.url)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-md border border-glass-border bg-glass px-3 py-2 text-sm text-primary hover:underline"
-                >
-                  {att.filename}
-                </a>
-              ),
-            )}
-          </div>
+          <AttachmentList attachments={message.attachments} />
         )}
       </div>
 

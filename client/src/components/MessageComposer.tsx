@@ -1,11 +1,14 @@
 import { useRef, useState } from "react";
-import { AtSign, Hash, Loader2, Paperclip, Reply, Send, X } from "lucide-react";
+import { AtSign, File, Hash, Paperclip, Reply, Send, X } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
 import { sendMessage, uploadAttachment } from "@/api/endpoints";
 import { gatewayClient } from "@/ws/gateway";
 import { useUsersStore } from "@/state/users";
 import { useChannelsStore } from "@/state/channels";
+import { useServerStore } from "@/state/server";
+import { formatBytes } from "@/lib/files";
+import { resolveAssetUrl } from "@/api/client";
 import { ApiError, type Attachment, type Message } from "@/lib/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -17,6 +20,14 @@ import {
 } from "@/lib/mentions";
 
 const TYPING_THROTTLE_MS = 3000;
+
+/** A file on its way up: shown in the strip with its own progress bar. */
+interface PendingUpload {
+  key: string;
+  name: string;
+  progress: number;
+  previewUrl?: string;
+}
 
 interface MessageComposerProps {
   /** Text channel or DM conversation to post into. */
@@ -36,7 +47,7 @@ export function MessageComposer({
 }: MessageComposerProps) {
   const [content, setContent] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [uploads, setUploads] = useState<PendingUpload[]>([]);
   const [sending, setSending] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
@@ -47,6 +58,7 @@ export function MessageComposer({
 
   const users = useUsersStore((s) => s.users);
   const channels = useChannelsStore((s) => s.channels);
+  const maxUploadBytes = useServerStore((s) => s.maxUploadBytes);
   const mentionCandidatesList = mentionQuery
     ? mentionCandidates(mentionQuery.trigger, mentionQuery.query, users, channels)
     : [];
@@ -60,16 +72,32 @@ export function MessageComposer({
   };
 
   const handleFiles = async (files: FileList | File[]) => {
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const attachment = await uploadAttachment(file);
-        setPendingAttachments((prev) => [...prev, attachment]);
+    // One at a time and in order, so a batch of photos arrives in the message in
+    // the order they were picked rather than in whichever finished first.
+    for (const file of Array.from(files)) {
+      if (file.size > maxUploadBytes) {
+        toast.error(`${file.name} is larger than ${formatBytes(maxUploadBytes)}.`);
+        continue;
       }
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to upload file.");
-    } finally {
-      setUploading(false);
+
+      const key = crypto.randomUUID();
+      // Local preview while it uploads — the server URL only exists afterwards.
+      const previewUrl = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      setUploads((prev) => [...prev, { key, name: file.name, progress: 0, previewUrl }]);
+
+      try {
+        const attachment = await uploadAttachment(file, (fraction) =>
+          setUploads((prev) =>
+            prev.map((upload) => (upload.key === key ? { ...upload, progress: fraction } : upload)),
+          ),
+        );
+        setPendingAttachments((prev) => [...prev, attachment]);
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : `Couldn't upload ${file.name}.`);
+      } finally {
+        setUploads((prev) => prev.filter((upload) => upload.key !== key));
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+      }
     }
   };
 
@@ -99,6 +127,10 @@ export function MessageComposer({
   const handleSend = async () => {
     const trimmed = content.trim();
     if (!trimmed && pendingAttachments.length === 0) return;
+    if (uploads.length > 0) {
+      toast.error("Still uploading — one moment.");
+      return;
+    }
     setSending(true);
     try {
       await sendMessage(
@@ -197,25 +229,58 @@ export function MessageComposer({
           </div>
         )}
 
-        {(pendingAttachments.length > 0 || uploading) && (
+        {(pendingAttachments.length > 0 || uploads.length > 0) && (
           <div className="flex flex-wrap gap-2 border-b border-glass-border p-2">
-            {pendingAttachments.map((att) => (
+            {pendingAttachments.map((attachment) => (
               <div
-                key={att.id}
-                className="flex items-center gap-1 rounded-md bg-glass px-2 py-1 text-xs text-foreground"
+                key={attachment.id}
+                className="group relative overflow-hidden rounded-lg border border-glass-border bg-glass"
               >
-                {att.filename}
+                {attachment.content_type.startsWith("image/") ? (
+                  <img
+                    src={resolveAssetUrl(attachment.url)}
+                    alt={attachment.filename}
+                    className="size-16 object-cover"
+                  />
+                ) : (
+                  <div className="flex size-16 flex-col items-center justify-center gap-1 px-1">
+                    <File className="size-5 text-muted-foreground" />
+                    <span className="w-full truncate text-center text-[10px] text-muted-foreground">
+                      {attachment.filename}
+                    </span>
+                  </div>
+                )}
                 <button
                   onClick={() =>
-                    setPendingAttachments((prev) => prev.filter((a) => a.id !== att.id))
+                    setPendingAttachments((prev) => prev.filter((a) => a.id !== attachment.id))
                   }
-                  className="text-muted-foreground hover:text-destructive"
+                  className="absolute top-0.5 right-0.5 flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
                 >
                   <X className="size-3" />
                 </button>
               </div>
             ))}
-            {uploading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+
+            {uploads.map((upload) => (
+              <div
+                key={upload.key}
+                className="relative size-16 overflow-hidden rounded-lg border border-glass-border bg-glass"
+              >
+                {upload.previewUrl ? (
+                  <img src={upload.previewUrl} alt="" className="size-full object-cover opacity-40" />
+                ) : (
+                  <div className="flex size-full items-center justify-center">
+                    <File className="size-5 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="absolute inset-x-1 bottom-1 h-1 overflow-hidden rounded-full bg-black/50">
+                  <div
+                    className="h-full bg-primary transition-[width]"
+                    style={{ width: `${Math.round(upload.progress * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -279,6 +344,14 @@ export function MessageComposer({
               }
             }}
             onClick={(e) => updateMentionState(content, e.currentTarget.selectionStart)}
+            onPaste={(e) => {
+              // Screenshots arrive as files on the clipboard; text keeps the
+              // default paste behaviour.
+              if (e.clipboardData.files.length > 0) {
+                e.preventDefault();
+                void handleFiles(e.clipboardData.files);
+              }
+            }}
             placeholder={placeholder}
             className="max-h-40 min-h-6 flex-1 resize-none border-0 bg-transparent px-0 py-1 text-[14.5px] shadow-none placeholder:text-muted-foreground focus-visible:ring-0 dark:bg-transparent"
             rows={1}

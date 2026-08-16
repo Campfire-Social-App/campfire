@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { CallCenter } from "@/components/CallCenter";
 import { ServerRail } from "@/components/ServerRail";
@@ -10,9 +10,9 @@ import { VoiceChannelView } from "@/screens/VoiceChannelView";
 import { DirectMessageView } from "@/screens/DirectMessageView";
 import { useChannelsStore } from "@/state/channels";
 import { useDmsStore } from "@/state/dms";
+import { useServerStore } from "@/state/server";
 import { useUsersStore } from "@/state/users";
 import { gatewayClient } from "@/ws/gateway";
-import { getServerSettings } from "@/api/endpoints";
 import { initNotifications } from "@/lib/notifications";
 
 export function ServerShell() {
@@ -22,11 +22,10 @@ export function ServerShell() {
   const activeDmId = useDmsStore((s) => s.activeDmId);
   const conversations = useDmsStore((s) => s.conversations);
   const fetchUsers = useUsersStore((s) => s.fetch);
-  const [serverName, setServerName] = useState("Campfire");
+  const serverName = useServerStore((s) => s.name);
 
   useEffect(() => {
     gatewayClient.connect();
-    void getServerSettings().then((s) => setServerName(s.name));
     void fetchUsers();
     void initNotifications();
     return () => gatewayClient.disconnect();
