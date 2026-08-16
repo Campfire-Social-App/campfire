@@ -22,7 +22,8 @@ import {
   setCameraEnabled,
   setDeafened,
   setMicrophoneMuted,
-  setScreenShareEnabled,
+  requestScreenShare,
+  stopScreenShare,
 } from "@/livekit/voice";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -56,7 +57,8 @@ export function UserBar() {
 
   const handleToggleScreenShare = async () => {
     try {
-      await setScreenShareEnabled(!localScreenShareEnabled);
+      if (localScreenShareEnabled) await stopScreenShare();
+      else await requestScreenShare();
     } catch (err) {
       // Cancelling the browser's share picker also rejects with NotAllowedError — not a real error.
       if (err instanceof DOMException && err.name === "NotAllowedError") return;

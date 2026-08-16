@@ -12,7 +12,8 @@ import {
   joinVoiceChannel,
   setCameraEnabled,
   setMicrophoneMuted,
-  setScreenShareEnabled,
+  requestScreenShare,
+  stopScreenShare,
 } from "@/livekit/voice";
 import { hangUp } from "@/lib/calls";
 import { ApiError, type DMConversation } from "@/lib/types";
@@ -66,7 +67,8 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
 
   const handleToggleScreenShare = async () => {
     try {
-      await setScreenShareEnabled(!localScreenShareEnabled);
+      if (localScreenShareEnabled) await stopScreenShare();
+      else await requestScreenShare();
     } catch (err) {
       // Dismissing the browser's share picker rejects too — not a real failure.
       if (err instanceof DOMException && err.name === "NotAllowedError") return;

@@ -64,12 +64,16 @@ export function TileVisual({
         />
       ) : (
         <div className="flex size-full items-center justify-center bg-linear-to-br from-muted to-muted/60">
+          {/* Expanded, camera off: the avatar carries the whole frame, so it's
+              sized for it — and the presence dot is dropped, since a speck of a
+              badge on a 10rem circle reads as an artifact, and "they're online"
+              is already implied by them being in the call. */}
           <UserAvatar
             username={tile.participant.username}
             size={large ? "lg" : "default"}
-            status={compact ? undefined : online ? "online" : "offline"}
+            status={large || compact ? undefined : online ? "online" : "offline"}
             className={cn(
-              large ? "size-32 *:text-4xl" : compact ? "size-10 *:text-base" : "size-24 *:text-2xl",
+              large ? "size-40 *:text-5xl" : compact ? "size-10 *:text-base" : "size-24 *:text-2xl",
             )}
           />
         </div>

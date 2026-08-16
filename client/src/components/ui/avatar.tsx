@@ -3,6 +3,17 @@ import { Avatar as AvatarPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 
+// Picked here rather than as `data-[size=lg]:` variants: a variant-prefixed
+// class compiles to `.data-\[size=lg\]\:size-10[data-size=lg]`, which outranks a
+// plain `size-*` passed by a caller on specificity *and* survives tailwind-merge
+// (different variant group, so it isn't seen as a conflict) — the size override
+// would be silently ignored. A plain class here loses to the caller's, as intended.
+const AVATAR_SIZES = {
+  default: "size-8",
+  sm: "size-6",
+  lg: "size-10",
+} as const
+
 function Avatar({
   className,
   size = "default",
@@ -15,7 +26,8 @@ function Avatar({
       data-slot="avatar"
       data-size={size}
       className={cn(
-        "group/avatar relative flex size-8 shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 dark:after:mix-blend-lighten",
+        "group/avatar relative flex shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken dark:after:mix-blend-lighten",
+        AVATAR_SIZES[size],
         className
       )}
       {...props}

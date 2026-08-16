@@ -1,0 +1,40 @@
+name: Check client
+
+# The Rust side of the client only compiles on a machine with the WebView and
+# capture APIs, so a plain `cargo check` on Windows is the cheapest way to keep
+# it honest without waiting on a full installer build.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri -> target
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      # Type-checks and produces ../dist, which tauri-build expects to exist.
+      - name: Build frontend
+        working-directory: client
+        run: npm run build
+
+      - name: Check Rust
+        working-directory: client/src-tauri
+        run: cargo check --all-targets
