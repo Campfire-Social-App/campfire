@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Download, File, FileArchive, FileAudio, FileText, FileVideo } from "lucide-react";
 import { resolveAssetUrl } from "@/api/client";
 import { ImageLightbox } from "@/components/ImageLightbox";
+import { AudioPlayer, VideoPlayer } from "@/components/MediaPlayer";
 import { downloadAttachment, formatBytes, isAudio, isImage, isVideo } from "@/lib/files";
 import type { Attachment } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -54,25 +55,15 @@ export function AttachmentList({ attachments }: AttachmentListProps) {
         )}
 
         {attachments.filter(isVideo).map((attachment) => (
-          <video
-            key={attachment.id}
-            src={resolveAssetUrl(attachment.url)}
-            controls
-            preload="metadata"
-            className="max-h-80 max-w-md rounded-lg border border-glass-border bg-black"
-          />
+          <VideoPlayer key={attachment.id} src={resolveAssetUrl(attachment.url)} />
         ))}
 
         {attachments.filter(isAudio).map((attachment) => (
-          <div
+          <AudioPlayer
             key={attachment.id}
-            className="max-w-md rounded-lg border border-glass-border bg-glass p-2"
-          >
-            <p className="mb-1 truncate px-1 text-xs text-muted-foreground">
-              {attachment.filename}
-            </p>
-            <audio src={resolveAssetUrl(attachment.url)} controls className="w-full" />
-          </div>
+            src={resolveAssetUrl(attachment.url)}
+            filename={attachment.filename}
+          />
         ))}
 
         {attachments
