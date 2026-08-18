@@ -95,7 +95,50 @@ npm run tauri dev
 
 ## Deploy em produção
 
-Guia completo em [PLANO.md](PLANO.md#8-notas-de-deploy-em-produção): Docker Compose com Caddy (TLS automático), LiveKit exposto num subdomínio próprio, backup de Postgres e uploads, e segredos gerenciados via `.env` fora do controle de versão.
+Notas de arquitetura em [PLANO.md](PLANO.md#8-notas-de-deploy-em-produção): Docker Compose com Caddy (TLS automático), LiveKit exposto num subdomínio próprio, backup de Postgres e uploads, e segredos gerenciados via `.env` fora do controle de versão.
+
+### Esteira
+
+Push no `master` que toque em `server/` ou `infra/` dispara o workflow [Deploy server](.github/workflows/deploy-server.yml): a suíte roda contra um Postgres real e, só se passar, o runner entra na VPS por SSH, deixa o repositório no commit testado e executa [`infra/deploy.sh`](infra/deploy.sh), que reconstrói a imagem, sobe o compose e espera `https://$DOMAIN/health` responder antes de dar o deploy por bom.
+
+Secrets usados pelo workflow: `DEPLOY_SSH_KEY` (chave privada), `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS` (saída do `ssh-keyscan`, para o runner não confiar em qualquer host no IP).
+
+### Bootstrap da máquina (uma vez)
+
+A esteira atualiza um servidor que já existe; ela não cria um do zero. Numa VPS nova:
+
+```bash
+# 1. Docker
+curl -fsSL https://get.docker.com | sh
+systemctl enable --now docker
+
+# 2. Código
+git clone https://github.com/masioware/campfire.git /opt/campfire
+
+# 3. Segredos — gerados na própria máquina, nunca versionados
+cat > /opt/campfire/infra/.env <<EOF
+POSTGRES_USER=campfire
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+POSTGRES_DB=campfire
+JWT_SECRET=$(openssl rand -hex 32)
+LIVEKIT_API_KEY=$(openssl rand -hex 12)
+LIVEKIT_API_SECRET=$(openssl rand -hex 32)
+DOMAIN=seudominio.com
+LIVEKIT_DOMAIN=livekit.seudominio.com
+FIRST_ADMIN_USERNAME=admin
+FIRST_ADMIN_PASSWORD=<senha do primeiro admin>
+EOF
+chmod 600 /opt/campfire/infra/.env
+
+# 4. Primeira subida
+cd /opt/campfire && infra/deploy.sh
+```
+
+O `.env` fica em `infra/`, não na raiz: o `docker compose -f infra/docker-compose.yml` usa o diretório do arquivo como project directory e é lá que ele procura.
+
+Sem domínio próprio, `sslip.io` resolve qualquer nome terminado num IP para aquele IP (`DOMAIN=203.0.113.10.sslip.io`), e o Let's Encrypt emite certificado normalmente — o cliente precisa de TLS válido para falar `https://` com a API e `wss://` com o LiveKit. Trocar pelo domínio de verdade depois é editar essas duas linhas e rodar o deploy de novo.
+
+Portas que precisam estar abertas: 443/TCP+UDP e 80/TCP (Caddy e o desafio do ACME), 7881/TCP (fallback RTC) e 50000-60000/UDP (mídia do LiveKit).
 
 ---
 

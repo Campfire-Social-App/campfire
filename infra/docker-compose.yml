@@ -45,6 +45,10 @@ services:
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       UPLOAD_DIR: /data/uploads
       ENVIRONMENT: production
+      # Sem isso um servidor recém-subido não tem admin, e sem admin não há
+      # quem gere o primeiro convite. Só cria o usuário se ainda não existir.
+      FIRST_ADMIN_USERNAME: ${FIRST_ADMIN_USERNAME:-}
+      FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:-}
     volumes:
       - campfire_uploads:/data/uploads
     command: >

@@ -1,0 +1,106 @@
+name: Deploy server
+
+# A esteira do backend: todo push no master que toque em server/ ou infra/ roda
+# a suíte contra um Postgres de verdade e, só se ela passar, atualiza a VPS.
+# O deploy em si acontece na máquina — o runner apenas dispara infra/deploy.sh
+# por SSH, passando o commit exato que foi testado.
+on:
+  push:
+    branches: [master]
+    paths:
+      - "server/**"
+      - "infra/**"
+      - ".github/workflows/deploy-server.yml"
+  workflow_dispatch:
+
+# Dois deploys ao mesmo tempo na mesma VPS se atropelam (o segundo faria reset
+# --hard no meio do build do primeiro). A fila espera em vez de cancelar, para
+# nenhum commit ficar para trás.
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: campfire
+          POSTGRES_PASSWORD: campfire
+          POSTGRES_DB: campfire
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U campfire"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Mesma versão do Dockerfile, para o lock resolver igual aqui e lá.
+      - name: Install Poetry
+        run: pipx install poetry==2.3.2
+
+      - name: Install dependencies
+        working-directory: server
+        run: poetry install --no-interaction --no-ansi
+
+      - name: Ruff
+        working-directory: server
+        run: poetry run ruff check .
+
+      # conftest.py cria o campfire_test sozinho a partir do banco de manutenção.
+      - name: Pytest
+        working-directory: server
+        run: poetry run pytest -q
+
+  deploy:
+    name: Deploy na VPS
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Host key fixada por secret: sem isso o runner aceitaria qualquer
+          # servidor que atendesse naquele IP.
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      # O checkout na VPS acontece aqui, antes do script rodar, para o
+      # infra/deploy.sh executado ser sempre o do commit que está sendo
+      # publicado — inclusive quando a mudança é no próprio script.
+      - name: Run deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          SHA: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$DEPLOY_PORT" -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -euo pipefail
+             cd /opt/campfire
+             git fetch --prune origin
+             git reset --hard $SHA
+             exec infra/deploy.sh"
+
+      - name: Wipe key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
