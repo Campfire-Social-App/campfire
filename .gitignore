@@ -1,6 +1,7 @@
 # Secrets
 .env
 .local/
+infra/livekit/livekit.generated.yaml
 
 # Python
 server/.venv/

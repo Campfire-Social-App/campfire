@@ -25,10 +25,12 @@ services:
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?defina LIVEKIT_API_SECRET no .env}
       LIVEKIT_DOMAIN: ${LIVEKIT_DOMAIN:?defina LIVEKIT_DOMAIN no .env}
     volumes:
-      - ./livekit/livekit.yaml:/etc/livekit.yaml:ro
+      # Gerado por infra/deploy.sh a partir do .env — o livekit.yaml versionado
+      # é o template, com as variáveis ainda por substituir.
+      - ./livekit/livekit.generated.yaml:/etc/livekit.yaml:ro
     ports:
       - "7881:7881" # RTC TCP fallback
-      - "50000-60000:50000-60000/udp" # RTC UDP
+      - "7882:7882/udp" # RTC UDP (porta única, multiplexada)
       - "5349:5349" # TURN TLS
 
   server:

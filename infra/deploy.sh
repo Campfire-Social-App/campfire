@@ -26,6 +26,20 @@ log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 cd "$REPO_DIR"
 log "Publicando $(git --no-pager log --oneline -1)"
 
+# O livekit-server lê o YAML cru: não expande $VAR nenhuma. Sem isto a chave
+# chega literal ("apiKey": "$LIVEKIT_API_KEY") e o processo morre na validação,
+# reclamando que o segredo é curto demais. Então o arquivo é renderizado aqui,
+# a partir do .env, e é a versão renderizada que o compose monta.
+log "Renderizando a config do LiveKit"
+set -a
+# shellcheck disable=SC1090
+. "$ENV_FILE"
+set +a
+envsubst '$LIVEKIT_API_KEY $LIVEKIT_API_SECRET $LIVEKIT_DOMAIN' \
+  < "$REPO_DIR/infra/livekit/livekit.yaml" \
+  > "$REPO_DIR/infra/livekit/livekit.generated.yaml"
+chmod 600 "$REPO_DIR/infra/livekit/livekit.generated.yaml"
+
 # --build porque a imagem do server é construída na própria VPS: sem isso o
 # compose reaproveitaria a imagem antiga e o deploy não mudaria nada.
 log "Subindo os containers"

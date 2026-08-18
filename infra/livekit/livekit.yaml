@@ -1,11 +1,15 @@
-# Production config. Real key/secret and public domain come from env substitution
-# in docker-compose.yml (LIVEKIT_API_KEY / LIVEKIT_API_SECRET / LIVEKIT_DOMAIN).
+# Template da config de produção. O livekit-server NÃO expande variáveis no
+# YAML, então infra/deploy.sh roda envsubst neste arquivo com os valores do
+# infra/.env e gera livekit.generated.yaml, que é o que o container monta.
 port: 7880
 
 rtc:
   tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 60000
+  # Porta UDP única em vez de faixa: o Docker sobe um docker-proxy por porta
+  # publicada, e uma faixa de 10 mil portas derrubava a VPS por falta de
+  # memória antes do stack terminar de subir. O LiveKit multiplexa todas as
+  # sessões nesta porta.
+  udp_port: 7882
   use_external_ip: true
 
 keys:

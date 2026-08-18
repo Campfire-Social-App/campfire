@@ -138,7 +138,7 @@ O `.env` fica em `infra/`, não na raiz: o `docker compose -f infra/docker-compo
 
 Sem domínio próprio, `sslip.io` resolve qualquer nome terminado num IP para aquele IP (`DOMAIN=203.0.113.10.sslip.io`), e o Let's Encrypt emite certificado normalmente — o cliente precisa de TLS válido para falar `https://` com a API e `wss://` com o LiveKit. Trocar pelo domínio de verdade depois é editar essas duas linhas e rodar o deploy de novo.
 
-Portas que precisam estar abertas: 443/TCP+UDP e 80/TCP (Caddy e o desafio do ACME), 7881/TCP (fallback RTC) e 50000-60000/UDP (mídia do LiveKit).
+Portas que precisam estar abertas: 443/TCP+UDP e 80/TCP (Caddy e o desafio do ACME), 7881/TCP (fallback RTC) e 7882/UDP (mídia do LiveKit).
 
 ---
 
