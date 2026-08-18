@@ -13,13 +13,16 @@ Sem multi-tenancy, sem depender de infraestrutura de terceiros para o núcleo do
 | Componente | Tecnologia |
 | :--- | :--- |
 | Cliente (desktop) | Tauri + React + TypeScript |
+| Cliente (mobile) | Flutter + Dart (em construção) |
 | Servidor (core) | Python + FastAPI |
 | Voz/vídeo (SFU) | LiveKit (self-hosted, serviço separado) |
 | Banco de dados | PostgreSQL |
 | Reverse proxy / TLS | Caddy |
 | Orquestração | Docker Compose |
 
-O FastAPI cuida de autenticação, canais, mensagens e sinalização (WebSocket gateway); o LiveKit cuida exclusivamente da mídia em tempo real (WebRTC). O cliente Tauri fala com os dois.
+O FastAPI cuida de autenticação, canais, mensagens e sinalização (WebSocket gateway); o LiveKit cuida exclusivamente da mídia em tempo real (WebRTC). Os clientes falam com os dois.
+
+O cliente Flutter em `app/` é um segundo consumidor da mesma API, com a mesma cara e as mesmas funções — nada no servidor muda por causa dele. Plano de obra em [PLANO_FLUTTER.md](PLANO_FLUTTER.md).
 
 ---
 
@@ -50,8 +53,8 @@ Itens que a arquitetura já comporta, mas que não entram na v1:
 - **Transferência de arquivo P2P** direto entre clientes (WebRTC DataChannels), como alternativa ao upload centralizado
 - **Cargos e permissões** por canal (hoje só existe admin vs. usuário comum)
 - **Múltiplos servidores** por instância de cliente (hoje é um servidor por deploy)
-- **Notificações push** para o app fechado/minimizado
-- **Build para mobile** (Tauri 2 suporta Android/iOS, não avaliado ainda)
+- **Notificações push** para o app fechado/minimizado — pré-requisito de servidor
+  para a chamada tocar com o app Flutter fechado (ver PLANO_FLUTTER.md §9)
 
 ---
 
@@ -61,6 +64,7 @@ Itens que a arquitetura já comporta, mas que não entram na v1:
 campfire/
   server/     # API FastAPI (auth, canais, mensagens, gateway, tokens LiveKit)
   client/     # App desktop Tauri
+  app/        # App mobile Flutter (Android/iOS; desktop de brinde)
   infra/      # docker-compose, config do LiveKit, Caddyfile
 ```
 
@@ -85,11 +89,19 @@ poetry run alembic upgrade head
 poetry run python -m app.cli create-admin --username admin --password <senha>
 poetry run uvicorn app.main:app --reload
 
-# Cliente
+# Cliente desktop
 cd client
 npm install
 npm run tauri dev
+
+# Cliente mobile
+cd app
+flutter pub get
+flutter run
 ```
+
+O `app/` tem instruções próprias — código gerado, geração dos tokens de tema a
+partir do CSS do cliente React — em [app/README.md](app/README.md).
 
 ---
 
