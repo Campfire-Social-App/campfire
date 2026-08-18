@@ -130,7 +130,15 @@ FIRST_ADMIN_PASSWORD=<senha do primeiro admin>
 EOF
 chmod 600 /opt/campfire/infra/.env
 
-# 4. Primeira subida
+# 4. Buffers de UDP — o LiveKit avisa no boot que o padrão do kernel é pequeno
+#    demais para um SFU, e sob carga isso vira perda de pacote no áudio/vídeo
+cat > /etc/sysctl.d/99-livekit.conf <<EOF
+net.core.rmem_max=5000000
+net.core.wmem_max=5000000
+EOF
+sysctl -p /etc/sysctl.d/99-livekit.conf
+
+# 5. Primeira subida
 cd /opt/campfire && infra/deploy.sh
 ```
 
