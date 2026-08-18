@@ -7,6 +7,8 @@ import type {
   Invite,
   Message,
   MessagePage,
+  MessageReaction,
+  ReactionType,
   ServerSettings,
   User,
   VoiceTokenResponse,
@@ -46,6 +48,12 @@ export const editMessage = (messageId: string, content: string) =>
 
 export const deleteMessage = (messageId: string) =>
   apiFetch<void>(`/api/messages/${messageId}`, { method: "DELETE" });
+
+export const addMessageReaction = (messageId: string, type: ReactionType) =>
+  apiFetch<MessageReaction>(`/api/messages/${messageId}/reactions/${type}`, { method: "PUT" });
+
+export const removeMessageReaction = (messageId: string, type: ReactionType) =>
+  apiFetch<MessageReaction>(`/api/messages/${messageId}/reactions/${type}`, { method: "DELETE" });
 
 export const uploadAttachment = (file: File, onProgress?: (fraction: number) => void) =>
   apiUpload<Attachment>("/api/uploads", file, onProgress);

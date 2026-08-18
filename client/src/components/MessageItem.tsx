@@ -7,10 +7,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/state/auth";
 import { useUsersStore } from "@/state/users";
 import { useChannelsStore } from "@/state/channels";
-import { editMessage, deleteMessage } from "@/api/endpoints";
-import type { Channel, Message } from "@/lib/types";
+import {
+  addMessageReaction,
+  deleteMessage,
+  editMessage,
+  removeMessageReaction,
+} from "@/api/endpoints";
+import type { Channel, Message, ReactionType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { messageMentionsUser, splitMentions } from "@/lib/mentions";
+import { useMessagesStore } from "@/state/messages";
+
+const REACTIONS: ReadonlyArray<{ type: ReactionType; emoji: string; label: string }> = [
+  { type: "like", emoji: "👍", label: "Like" },
+  { type: "love", emoji: "❤️", label: "Love" },
+  { type: "laugh", emoji: "😂", label: "Laugh" },
+];
 
 interface MessageItemProps {
   message: Message;
@@ -24,6 +36,7 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
   const channels = useChannelsStore((s) => s.channels);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
+  const [pendingReaction, setPendingReaction] = useState<ReactionType | null>(null);
 
   const isOwn = currentUser?.id === message.author.id;
   const canModify = isOwn || currentUser?.is_admin;
@@ -47,6 +60,30 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
   };
 
   const time = format(new Date(message.created_at), "HH:mm");
+
+  const toggleReaction = async (type: ReactionType) => {
+    if (!currentUser || pendingReaction) return;
+    const current = message.reactions.find((reaction) => reaction.type === type);
+    setPendingReaction(type);
+    try {
+      const result = current?.reacted_by_me
+        ? await removeMessageReaction(message.id, type)
+        : await addMessageReaction(message.id, type);
+      useMessagesStore.getState().applyReactionUpdate(
+        {
+          message_id: message.id,
+          channel_id: message.channel_id,
+          type,
+          count: result.count,
+          user_id: currentUser.id,
+          reacted: result.reacted_by_me,
+        },
+        currentUser.id,
+      );
+    } finally {
+      setPendingReaction(null);
+    }
+  };
 
   return (
     <div
@@ -136,6 +173,35 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
         {message.attachments.length > 0 && (
           <AttachmentList attachments={message.attachments} />
         )}
+
+        {message.reactions.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {REACTIONS.map(({ type, emoji, label }) => {
+              const reaction = message.reactions.find((item) => item.type === type);
+              if (!reaction) return null;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  title={label}
+                  aria-label={`${label}: ${reaction.count}`}
+                  aria-pressed={reaction.reacted_by_me}
+                  disabled={pendingReaction === type}
+                  onClick={() => void toggleReaction(type)}
+                  className={cn(
+                    "flex h-7 items-center gap-1 rounded-md border px-2 text-xs transition-colors",
+                    reaction.reacted_by_me
+                      ? "border-primary/50 bg-primary/15 text-foreground"
+                      : "border-glass-border bg-white/3 text-muted-foreground hover:bg-white/8",
+                  )}
+                >
+                  <span aria-hidden="true">{emoji}</span>
+                  <span>{reaction.count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {!editing && (
@@ -144,6 +210,19 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
         // opacity here made the scrollable message list's content bounds
         // recompute on every hover, which visibly resized/jumped the list.
         <div className="pointer-events-none absolute -top-3 right-4 flex items-center gap-0.5 rounded-md border border-glass-border bg-popover p-0.5 opacity-0 shadow-md transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+          {REACTIONS.map(({ type, emoji, label }) => (
+            <button
+              key={type}
+              type="button"
+              title={label}
+              aria-label={`React with ${label}`}
+              disabled={pendingReaction !== null}
+              onClick={() => void toggleReaction(type)}
+              className="rounded-md px-1.5 py-1 text-sm text-muted-foreground hover:bg-white/10 hover:text-foreground disabled:opacity-50"
+            >
+              {emoji}
+            </button>
+          ))}
           <button
             onClick={() => onReply(message)}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground"

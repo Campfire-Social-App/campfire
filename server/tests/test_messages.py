@@ -225,3 +225,64 @@ async def test_attachment_only_message_needs_attachments_that_exist(
         headers=admin_headers,
     )
     assert resp.status_code == 400
+
+
+async def test_message_reactions_count_each_user_once(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    channel_id = await _create_text_channel(client, admin_headers)
+    invite = await client.post("/api/invites", json={"max_uses": 1}, headers=admin_headers)
+    friend = await client.post(
+        "/api/auth/register",
+        json={
+            "invite_code": invite.json()["code"],
+            "username": "reactor",
+            "password": "friendpass1",
+        },
+    )
+    friend_headers = {"Authorization": f"Bearer {friend.json()['access_token']}"}
+    message = await client.post(
+        f"/api/channels/{channel_id}/messages",
+        json={"content": "react to me"},
+        headers=admin_headers,
+    )
+    message_id = message.json()["id"]
+
+    first = await client.put(
+        f"/api/messages/{message_id}/reactions/like", headers=admin_headers
+    )
+    duplicate = await client.put(
+        f"/api/messages/{message_id}/reactions/like", headers=admin_headers
+    )
+    second_user = await client.put(
+        f"/api/messages/{message_id}/reactions/like", headers=friend_headers
+    )
+    another_type = await client.put(
+        f"/api/messages/{message_id}/reactions/love", headers=friend_headers
+    )
+
+    assert first.json() == {"type": "like", "count": 1, "reacted_by_me": True}
+    assert duplicate.json()["count"] == 1
+    assert second_user.json()["count"] == 2
+    assert another_type.json()["count"] == 1
+
+    admin_page = await client.get(
+        f"/api/channels/{channel_id}/messages", headers=admin_headers
+    )
+    admin_reactions = {r["type"]: r for r in admin_page.json()["messages"][0]["reactions"]}
+    assert admin_reactions["like"] == {
+        "type": "like",
+        "count": 2,
+        "reacted_by_me": True,
+    }
+    assert admin_reactions["love"]["reacted_by_me"] is False
+
+    removed = await client.delete(
+        f"/api/messages/{message_id}/reactions/like", headers=admin_headers
+    )
+    assert removed.json() == {"type": "like", "count": 1, "reacted_by_me": False}
+
+    invalid = await client.put(
+        f"/api/messages/{message_id}/reactions/surprised", headers=admin_headers
+    )
+    assert invalid.status_code == 422

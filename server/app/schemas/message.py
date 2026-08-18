@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.models.message_reaction import ReactionType
 from app.schemas.attachment import AttachmentRead
 from app.schemas.user import UserRead
 
@@ -37,6 +38,21 @@ class MessageReplyPreview(BaseModel):
     has_attachments: bool
 
 
+class MessageReactionRead(BaseModel):
+    type: ReactionType
+    count: int
+    reacted_by_me: bool
+
+
+class MessageReactionUpdate(BaseModel):
+    message_id: uuid.UUID
+    channel_id: uuid.UUID
+    type: ReactionType
+    count: int
+    user_id: uuid.UUID
+    reacted: bool
+
+
 class MessageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,6 +64,7 @@ class MessageRead(BaseModel):
     edited_at: datetime | None
     attachments: list[AttachmentRead] = Field(default_factory=list)
     reply_to: MessageReplyPreview | None = None
+    reactions: list[MessageReactionRead] = Field(default_factory=list)
 
 
 class MessagePage(BaseModel):
