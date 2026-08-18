@@ -3,6 +3,7 @@ import {
   Mic,
   MicOff,
   PhoneOff,
+  Repeat,
   ScreenShare,
   ScreenShareOff,
   Settings,
@@ -12,8 +13,15 @@ import {
   Wifi,
 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/state/auth";
+import { useSettingsStore } from "@/state/settings";
 import { useVoiceStore } from "@/state/voice";
 import { useChannelsStore } from "@/state/channels";
 import { useDmsStore } from "@/state/dms";
@@ -53,6 +61,16 @@ export function UserBar() {
     } catch {
       toast.error("Couldn't access the camera.");
     }
+  };
+
+  // Volta para o começo do fluxo: sem servidor configurado o App cai na
+  // ServerConnectScreen e, depois dela, no login — que é onde se troca de conta
+  // e de servidor. Sair da sala antes disso faz o SFU ver uma desconexão limpa
+  // em vez de esperar o timeout do participante.
+  const handleSwitchAccount = async () => {
+    if (inVoice) await leaveVoiceChannel();
+    useAuthStore.getState().logout();
+    useSettingsStore.getState().clearServerUrl();
   };
 
   const handleToggleScreenShare = async () => {
@@ -161,14 +179,27 @@ export function UserBar() {
             {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
           </IconToggle>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-white/10 hover:text-foreground">
-                <Settings className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
-          </Tooltip>
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label="Settings"
+                    className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-white/10 hover:text-foreground data-open:bg-white/10 data-open:text-foreground"
+                  >
+                    <Settings className="size-4" />
+                  </button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Settings</TooltipContent>
+            </Tooltip>
+            {/* Para cima e alinhado à direita: a barra mora no rodapé da sidebar. */}
+            <DropdownMenuContent side="top" align="end" className="w-56">
+              <DropdownMenuItem onSelect={() => void handleSwitchAccount()}>
+                <Repeat className="size-4" /> Switch account
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>
