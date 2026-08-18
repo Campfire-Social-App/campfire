@@ -1,0 +1,49 @@
+name: Check app
+
+# The Flutter client gets its own lane, the way check-client.yml covers the
+# Tauri one — neither should be able to break the other's build.
+on:
+  push:
+    paths:
+      - "app/**"
+      - "client/src/index.css"
+      - ".github/workflows/check-app.yml"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.8
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # The generated files are committed, so this catches a model changed
+      # without its codegen rerun.
+      - name: Check generated code is current
+        run: |
+          dart run build_runner build
+          git diff --exit-code -- 'lib/**/*.freezed.dart' 'lib/**/*.g.dart'
+
+      # Likewise for the design tokens: editing index.css without regenerating
+      # would leave the two clients quietly different colours.
+      - name: Check design tokens match the stylesheet
+        run: dart run tool/generate_tokens.dart --check
+
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+
+      - name: Test
+        run: flutter test

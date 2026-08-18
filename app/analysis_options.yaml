@@ -1,0 +1,16 @@
+# Strict from commit 1 — cheap now, expensive later (PLANO_FLUTTER.md §2).
+include: package:very_good_analysis/analysis_options.10.0.0.yaml
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+  errors:
+    # Generated files are formatted by the generator, not by us.
+    lines_longer_than_80_chars: ignore
+
+linter:
+  rules:
+    # The project comments the "why", not the "what"; requiring a doc comment on
+    # every public member turns that into noise on obvious model fields.
+    public_member_api_docs: false
