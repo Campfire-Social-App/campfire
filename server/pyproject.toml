@@ -41,6 +41,10 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Scaffolding do Alembic: env.py e as migrações nascem do template do próprio
+# alembic (Union[...], imports na ordem dele) e são regeneradas a cada revisão —
+# formatá-las à mão só criaria ruído em migração que já rodou em produção.
+extend-exclude = ["alembic"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Query", "fastapi.Depends", "fastapi.Header"]
