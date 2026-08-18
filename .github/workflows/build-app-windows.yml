@@ -1,0 +1,78 @@
+name: Build Flutter client (Windows)
+
+# Same shape as build-windows.yml does for the Tauri client: a manual run
+# publishes to a rolling "app-dev" draft pre-release so the newest build is
+# always behind one link, and an `app-v*` tag cuts a proper versioned one.
+# Either way the zip is attached as a workflow artifact.
+#
+# Windows is the desktop target that comes free from the mobile code — the one
+# thing it will not carry is screen sharing (PLANO_FLUTTER.md §1).
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "app-v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.8
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build
+        run: flutter build windows --release
+
+      # A bare Runner.exe will not start: the Flutter engine DLL and the
+      # bundled assets sit beside it, so the whole Release directory is what
+      # ships.
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "build/windows/x64/runner/Release"
+          Compress-Archive -Path "$out/*" -DestinationPath "campfire-windows-x64.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: campfire-windows-x64
+          path: app/campfire-windows-x64.zip
+          if-no-files-found: error
+
+      - name: Determine release tag
+        id: release
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/app-v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "name=Campfire app ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=app-dev" >> "$GITHUB_OUTPUT"
+            echo "name=Campfire app (dev build)" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.name }}
+          body: "Build automático via GitHub Actions."
+          draft: true
+          prerelease: ${{ steps.release.outputs.prerelease }}
+          files: app/campfire-windows-x64.zip
