@@ -55,6 +55,23 @@ export interface MessageReplyPreview {
   has_attachments: boolean;
 }
 
+export type ReactionType = "like" | "love" | "laugh";
+
+export interface MessageReaction {
+  type: ReactionType;
+  count: number;
+  reacted_by_me: boolean;
+}
+
+export interface MessageReactionUpdate {
+  message_id: string;
+  channel_id: string;
+  type: ReactionType;
+  count: number;
+  user_id: string;
+  reacted: boolean;
+}
+
 export interface Message {
   id: string;
   channel_id: string;
@@ -64,6 +81,7 @@ export interface Message {
   edited_at: string | null;
   attachments: Attachment[];
   reply_to: MessageReplyPreview | null;
+  reactions: MessageReaction[];
 }
 
 export interface MessagePage {
@@ -110,6 +128,7 @@ export type GatewayEventType =
   | "MESSAGE_CREATE"
   | "MESSAGE_UPDATE"
   | "MESSAGE_DELETE"
+  | "MESSAGE_REACTION_UPDATE"
   | "TYPING_START"
   | "PRESENCE_UPDATE"
   | "VOICE_STATE_UPDATE"

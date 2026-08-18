@@ -21,6 +21,7 @@ import type {
   GatewayEvent,
   Message,
   MessageDeleteData,
+  MessageReactionUpdate,
   PresenceUpdateData,
   ReadyEventData,
   TypingStartData,
@@ -200,6 +201,13 @@ class GatewayClient {
       case "MESSAGE_DELETE": {
         const data = event.data as MessageDeleteData;
         useMessagesStore.getState().removeMessage(data.channel_id, data.id);
+        break;
+      }
+      case "MESSAGE_REACTION_UPDATE": {
+        const data = event.data as MessageReactionUpdate;
+        useMessagesStore
+          .getState()
+          .applyReactionUpdate(data, useAuthStore.getState().user?.id);
         break;
       }
       case "TYPING_START": {

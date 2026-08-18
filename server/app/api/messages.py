@@ -2,7 +2,8 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.deps import CurrentUser, DbSession
 from app.gateway.events import GatewayEvent, GatewayEventType
@@ -10,11 +11,14 @@ from app.gateway.manager import manager
 from app.models.attachment import Attachment
 from app.models.channel import Channel, ChannelType
 from app.models.message import Message
+from app.models.message_reaction import MessageReaction, ReactionType
 from app.models.user import User
 from app.schemas.attachment import AttachmentRead
 from app.schemas.message import (
     MessageCreateRequest,
     MessagePage,
+    MessageReactionRead,
+    MessageReactionUpdate,
     MessageRead,
     MessageReplyPreview,
     MessageUpdateRequest,
@@ -69,7 +73,32 @@ async def _to_reply_preview(reply_to_id: uuid.UUID, db: DbSession) -> MessageRep
     )
 
 
-async def _to_message_read(message: Message, db: DbSession) -> MessageRead:
+async def _reaction_summaries(
+    message_id: uuid.UUID, current_user_id: uuid.UUID, db: DbSession
+) -> list[MessageReactionRead]:
+    rows = (
+        await db.execute(
+            select(
+                MessageReaction.type,
+                func.count(MessageReaction.user_id),
+                func.bool_or(MessageReaction.user_id == current_user_id),
+            )
+            .where(MessageReaction.message_id == message_id)
+            .group_by(MessageReaction.type)
+        )
+    ).all()
+    by_type = {
+        reaction_type: MessageReactionRead(
+            type=reaction_type.value, count=count, reacted_by_me=reacted_by_me
+        )
+        for reaction_type, count, reacted_by_me in rows
+    }
+    return [by_type[t] for t in ReactionType if t in by_type]
+
+
+async def _to_message_read(
+    message: Message, current_user_id: uuid.UUID, db: DbSession
+) -> MessageRead:
     author = await db.get(User, message.author_id)
     attachments = (
         (await db.execute(select(Attachment).where(Attachment.message_id == message.id)))
@@ -86,6 +115,7 @@ async def _to_message_read(message: Message, db: DbSession) -> MessageRead:
         edited_at=message.edited_at,
         attachments=[AttachmentRead.from_model(a) for a in attachments],
         reply_to=reply_to,
+        reactions=await _reaction_summaries(message.id, current_user_id, db),
     )
 
 
@@ -111,7 +141,9 @@ async def list_messages(
     rows = rows[:limit]
     rows.reverse()
 
-    return MessagePage(messages=[await _to_message_read(m, db) for m in rows], has_more=has_more)
+    return MessagePage(
+        messages=[await _to_message_read(m, user.id, db) for m in rows], has_more=has_more
+    )
 
 
 @router.post(
@@ -169,7 +201,7 @@ async def create_message(
     await db.commit()
     await db.refresh(message)
 
-    result = await _to_message_read(message, db)
+    result = await _to_message_read(message, user.id, db)
     if channel.type == ChannelType.DM:
         # Before the message itself, so the recipient's client has somewhere to
         # put it if this is the first they've heard of the conversation.
@@ -208,7 +240,7 @@ async def update_message(
     await db.commit()
     await db.refresh(message)
 
-    result = await _to_message_read(message, db)
+    result = await _to_message_read(message, user.id, db)
     await _dispatch(
         channel,
         GatewayEvent(op=GatewayEventType.MESSAGE_UPDATE, data=result.model_dump(mode="json")),
@@ -235,3 +267,92 @@ async def delete_message(message_id: uuid.UUID, user: CurrentUser, db: DbSession
         # The deleted message may have been the conversation's last — refresh the
         # preview/unread state in both rails.
         await dm_service.push_conversation_update(db, channel)
+
+
+async def _get_reactable_message_or_404(
+    message_id: uuid.UUID, user: CurrentUser, db: DbSession
+) -> tuple[Message, Channel]:
+    message = await db.get(Message, message_id)
+    if message is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    channel = await _get_readable_channel_or_404(message.channel_id, user, db)
+    return message, channel
+
+
+async def _reaction_update(
+    message: Message,
+    channel: Channel,
+    reaction_type: ReactionType,
+    user: CurrentUser,
+    reacted: bool,
+    db: DbSession,
+) -> MessageReactionRead:
+    count = await db.scalar(
+        select(func.count(MessageReaction.user_id)).where(
+            MessageReaction.message_id == message.id,
+            MessageReaction.type == reaction_type,
+        )
+    )
+    result = MessageReactionRead(
+        type=reaction_type.value, count=count or 0, reacted_by_me=reacted
+    )
+    event = MessageReactionUpdate(
+        message_id=message.id,
+        channel_id=message.channel_id,
+        type=reaction_type.value,
+        count=result.count,
+        user_id=user.id,
+        reacted=reacted,
+    )
+    await _dispatch(
+        channel,
+        GatewayEvent(
+            op=GatewayEventType.MESSAGE_REACTION_UPDATE,
+            data=event.model_dump(mode="json"),
+        ),
+        db,
+    )
+    return result
+
+
+@router.put(
+    "/api/messages/{message_id}/reactions/{reaction_type}",
+    response_model=MessageReactionRead,
+)
+async def add_reaction(
+    message_id: uuid.UUID,
+    reaction_type: ReactionType,
+    user: CurrentUser,
+    db: DbSession,
+) -> MessageReactionRead:
+    message, channel = await _get_reactable_message_or_404(message_id, user, db)
+    statement = (
+        pg_insert(MessageReaction)
+        .values(message_id=message.id, user_id=user.id, type=reaction_type)
+        .on_conflict_do_nothing(index_elements=["message_id", "user_id", "type"])
+    )
+    await db.execute(statement)
+    await db.commit()
+    return await _reaction_update(message, channel, reaction_type, user, True, db)
+
+
+@router.delete(
+    "/api/messages/{message_id}/reactions/{reaction_type}",
+    response_model=MessageReactionRead,
+)
+async def remove_reaction(
+    message_id: uuid.UUID,
+    reaction_type: ReactionType,
+    user: CurrentUser,
+    db: DbSession,
+) -> MessageReactionRead:
+    message, channel = await _get_reactable_message_or_404(message_id, user, db)
+    await db.execute(
+        delete(MessageReaction).where(
+            MessageReaction.message_id == message.id,
+            MessageReaction.user_id == user.id,
+            MessageReaction.type == reaction_type,
+        )
+    )
+    await db.commit()
+    return await _reaction_update(message, channel, reaction_type, user, False, db)

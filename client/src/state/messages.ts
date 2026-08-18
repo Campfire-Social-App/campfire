@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Message } from "@/lib/types";
+import type { Message, MessageReactionUpdate } from "@/lib/types";
 import { listMessages } from "@/api/endpoints";
 
 interface ChannelMessages {
@@ -15,6 +15,7 @@ interface MessagesState {
   addMessage: (message: Message) => void;
   updateMessage: (message: Message) => void;
   removeMessage: (channelId: string, messageId: string) => void;
+  applyReactionUpdate: (update: MessageReactionUpdate, currentUserId: string | undefined) => void;
 }
 
 export const useMessagesStore = create<MessagesState>()((set, get) => ({
@@ -82,7 +83,18 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
           ...state.byChannel,
           [message.channel_id]: {
             ...existing,
-            messages: existing.messages.map((m) => (m.id === message.id ? message : m)),
+            messages: existing.messages.map((m) => {
+              if (m.id !== message.id) return m;
+              return {
+                ...message,
+                reactions: message.reactions.map((reaction) => ({
+                  ...reaction,
+                  reacted_by_me:
+                    m.reactions.find((current) => current.type === reaction.type)?.reacted_by_me ??
+                    reaction.reacted_by_me,
+                })),
+              };
+            }),
           },
         },
       };
@@ -98,6 +110,35 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
           [channelId]: {
             ...existing,
             messages: existing.messages.filter((m) => m.id !== messageId),
+          },
+        },
+      };
+    }),
+
+  applyReactionUpdate: (update, currentUserId) =>
+    set((state) => {
+      const existing = state.byChannel[update.channel_id];
+      if (!existing) return state;
+      return {
+        byChannel: {
+          ...state.byChannel,
+          [update.channel_id]: {
+            ...existing,
+            messages: existing.messages.map((message) => {
+              if (message.id !== update.message_id) return message;
+              const current = message.reactions.find((reaction) => reaction.type === update.type);
+              const reactedByMe =
+                update.user_id === currentUserId ? update.reacted : (current?.reacted_by_me ?? false);
+              const reactions = message.reactions.filter((reaction) => reaction.type !== update.type);
+              if (update.count > 0) {
+                reactions.push({
+                  type: update.type,
+                  count: update.count,
+                  reacted_by_me: reactedByMe,
+                });
+              }
+              return { ...message, reactions };
+            }),
           },
         },
       };
