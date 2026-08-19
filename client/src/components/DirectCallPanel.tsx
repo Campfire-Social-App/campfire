@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { Mic, MicOff, Phone, PhoneOff, ScreenShare, ScreenShareOff, Video, VideoOff } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { CameraMenu } from "@/components/CameraMenu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TileVisual, buildTiles, type CallTile } from "@/components/CallTiles";
 import { useAuthStore } from "@/state/auth";
@@ -10,7 +12,6 @@ import { usePresenceStore } from "@/state/presence";
 import { useVoiceStore } from "@/state/voice";
 import {
   joinVoiceChannel,
-  setCameraEnabled,
   setMicrophoneMuted,
   requestScreenShare,
   stopScreenShare,
@@ -56,14 +57,6 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
   // they stayed on. Offer the way back in rather than pretending it's over.
   const callInProgressElsewhere = !inThisCall && participants.length > 0;
   if (!inThisCall && !isRinging && !callInProgressElsewhere) return null;
-
-  const handleToggleCamera = async () => {
-    try {
-      await setCameraEnabled(!localCameraEnabled);
-    } catch {
-      toast.error("Couldn't access the camera.");
-    }
-  };
 
   const handleToggleScreenShare = async () => {
     try {
@@ -112,14 +105,20 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
               >
                 {localMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
               </CallControl>
-              <CallControl
-                active={localCameraEnabled}
-                activeClassName="bg-primary/15 text-primary"
-                onClick={() => void handleToggleCamera()}
-                label={localCameraEnabled ? "Turn off camera" : "Turn on camera"}
-              >
-                {localCameraEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
-              </CallControl>
+              <CameraMenu side="bottom" align="center">
+                <CallControl
+                  asMenuTrigger
+                  active={localCameraEnabled}
+                  activeClassName="bg-primary/15 text-primary"
+                  label={localCameraEnabled ? "Camera" : "Turn on camera"}
+                >
+                  {localCameraEnabled ? (
+                    <Video className="size-4" />
+                  ) : (
+                    <VideoOff className="size-4" />
+                  )}
+                </CallControl>
+              </CameraMenu>
               <CallControl
                 active={localScreenShareEnabled}
                 activeClassName="bg-primary/15 text-primary"
@@ -186,28 +185,36 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
 function CallControl({
   active,
   activeClassName = "bg-white/10 text-destructive",
+  asMenuTrigger = false,
   onClick,
   label,
   children,
 }: {
   active: boolean;
   activeClassName?: string;
-  onClick: () => void;
+  /** Opens the enclosing dropdown instead of acting on click. The trigger has to
+   * sit inside the Tooltip (not around it) for both to keep working. */
+  asMenuTrigger?: boolean;
+  onClick?: () => void;
   label: string;
   children: React.ReactNode;
 }) {
+  const button = (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground",
+        active && activeClassName,
+      )}
+    >
+      {children}
+    </button>
+  );
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
-          onClick={onClick}
-          className={cn(
-            "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground",
-            active && activeClassName,
-          )}
-        >
-          {children}
-        </button>
+        {asMenuTrigger ? <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger> : button}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

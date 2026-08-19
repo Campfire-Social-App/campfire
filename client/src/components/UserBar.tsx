@@ -12,6 +12,7 @@ import {
   VolumeX,
   Wifi,
 } from "lucide-react";
+import { CameraMenu } from "@/components/CameraMenu";
 import { UserAvatar } from "@/components/UserAvatar";
 import {
   DropdownMenu,
@@ -27,7 +28,6 @@ import { useChannelsStore } from "@/state/channels";
 import { useDmsStore } from "@/state/dms";
 import {
   leaveVoiceChannel,
-  setCameraEnabled,
   setDeafened,
   setMicrophoneMuted,
   requestScreenShare,
@@ -54,14 +54,6 @@ export function UserBar() {
   );
   const inVoice = connectionStatus !== "disconnected";
   const connected = connectionStatus === "connected";
-
-  const handleToggleCamera = async () => {
-    try {
-      await setCameraEnabled(!localCameraEnabled);
-    } catch {
-      toast.error("Couldn't access the camera.");
-    }
-  };
 
   // Volta para o começo do fluxo: sem servidor configurado o App cai na
   // ServerConnectScreen e, depois dela, no login — que é onde se troca de conta
@@ -125,13 +117,15 @@ export function UserBar() {
 
         {connected && (
           <div className="grid grid-cols-2 gap-1.5 px-2.5 pb-2.5">
-            <MediaTile
-              active={localCameraEnabled}
-              onClick={() => void handleToggleCamera()}
-              label={localCameraEnabled ? "Turn off camera" : "Turn on camera"}
-            >
-              {localCameraEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
-            </MediaTile>
+            <CameraMenu side="top" align="start">
+              <MediaTile
+                asMenuTrigger
+                active={localCameraEnabled}
+                label={localCameraEnabled ? "Camera" : "Turn on camera"}
+              >
+                {localCameraEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
+              </MediaTile>
+            </CameraMenu>
             <MediaTile
               active={localScreenShareEnabled}
               onClick={() => void handleToggleScreenShare()}
@@ -239,27 +233,35 @@ function IconToggle({
 
 function MediaTile({
   active,
+  asMenuTrigger = false,
   onClick,
   label,
   children,
 }: {
   active: boolean;
-  onClick: () => void;
+  /** Opens the enclosing dropdown instead of acting on click. The trigger has to
+   * sit inside the Tooltip (not around it) for both to keep working. */
+  asMenuTrigger?: boolean;
+  onClick?: () => void;
   label: string;
   children: React.ReactNode;
 }) {
+  const button = (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center justify-center rounded-lg bg-white/5 py-2 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground",
+        active && "bg-primary/15 text-primary hover:bg-primary/20",
+      )}
+    >
+      {children}
+    </button>
+  );
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
-          onClick={onClick}
-          className={cn(
-            "flex items-center justify-center rounded-lg bg-white/5 py-2 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground",
-            active && "bg-primary/15 text-primary hover:bg-primary/20",
-          )}
-        >
-          {children}
-        </button>
+        {asMenuTrigger ? <DropdownMenuTrigger asChild>{button}</DropdownMenuTrigger> : button}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

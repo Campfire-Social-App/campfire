@@ -6,6 +6,11 @@ interface SettingsState {
   serverUrl: string | null;
   setServerUrl: (url: string) => void;
   clearServerUrl: () => void;
+  /** Capture device the camera should use, as picked in the camera menu. Kept
+   * across restarts because the pick is about the machine, not the session —
+   * whoever runs a virtual camera wants it every time, not once. */
+  cameraDeviceId: string | null;
+  setCameraDeviceId: (deviceId: string) => void;
 }
 
 function normalizeServerUrl(url: string): string {
@@ -22,6 +27,8 @@ export const useSettingsStore = create<SettingsState>()(
       serverUrl: null,
       setServerUrl: (url) => set({ serverUrl: normalizeServerUrl(url) }),
       clearServerUrl: () => set({ serverUrl: null }),
+      cameraDeviceId: null,
+      setCameraDeviceId: (deviceId) => set({ cameraDeviceId: deviceId }),
     }),
     {
       name: "campfire-settings",

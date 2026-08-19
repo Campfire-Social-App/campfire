@@ -1,4 +1,5 @@
 import {
+  MediaDeviceFailure,
   Room,
   RoomEvent,
   Track,
@@ -19,6 +20,7 @@ import {
   type NativeCapture,
 } from "@/lib/screenCapture";
 import { useDmsStore } from "@/state/dms";
+import { useSettingsStore } from "@/state/settings";
 import { useVoiceStore } from "@/state/voice";
 import { playJoinSound, playLeaveSound } from "@/lib/sounds";
 
@@ -58,7 +60,12 @@ export async function joinVoiceChannel(
   useVoiceStore.getState().setConnection(channelId, "connecting");
   const { token, url } = await getVoiceToken(channelId);
 
-  const nextRoom = new Room();
+  // Non-exact on purpose: a saved device that's gone (OBS closed since last time)
+  // degrades to whatever camera is there instead of failing the join outright.
+  const preferredCamera = useSettingsStore.getState().cameraDeviceId;
+  const nextRoom = new Room(
+    preferredCamera ? { videoCaptureDefaults: { deviceId: preferredCamera } } : undefined,
+  );
   room = nextRoom;
 
   nextRoom
@@ -151,8 +158,9 @@ export async function joinVoiceChannel(
       try {
         await nextRoom.localParticipant.setCameraEnabled(true);
         useVoiceStore.getState().setLocalCameraEnabled(true);
-      } catch {
+      } catch (err) {
         useVoiceStore.getState().setLocalCameraEnabled(false);
+        toast.error(describeCameraError(err));
       }
     }
   } catch (err) {
@@ -185,6 +193,56 @@ export async function setMicrophoneMuted(muted: boolean): Promise<void> {
 export function setDeafened(deafened: boolean): void {
   useVoiceStore.getState().setLocalDeafened(deafened);
   for (const el of audioElements.values()) el.muted = deafened;
+}
+
+/** Why the camera wouldn't start, in the user's terms. The three failures worth
+ * telling apart all look identical from the button: the OS (or the WebView) never
+ * granted access, there's no camera at all, or another app already holds it — and
+ * only the last two are things the user can fix from outside our settings. */
+export function describeCameraError(err: unknown): string {
+  // The raw DOMException carries far more than its name (device id, constraint)
+  // and is the only record of it — the toast below is deliberately coarse.
+  console.error("camera failed to start", err);
+  // The one failure LiveKit's classifier doesn't name: an `exact` device
+  // constraint that matches nothing, i.e. the camera picked in the menu is gone.
+  if (err instanceof DOMException && err.name === "OverconstrainedError") {
+    return "That camera isn't available anymore. Pick another one.";
+  }
+  switch (MediaDeviceFailure.getFailure(err)) {
+    case MediaDeviceFailure.PermissionDenied:
+      return "Camera access was denied. Allow the camera for Campfire in your system's privacy settings.";
+    case MediaDeviceFailure.NotFound:
+      return "No camera found.";
+    case MediaDeviceFailure.DeviceInUse:
+      return "The camera is being used by another app.";
+    default:
+      return "Couldn't access the camera.";
+  }
+}
+
+/** Every capture device the OS offers, virtual ones included. Labels stay empty
+ * until the camera has been granted once, so this asks for permission up front —
+ * a menu of bare device ids would be useless to pick from. */
+export function listCameras(): Promise<MediaDeviceInfo[]> {
+  return Room.getLocalDevices("videoinput", true);
+}
+
+/** The camera currently feeding the room, when it isn't the one the user picked
+ * (nobody has picked yet, or their pick wasn't available). */
+export function getActiveCameraDeviceId(): string | undefined {
+  return room?.getActiveDevice("videoinput");
+}
+
+/** Picking a camera is also how it gets turned on: the button opens this menu
+ * rather than toggling, so "on" and "which one" are the same decision. */
+export async function selectCamera(deviceId: string): Promise<void> {
+  useSettingsStore.getState().setCameraDeviceId(deviceId);
+  if (!room) return;
+  // Exact here, unlike the join-time default: the user just picked this off a
+  // freshly enumerated list, so silently capturing a different camera would be
+  // the wrong kind of forgiving.
+  await room.switchActiveDevice("videoinput", deviceId, true);
+  if (!useVoiceStore.getState().localCameraEnabled) await setCameraEnabled(true);
 }
 
 export async function setCameraEnabled(enabled: boolean): Promise<void> {
