@@ -119,6 +119,7 @@ export interface VoiceParticipantState {
   username: string;
   channel_id: string;
   muted: boolean;
+  deafened?: boolean;
   speaking: boolean;
 }
 

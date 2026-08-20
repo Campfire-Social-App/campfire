@@ -14,3 +14,19 @@ export function playJoinSound(): void {
 export function playLeaveSound(): void {
   playSound("/sounds/leave.mp3");
 }
+
+export function playMicrophoneMuteSound(): void {
+  playSound("/sounds/mic_mute.mp3");
+}
+
+export function playMicrophoneUnmuteSound(): void {
+  playSound("/sounds/mic_unmute.mp3");
+}
+
+export function playDeafenSound(): void {
+  playSound("/sounds/deafen.mp3");
+}
+
+export function playUndeafenSound(): void {
+  playSound("/sounds/undeafen.mp3");
+}

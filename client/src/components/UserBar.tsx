@@ -177,7 +177,7 @@ export function UserBar() {
 
           <IconToggle
             active={localDeafened}
-            onClick={() => setDeafened(!localDeafened)}
+            onClick={() => void setDeafened(!localDeafened)}
             label={localDeafened ? "Undeafen" : "Deafen"}
           >
             {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}

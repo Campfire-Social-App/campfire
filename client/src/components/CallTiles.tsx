@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Mic, MicOff, MonitorPlay } from "lucide-react";
+import { MicOff, MonitorPlay, VolumeX } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import type { VideoTrack } from "@/state/voice";
 import type { VoiceParticipantState } from "@/lib/types";
@@ -83,15 +83,21 @@ export function TileVisual({
         <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-linear-to-t from-black/70 to-transparent px-2.5 py-2">
           {isScreen ? (
             <MonitorPlay className="size-3.5 text-white" />
-          ) : tile.participant.muted ? (
-            <MicOff className="size-3.5 text-destructive" />
-          ) : (
-            <Mic className="size-3.5 text-white/80" />
-          )}
+          ) : null}
           <span className="truncate text-sm font-medium text-white">
             {tile.participant.username}
             {isScreen && " · screen"}
           </span>
+          {!isScreen && (tile.participant.muted || tile.participant.deafened) && (
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 text-destructive">
+              {tile.participant.muted && (
+                <MicOff aria-label="Microphone muted" className="size-3.5" />
+              )}
+              {tile.participant.deafened && (
+                <VolumeX aria-label="Audio deafened" className="size-3.5" />
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
