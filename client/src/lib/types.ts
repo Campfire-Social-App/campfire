@@ -2,6 +2,7 @@ export interface User {
   id: string;
   username: string;
   is_admin: boolean;
+  avatar_url: string | null;
   created_at: string;
 }
 
@@ -129,6 +130,7 @@ export type GatewayEventType =
   | "MESSAGE_UPDATE"
   | "MESSAGE_DELETE"
   | "MESSAGE_REACTION_UPDATE"
+  | "USER_UPDATE"
   | "TYPING_START"
   | "PRESENCE_UPDATE"
   | "VOICE_STATE_UPDATE"
@@ -144,7 +146,7 @@ export interface GatewayEvent<T = unknown> {
 }
 
 export interface ReadyEventData {
-  user: { id: string; username: string; is_admin: boolean };
+  user: { id: string; username: string; is_admin: boolean; avatar_url: string | null };
   server: ServerSettings;
   channels: Channel[];
   dms: DMConversation[];

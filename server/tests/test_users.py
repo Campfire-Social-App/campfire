@@ -21,3 +21,28 @@ async def test_list_users_includes_all_members(client: AsyncClient, admin_header
 async def test_list_users_requires_auth(client: AsyncClient) -> None:
     resp = await client.get("/api/users")
     assert resp.status_code == 401
+
+
+async def test_user_can_update_profile_photo(
+    client: AsyncClient, admin_headers: dict[str, str], admin_user, db_session
+) -> None:
+    from app.models.attachment import Attachment
+
+    attachment = Attachment(
+        uploaded_by_id=admin_user.id,
+        filename="avatar.gif",
+        content_type="image/gif",
+        size_bytes=256,
+        storage_path="avatar.gif",
+    )
+    db_session.add(attachment)
+    await db_session.commit()
+    await db_session.refresh(attachment)
+
+    response = await client.put(
+        "/api/users/@me/avatar",
+        json={"attachment_id": str(attachment.id)},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["avatar_url"] == f"/api/uploads/{attachment.id}"

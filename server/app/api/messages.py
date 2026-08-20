@@ -180,6 +180,11 @@ async def create_message(
                         Attachment.id.in_(payload.attachment_ids),
                         Attachment.uploaded_by_id == user.id,
                         Attachment.message_id.is_(None),
+                        ~Attachment.id.in_(
+                            select(User.avatar_attachment_id).where(
+                                User.avatar_attachment_id.is_not(None)
+                            )
+                        ),
                     )
                 )
             )

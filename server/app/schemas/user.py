@@ -10,4 +10,9 @@ class UserRead(BaseModel):
     id: uuid.UUID
     username: str
     is_admin: bool
+    avatar_url: str | None = None
     created_at: datetime
+
+
+class UserAvatarUpdateRequest(BaseModel):
+    attachment_id: uuid.UUID

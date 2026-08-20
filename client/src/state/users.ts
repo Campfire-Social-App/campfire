@@ -11,7 +11,7 @@ interface UsersState {
   upsertUser: (user: User) => void;
 }
 
-export const useUsersStore = create<UsersState>()((set, get) => ({
+export const useUsersStore = create<UsersState>()((set) => ({
   users: [],
   byId: {},
   fetch: async () => {
@@ -19,9 +19,10 @@ export const useUsersStore = create<UsersState>()((set, get) => ({
     set({ users, byId: Object.fromEntries(users.map((u) => [u.id, u])) });
   },
   upsertUser: (user) => {
-    if (get().byId[user.id]) return;
     set((state) => ({
-      users: [...state.users, user],
+      users: state.byId[user.id]
+        ? state.users.map((item) => (item.id === user.id ? user : item))
+        : [...state.users, user],
       byId: { ...state.byId, [user.id]: user },
     }));
   },
