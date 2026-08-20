@@ -1,5 +1,8 @@
-import { Avatar, AvatarBadge, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { resolveAssetUrl } from "@/api/client";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/state/auth";
+import { useUsersStore } from "@/state/users";
 
 // Fire embers mixed with night-sky tones, so avatars stay distinguishable
 // without clashing with the primary campfire-orange accent used for UI chrome.
@@ -54,6 +57,9 @@ interface UserAvatarProps {
 }
 
 export function UserAvatar({ username, size = "default", status, ring, className }: UserAvatarProps) {
+  const knownAvatar = useUsersStore((state) => state.users.find((user) => user.username === username)?.avatar_url);
+  const ownAvatar = useAuthStore((state) => state.user?.username === username ? state.user.avatar_url : null);
+  const avatarUrl = knownAvatar ?? ownAvatar;
   return (
     <Avatar
       size={size}
@@ -62,6 +68,7 @@ export function UserAvatar({ username, size = "default", status, ring, className
         className,
       )}
     >
+      {avatarUrl && <AvatarImage src={resolveAssetUrl(avatarUrl)} alt={username} />}
       <AvatarFallback className={cn(colorFor(username), "font-semibold text-white")}>
         {initialsFor(username)}
       </AvatarFallback>

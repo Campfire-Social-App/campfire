@@ -24,6 +24,8 @@ interface VoiceState {
   applyVoiceStateUpdate: (data: VoiceStateUpdateData) => void;
   setConnection: (channelId: string | null, status: VoiceConnectionStatus) => void;
   setLocalMuted: (muted: boolean) => void;
+  setParticipantMuted: (userId: string, muted: boolean) => void;
+  setParticipantDeafened: (userId: string, deafened: boolean) => void;
   setLocalDeafened: (deafened: boolean) => void;
   setLocalCameraEnabled: (enabled: boolean) => void;
   setLocalScreenShareEnabled: (enabled: boolean) => void;
@@ -58,6 +60,7 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
           username: data.username ?? data.user_id,
           channel_id: data.channel_id,
           muted: false,
+          deafened: false,
           speaking: false,
         });
         return { states: next };
@@ -88,6 +91,18 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
     }),
 
   setLocalMuted: (muted) => set({ localMuted: muted }),
+  setParticipantMuted: (userId, muted) =>
+    set((state) => ({
+      states: state.states.map((participant) =>
+        participant.user_id === userId ? { ...participant, muted } : participant,
+      ),
+    })),
+  setParticipantDeafened: (userId, deafened) =>
+    set((state) => ({
+      states: state.states.map((participant) =>
+        participant.user_id === userId ? { ...participant, deafened } : participant,
+      ),
+    })),
   setLocalDeafened: (deafened) => set({ localDeafened: deafened }),
   setLocalCameraEnabled: (enabled) => set({ localCameraEnabled: enabled }),
   setLocalScreenShareEnabled: (enabled) => set({ localScreenShareEnabled: enabled }),

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
         "tauri://localhost",
         "http://tauri.localhost",
         "http://localhost:1420",
+        "http://127.0.0.1:1420",
     ]
 
     # Database

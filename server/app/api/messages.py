@@ -87,13 +87,17 @@ async def _reaction_summaries(
             .group_by(MessageReaction.type)
         )
     ).all()
-    by_type = {
-        reaction_type: MessageReactionRead(
-            type=reaction_type.value, count=count, reacted_by_me=reacted_by_me
-        )
-        for reaction_type, count, reacted_by_me in rows
-    }
-    return [by_type[t] for t in ReactionType if t in by_type]
+    return sorted(
+        (
+            MessageReactionRead(
+                type=reaction_type,
+                count=count,
+                reacted_by_me=reacted_by_me,
+            )
+            for reaction_type, count, reacted_by_me in rows
+        ),
+        key=lambda reaction: reaction.type,
+    )
 
 
 async def _to_message_read(
@@ -180,6 +184,11 @@ async def create_message(
                         Attachment.id.in_(payload.attachment_ids),
                         Attachment.uploaded_by_id == user.id,
                         Attachment.message_id.is_(None),
+                        ~Attachment.id.in_(
+                            select(User.avatar_attachment_id).where(
+                                User.avatar_attachment_id.is_not(None)
+                            )
+                        ),
                     )
                 )
             )

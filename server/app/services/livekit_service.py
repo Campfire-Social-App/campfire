@@ -16,6 +16,9 @@ def create_voice_token(*, room: str, identity: str, name: str) -> str:
                 room=room,
                 can_publish=True,
                 can_subscribe=True,
+                # Used to propagate the participant's deafened state so other
+                # clients can render the red audio icon next to their name.
+                can_update_own_metadata=True,
             )
         )
     )

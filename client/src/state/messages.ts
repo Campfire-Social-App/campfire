@@ -87,10 +87,11 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
               if (m.id !== message.id) return m;
               return {
                 ...message,
-                reactions: message.reactions.map((reaction) => ({
+                reactions: (message.reactions ?? []).map((reaction) => ({
                   ...reaction,
                   reacted_by_me:
-                    m.reactions.find((current) => current.type === reaction.type)?.reacted_by_me ??
+                    (m.reactions ?? []).find((current) => current.type === reaction.type)
+                      ?.reacted_by_me ??
                     reaction.reacted_by_me,
                 })),
               };
@@ -126,10 +127,14 @@ export const useMessagesStore = create<MessagesState>()((set, get) => ({
             ...existing,
             messages: existing.messages.map((message) => {
               if (message.id !== update.message_id) return message;
-              const current = message.reactions.find((reaction) => reaction.type === update.type);
+              const current = (message.reactions ?? []).find(
+                (reaction) => reaction.type === update.type,
+              );
               const reactedByMe =
                 update.user_id === currentUserId ? update.reacted : (current?.reacted_by_me ?? false);
-              const reactions = message.reactions.filter((reaction) => reaction.type !== update.type);
+              const reactions = (message.reactions ?? []).filter(
+                (reaction) => reaction.type !== update.type,
+              );
               if (update.count > 0) {
                 reactions.push({
                   type: update.type,

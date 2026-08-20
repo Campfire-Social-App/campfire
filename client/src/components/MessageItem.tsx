@@ -37,6 +37,10 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const [pendingReaction, setPendingReaction] = useState<ReactionType | null>(null);
+  // Older server instances and messages cached before reactions existed do not
+  // carry this field. Treat them as having no reactions instead of crashing
+  // the entire authenticated shell.
+  const reactions = message.reactions ?? [];
 
   const isOwn = currentUser?.id === message.author.id;
   const canModify = isOwn || currentUser?.is_admin;
@@ -63,7 +67,7 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
 
   const toggleReaction = async (type: ReactionType) => {
     if (!currentUser || pendingReaction) return;
-    const current = message.reactions.find((reaction) => reaction.type === type);
+    const current = reactions.find((reaction) => reaction.type === type);
     setPendingReaction(type);
     try {
       const result = current?.reacted_by_me
@@ -174,10 +178,10 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
           <AttachmentList attachments={message.attachments} />
         )}
 
-        {message.reactions.length > 0 && (
+        {reactions.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {REACTIONS.map(({ type, emoji, label }) => {
-              const reaction = message.reactions.find((item) => item.type === type);
+              const reaction = reactions.find((item) => item.type === type);
               if (!reaction) return null;
               return (
                 <button

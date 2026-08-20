@@ -20,7 +20,14 @@ import {
 } from "@/lib/screenCapture";
 import { useDmsStore } from "@/state/dms";
 import { useVoiceStore } from "@/state/voice";
-import { playJoinSound, playLeaveSound } from "@/lib/sounds";
+import {
+  playJoinSound,
+  playLeaveSound,
+  playDeafenSound,
+  playMicrophoneMuteSound,
+  playMicrophoneUnmuteSound,
+  playUndeafenSound,
+} from "@/lib/sounds";
 
 let room: Room | null = null;
 /** Set while the screen share is coming from our own capture rather than the
@@ -28,6 +35,9 @@ let room: Room | null = null;
 let nativeCapture: NativeCapture | null = null;
 /** Remote audio elements keyed by track SID, so they can be torn down on unsubscribe. */
 const audioElements = new Map<string, HTMLMediaElement>();
+/** Whether deafening, rather than the microphone button, caused the current
+ * microphone mute. Only an automatic mute may be automatically undone. */
+let microphoneMutedByDeafen = false;
 
 /** Camera/screen-share track visibility is keyed by participant + source, since
  * LiveKit mutes (rather than unpublishes) camera/mic tracks on disable — the
@@ -65,12 +75,22 @@ export async function joinVoiceChannel(
     .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
       useVoiceStore.getState().setSpeaking(speakers.map((p) => p.identity));
     })
+    .on(RoomEvent.ParticipantAttributesChanged, (attributes, participant) => {
+      if (attributes.deafened !== undefined) {
+        useVoiceStore
+          .getState()
+          .setParticipantDeafened(participant.identity, attributes.deafened === "true");
+      }
+    })
     .on(
       RoomEvent.TrackSubscribed,
       (track: RemoteTrack, publication: RemoteTrackPublication, participant) => {
         if (track.kind === Track.Kind.Video) {
           if (!publication.isMuted) setVideoTrackForSource(participant, track.source, track as RemoteVideoTrack);
           return;
+        }
+        if (publication.source === Track.Source.Microphone) {
+          useVoiceStore.getState().setParticipantMuted(participant.identity, publication.isMuted);
         }
         const el = track.attach();
         el.autoplay = true;
@@ -110,16 +130,22 @@ export async function joinVoiceChannel(
     // LiveKit mutes camera/mic tracks in place (rather than unpublishing) once
     // they've been published once, so track visibility has to react to mute too.
     .on(RoomEvent.TrackMuted, (publication: TrackPublication, participant) => {
-      if (publication.kind !== Track.Kind.Video) return;
-      setVideoTrackForSource(participant, publication.source, null);
+      if (publication.source === Track.Source.Microphone) {
+        useVoiceStore.getState().setParticipantMuted(participant.identity, true);
+      } else if (publication.kind === Track.Kind.Video) {
+        setVideoTrackForSource(participant, publication.source, null);
+      }
     })
     .on(RoomEvent.TrackUnmuted, (publication: TrackPublication, participant) => {
-      if (publication.kind !== Track.Kind.Video || !publication.track) return;
-      setVideoTrackForSource(
-        participant,
-        publication.source,
-        publication.track as LocalVideoTrack | RemoteVideoTrack,
-      );
+      if (publication.source === Track.Source.Microphone) {
+        useVoiceStore.getState().setParticipantMuted(participant.identity, false);
+      } else if (publication.kind === Track.Kind.Video && publication.track) {
+        setVideoTrackForSource(
+          participant,
+          publication.source,
+          publication.track as LocalVideoTrack | RemoteVideoTrack,
+        );
+      }
     })
     .on(RoomEvent.ParticipantDisconnected, () => {
       // A 1:1 call is over the moment the other person leaves — unlike a voice
@@ -142,7 +168,24 @@ export async function joinVoiceChannel(
 
   try {
     await nextRoom.connect(url, token);
-    await nextRoom.localParticipant.setMicrophoneEnabled(!useVoiceStore.getState().localMuted);
+    const localMuted = useVoiceStore.getState().localMuted;
+    await nextRoom.localParticipant.setMicrophoneEnabled(!localMuted);
+    useVoiceStore.getState().setParticipantMuted(nextRoom.localParticipant.identity, localMuted);
+    const localDeafened = useVoiceStore.getState().localDeafened;
+    // Presence decoration must never make an otherwise healthy voice join
+    // fail (for example while talking to an older server token without the
+    // metadata grant).
+    await nextRoom.localParticipant
+      .setAttributes({ deafened: String(localDeafened) })
+      .catch(() => {});
+    useVoiceStore
+      .getState()
+      .setParticipantDeafened(nextRoom.localParticipant.identity, localDeafened);
+    for (const participant of nextRoom.remoteParticipants.values()) {
+      useVoiceStore
+        .getState()
+        .setParticipantDeafened(participant.identity, participant.attributes.deafened === "true");
+    }
     useVoiceStore.getState().setConnection(channelId, "connected");
     playJoinSound();
     if (options.camera) {
@@ -177,14 +220,54 @@ export async function leaveVoiceChannel(): Promise<void> {
   useVoiceStore.getState().setConnection(null, "disconnected");
 }
 
-export async function setMicrophoneMuted(muted: boolean): Promise<void> {
-  useVoiceStore.getState().setLocalMuted(muted);
+export async function setMicrophoneMuted(
+  muted: boolean,
+  options: { playFeedback?: boolean; syncAudio?: boolean } = {},
+): Promise<void> {
+  // A direct microphone action takes ownership of its state, even while the
+  // output audio is deafened.
+  microphoneMutedByDeafen = false;
+  const wasDeafened = useVoiceStore.getState().localDeafened;
   await room?.localParticipant.setMicrophoneEnabled(!muted);
+  const voiceState = useVoiceStore.getState();
+  voiceState.setLocalMuted(muted);
+  if (room) voiceState.setParticipantMuted(room.localParticipant.identity, muted);
+  // Unmuting the microphone while deafened enables the audio too. Let the
+  // undeafen transition provide the single feedback sound for both changes.
+  const willUndeafenAudio = !muted && wasDeafened && options.syncAudio !== false;
+  if (options.playFeedback !== false && !willUndeafenAudio) {
+    if (muted) playMicrophoneMuteSound();
+    else playMicrophoneUnmuteSound();
+  }
+  if (willUndeafenAudio) await setDeafened(false);
 }
 
-export function setDeafened(deafened: boolean): void {
+export async function setDeafened(deafened: boolean): Promise<void> {
+  if (deafened) {
+    // Only remember an automatic mute when the microphone was active. If it
+    // was already muted, that was the user's choice and must be preserved.
+    if (!useVoiceStore.getState().localMuted) {
+      await setMicrophoneMuted(true, { playFeedback: false });
+      microphoneMutedByDeafen = true;
+    } else {
+      microphoneMutedByDeafen = false;
+    }
+  } else {
+    // Undo only the mute introduced by deafening. A microphone muted before
+    // the audio was deafened remains muted until its own button is clicked.
+    if (microphoneMutedByDeafen && useVoiceStore.getState().localMuted) {
+      await setMicrophoneMuted(false, { playFeedback: false, syncAudio: false });
+    }
+    microphoneMutedByDeafen = false;
+  }
   useVoiceStore.getState().setLocalDeafened(deafened);
   for (const el of audioElements.values()) el.muted = deafened;
+  if (room) {
+    useVoiceStore.getState().setParticipantDeafened(room.localParticipant.identity, deafened);
+    await room.localParticipant.setAttributes({ deafened: String(deafened) }).catch(() => {});
+  }
+  if (deafened) playDeafenSound();
+  else playUndeafenSound();
 }
 
 export async function setCameraEnabled(enabled: boolean): Promise<void> {

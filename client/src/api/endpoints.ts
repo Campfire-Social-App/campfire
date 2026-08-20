@@ -82,6 +82,12 @@ export const markDmRead = (channelId: string) =>
 
 export const listUsers = () => apiFetch<User[]>("/api/users");
 
+export const updateMyAvatar = (attachmentId: string) =>
+  apiFetch<User>("/api/users/@me/avatar", {
+    method: "PUT",
+    body: { attachment_id: attachmentId },
+  });
+
 export const getServerSettings = () => apiFetch<ServerSettings>("/api/server");
 
 export const createInvite = (maxUses?: number, expiresInHours?: number) =>

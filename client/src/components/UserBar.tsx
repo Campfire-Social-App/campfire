@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Headphones,
   Mic,
@@ -11,8 +12,10 @@ import {
   VideoOff,
   VolumeX,
   Wifi,
+  UserRound,
 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { ProfileDialog } from "@/components/ProfileDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export function UserBar() {
+  const [profileOpen, setProfileOpen] = useState(false);
   const user = useAuthStore((s) => s.user);
   const connectedChannelId = useVoiceStore((s) => s.connectedChannelId);
   const connectionStatus = useVoiceStore((s) => s.connectionStatus);
@@ -173,7 +177,7 @@ export function UserBar() {
 
           <IconToggle
             active={localDeafened}
-            onClick={() => setDeafened(!localDeafened)}
+            onClick={() => void setDeafened(!localDeafened)}
             label={localDeafened ? "Undeafen" : "Deafen"}
           >
             {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
@@ -195,11 +199,15 @@ export function UserBar() {
             </Tooltip>
             {/* Para cima e alinhado à direita: a barra mora no rodapé da sidebar. */}
             <DropdownMenuContent side="top" align="end" className="w-56">
+              <DropdownMenuItem onSelect={() => setProfileOpen(true)}>
+                <UserRound className="size-4" /> Profile
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => void handleSwitchAccount()}>
                 <Repeat className="size-4" /> Switch account
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
         </div>
       </div>
     </div>

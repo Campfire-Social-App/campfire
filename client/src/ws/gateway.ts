@@ -25,6 +25,7 @@ import type {
   PresenceUpdateData,
   ReadyEventData,
   TypingStartData,
+  User,
   VoiceStateUpdateData,
 } from "@/lib/types";
 
@@ -176,6 +177,7 @@ class GatewayClient {
           id: data.user.id,
           username: data.user.username,
           is_admin: data.user.is_admin,
+          avatar_url: data.user.avatar_url,
           created_at: useAuthStore.getState().user?.created_at ?? new Date().toISOString(),
         });
         useServerStore.getState().setServer(data.server);
@@ -208,6 +210,12 @@ class GatewayClient {
         useMessagesStore
           .getState()
           .applyReactionUpdate(data, useAuthStore.getState().user?.id);
+        break;
+      }
+      case "USER_UPDATE": {
+        const data = event.data as User;
+        useUsersStore.getState().upsertUser(data);
+        if (data.id === useAuthStore.getState().user?.id) useAuthStore.getState().setUser(data);
         break;
       }
       case "TYPING_START": {

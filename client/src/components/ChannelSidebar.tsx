@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, Hash, Mic, MicOff, Plus, UserPlus, Volume2 } from "lucide-react";
+import { ChevronDown, Hash, MicOff, Plus, UserPlus, Volume2, VolumeX } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import {
   DropdownMenu,
@@ -189,10 +189,11 @@ function VoiceParticipants({ channelId }: { channelId: string }) {
                 ring={!!speakingUserIds[p.user_id]}
               />
               <span className="min-w-0 truncate text-sm text-muted-foreground">{p.username}</span>
-              {p.muted ? (
-                <MicOff className="ml-auto size-3.5 text-muted-foreground" />
-              ) : (
-                <Mic className="ml-auto size-3.5 text-transparent" />
+              {(p.muted || p.deafened) && (
+                <div className="ml-auto flex shrink-0 items-center gap-1.5 text-destructive">
+                  {p.muted && <MicOff aria-label="Microphone muted" className="size-3.5" />}
+                  {p.deafened && <VolumeX aria-label="Audio deafened" className="size-3.5" />}
+                </div>
               )}
             </div>
           </TooltipTrigger>
