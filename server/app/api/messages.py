@@ -87,13 +87,17 @@ async def _reaction_summaries(
             .group_by(MessageReaction.type)
         )
     ).all()
-    by_type = {
-        reaction_type: MessageReactionRead(
-            type=reaction_type.value, count=count, reacted_by_me=reacted_by_me
-        )
-        for reaction_type, count, reacted_by_me in rows
-    }
-    return [by_type[t] for t in ReactionType if t in by_type]
+    return sorted(
+        (
+            MessageReactionRead(
+                type=reaction_type,
+                count=count,
+                reacted_by_me=reacted_by_me,
+            )
+            for reaction_type, count, reacted_by_me in rows
+        ),
+        key=lambda reaction: reaction.type,
+    )
 
 
 async def _to_message_read(
