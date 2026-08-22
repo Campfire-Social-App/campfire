@@ -46,6 +46,18 @@ void main() {
       expect(xml, contains('android.permission.FOREGROUND_SERVICE_MICROPHONE'));
       expect(xml, contains('android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION'));
     });
+
+    test('claims only the service types it holds the permission for', () {
+      // Declaring the microphone type before `RECORD_AUDIO` is granted throws
+      // `SecurityException` from Android 14, and an exception out of
+      // `onStartCommand` kills the process — joining a voice channel on a fresh
+      // install crashed the app until the service started checking first.
+      final kotlin = File(
+        'android/app/src/main/kotlin/com/campfire/campfire/CallService.kt',
+      ).readAsStringSync();
+      expect(kotlin, contains('checkSelfPermission(Manifest.permission.RECORD_AUDIO)'));
+      expect(kotlin, contains('catch (error: Exception)'));
+    });
   });
 
   group('iOS Info.plist', () {
