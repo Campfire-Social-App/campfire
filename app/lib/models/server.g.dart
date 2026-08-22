@@ -41,6 +41,7 @@ _VoiceParticipantState _$VoiceParticipantStateFromJson(
   username: json['username'] as String,
   channelId: json['channel_id'] as String,
   muted: json['muted'] as bool? ?? false,
+  deafened: json['deafened'] as bool? ?? false,
   speaking: json['speaking'] as bool? ?? false,
 );
 
@@ -51,5 +52,6 @@ Map<String, dynamic> _$VoiceParticipantStateToJson(
   'username': instance.username,
   'channel_id': instance.channelId,
   'muted': instance.muted,
+  'deafened': instance.deafened,
   'speaking': instance.speaking,
 };

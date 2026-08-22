@@ -228,3 +228,9 @@ class _StarfieldPainter extends CustomPainter {
   @override
   bool shouldRepaint(_StarfieldPainter oldDelegate) => false;
 }
+
+/// The colour a translucent column takes when it is a drawer rather than one of
+/// the wide layout's columns: the same token, resolved against the night sky it
+/// would normally be sitting on. Without this the chat pane shows through the
+/// open drawer, which the web client never has to deal with.
+Color overSky(Color translucent) => Color.alphaBlend(translucent, ShellTokens.skyTop);

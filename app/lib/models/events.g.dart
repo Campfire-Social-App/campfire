@@ -39,6 +39,34 @@ Map<String, dynamic> _$ReadyDataToJson(_ReadyData instance) =>
       'voice_states': instance.voiceStates.map((e) => e.toJson()).toList(),
     };
 
+_MessageReactionUpdateData _$MessageReactionUpdateDataFromJson(
+  Map<String, dynamic> json,
+) => _MessageReactionUpdateData(
+  messageId: json['message_id'] as String,
+  channelId: json['channel_id'] as String,
+  type: $enumDecode(_$ReactionTypeEnumMap, json['type']),
+  count: (json['count'] as num).toInt(),
+  userId: json['user_id'] as String,
+  reacted: json['reacted'] as bool,
+);
+
+Map<String, dynamic> _$MessageReactionUpdateDataToJson(
+  _MessageReactionUpdateData instance,
+) => <String, dynamic>{
+  'message_id': instance.messageId,
+  'channel_id': instance.channelId,
+  'type': _$ReactionTypeEnumMap[instance.type]!,
+  'count': instance.count,
+  'user_id': instance.userId,
+  'reacted': instance.reacted,
+};
+
+const _$ReactionTypeEnumMap = {
+  ReactionType.like: 'like',
+  ReactionType.love: 'love',
+  ReactionType.laugh: 'laugh',
+};
+
 _PresenceUpdateData _$PresenceUpdateDataFromJson(Map<String, dynamic> json) =>
     _PresenceUpdateData(
       userId: json['user_id'] as String,

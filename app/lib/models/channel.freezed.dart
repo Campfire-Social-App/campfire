@@ -15,7 +15,9 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$Channel {
 
- String get id; String get name;@JsonKey(unknownEnumValue: ChannelType.text) ChannelType get type; int get position;/// Absent on the channels embedded in READY, present on `/api/channels`.
+ String get id; String get name;// A server that grows a channel kind this build has not heard of should not
+// take the whole READY frame down with it.
+@JsonKey(unknownEnumValue: ChannelType.text) ChannelType get type; int get position;/// Absent on the channels embedded in READY, present on `/api/channels`.
 /// See the note on `User.createdAt`.
  DateTime? get createdAt;
 /// Create a copy of Channel
@@ -220,6 +222,8 @@ class _Channel implements Channel {
 
 @override final  String id;
 @override final  String name;
+// A server that grows a channel kind this build has not heard of should not
+// take the whole READY frame down with it.
 @override@JsonKey(unknownEnumValue: ChannelType.text) final  ChannelType type;
 @override final  int position;
 /// Absent on the channels embedded in READY, present on `/api/channels`.

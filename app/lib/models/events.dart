@@ -9,7 +9,7 @@ part 'events.freezed.dart';
 part 'events.g.dart';
 
 /// Every frame the server can push down `/gateway`, as a sealed union so a
-/// `switch` over them is checked at compile time — add a thirteenth op on the
+/// `switch` over them is checked at compile time — add a fifteenth op on the
 /// server and the dispatcher stops compiling until it is handled.
 ///
 /// The wire format is `{"op": ..., "data": {...}}`: a discriminator with the
@@ -26,6 +26,11 @@ sealed class GatewayEvent with _$GatewayEvent {
   const factory GatewayEvent.messageCreate(Message message) = MessageCreateEvent;
   const factory GatewayEvent.messageUpdate(Message message) = MessageUpdateEvent;
   const factory GatewayEvent.messageDelete(MessageDeleteData data) = MessageDeleteEvent;
+  const factory GatewayEvent.messageReactionUpdate(MessageReactionUpdateData data) =
+      MessageReactionUpdateEvent;
+
+  /// Someone changed their profile — today that means their avatar.
+  const factory GatewayEvent.userUpdate(User user) = UserUpdateEvent;
   const factory GatewayEvent.typingStart(TypingStartData data) = TypingStartEvent;
   const factory GatewayEvent.presenceUpdate(PresenceUpdateData data) = PresenceUpdateEvent;
   const factory GatewayEvent.voiceStateUpdate(VoiceStateUpdateData data) = VoiceStateUpdateEvent;
@@ -60,6 +65,9 @@ sealed class GatewayEvent with _$GatewayEvent {
       'MESSAGE_CREATE' => GatewayEvent.messageCreate(Message.fromJson(data)),
       'MESSAGE_UPDATE' => GatewayEvent.messageUpdate(Message.fromJson(data)),
       'MESSAGE_DELETE' => GatewayEvent.messageDelete(MessageDeleteData.fromJson(data)),
+      'MESSAGE_REACTION_UPDATE' =>
+        GatewayEvent.messageReactionUpdate(MessageReactionUpdateData.fromJson(data)),
+      'USER_UPDATE' => GatewayEvent.userUpdate(User.fromJson(data)),
       'TYPING_START' => GatewayEvent.typingStart(TypingStartData.fromJson(data)),
       'PRESENCE_UPDATE' => GatewayEvent.presenceUpdate(PresenceUpdateData.fromJson(data)),
       'VOICE_STATE_UPDATE' => GatewayEvent.voiceStateUpdate(VoiceStateUpdateData.fromJson(data)),
@@ -85,6 +93,23 @@ abstract class ReadyData with _$ReadyData {
   }) = _ReadyData;
 
   factory ReadyData.fromJson(Map<String, dynamic> json) => _$ReadyDataFromJson(json);
+}
+
+/// A reaction changing, from anyone's client. [reacted] is about [userId], so
+/// only the frame about *you* may move your own `reacted_by_me`.
+@freezed
+abstract class MessageReactionUpdateData with _$MessageReactionUpdateData {
+  const factory MessageReactionUpdateData({
+    required String messageId,
+    required String channelId,
+    required ReactionType type,
+    required int count,
+    required String userId,
+    required bool reacted,
+  }) = _MessageReactionUpdateData;
+
+  factory MessageReactionUpdateData.fromJson(Map<String, dynamic> json) =>
+      _$MessageReactionUpdateDataFromJson(json);
 }
 
 @freezed

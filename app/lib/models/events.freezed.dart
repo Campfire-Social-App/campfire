@@ -55,14 +55,16 @@ extension GatewayEventPatterns on GatewayEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReadyEvent value)?  ready,TResult Function( MessageCreateEvent value)?  messageCreate,TResult Function( MessageUpdateEvent value)?  messageUpdate,TResult Function( MessageDeleteEvent value)?  messageDelete,TResult Function( TypingStartEvent value)?  typingStart,TResult Function( PresenceUpdateEvent value)?  presenceUpdate,TResult Function( VoiceStateUpdateEvent value)?  voiceStateUpdate,TResult Function( ChannelCreateEvent value)?  channelCreate,TResult Function( ChannelUpdateEvent value)?  channelUpdate,TResult Function( ChannelDeleteEvent value)?  channelDelete,TResult Function( DMUpdateEvent value)?  dmUpdate,TResult Function( DMCallEvent value)?  dmCall,TResult Function( UnknownEvent value)?  unknown,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ReadyEvent value)?  ready,TResult Function( MessageCreateEvent value)?  messageCreate,TResult Function( MessageUpdateEvent value)?  messageUpdate,TResult Function( MessageDeleteEvent value)?  messageDelete,TResult Function( MessageReactionUpdateEvent value)?  messageReactionUpdate,TResult Function( UserUpdateEvent value)?  userUpdate,TResult Function( TypingStartEvent value)?  typingStart,TResult Function( PresenceUpdateEvent value)?  presenceUpdate,TResult Function( VoiceStateUpdateEvent value)?  voiceStateUpdate,TResult Function( ChannelCreateEvent value)?  channelCreate,TResult Function( ChannelUpdateEvent value)?  channelUpdate,TResult Function( ChannelDeleteEvent value)?  channelDelete,TResult Function( DMUpdateEvent value)?  dmUpdate,TResult Function( DMCallEvent value)?  dmCall,TResult Function( UnknownEvent value)?  unknown,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case ReadyEvent() when ready != null:
 return ready(_that);case MessageCreateEvent() when messageCreate != null:
 return messageCreate(_that);case MessageUpdateEvent() when messageUpdate != null:
 return messageUpdate(_that);case MessageDeleteEvent() when messageDelete != null:
-return messageDelete(_that);case TypingStartEvent() when typingStart != null:
+return messageDelete(_that);case MessageReactionUpdateEvent() when messageReactionUpdate != null:
+return messageReactionUpdate(_that);case UserUpdateEvent() when userUpdate != null:
+return userUpdate(_that);case TypingStartEvent() when typingStart != null:
 return typingStart(_that);case PresenceUpdateEvent() when presenceUpdate != null:
 return presenceUpdate(_that);case VoiceStateUpdateEvent() when voiceStateUpdate != null:
 return voiceStateUpdate(_that);case ChannelCreateEvent() when channelCreate != null:
@@ -89,14 +91,16 @@ return unknown(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReadyEvent value)  ready,required TResult Function( MessageCreateEvent value)  messageCreate,required TResult Function( MessageUpdateEvent value)  messageUpdate,required TResult Function( MessageDeleteEvent value)  messageDelete,required TResult Function( TypingStartEvent value)  typingStart,required TResult Function( PresenceUpdateEvent value)  presenceUpdate,required TResult Function( VoiceStateUpdateEvent value)  voiceStateUpdate,required TResult Function( ChannelCreateEvent value)  channelCreate,required TResult Function( ChannelUpdateEvent value)  channelUpdate,required TResult Function( ChannelDeleteEvent value)  channelDelete,required TResult Function( DMUpdateEvent value)  dmUpdate,required TResult Function( DMCallEvent value)  dmCall,required TResult Function( UnknownEvent value)  unknown,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ReadyEvent value)  ready,required TResult Function( MessageCreateEvent value)  messageCreate,required TResult Function( MessageUpdateEvent value)  messageUpdate,required TResult Function( MessageDeleteEvent value)  messageDelete,required TResult Function( MessageReactionUpdateEvent value)  messageReactionUpdate,required TResult Function( UserUpdateEvent value)  userUpdate,required TResult Function( TypingStartEvent value)  typingStart,required TResult Function( PresenceUpdateEvent value)  presenceUpdate,required TResult Function( VoiceStateUpdateEvent value)  voiceStateUpdate,required TResult Function( ChannelCreateEvent value)  channelCreate,required TResult Function( ChannelUpdateEvent value)  channelUpdate,required TResult Function( ChannelDeleteEvent value)  channelDelete,required TResult Function( DMUpdateEvent value)  dmUpdate,required TResult Function( DMCallEvent value)  dmCall,required TResult Function( UnknownEvent value)  unknown,}){
 final _that = this;
 switch (_that) {
 case ReadyEvent():
 return ready(_that);case MessageCreateEvent():
 return messageCreate(_that);case MessageUpdateEvent():
 return messageUpdate(_that);case MessageDeleteEvent():
-return messageDelete(_that);case TypingStartEvent():
+return messageDelete(_that);case MessageReactionUpdateEvent():
+return messageReactionUpdate(_that);case UserUpdateEvent():
+return userUpdate(_that);case TypingStartEvent():
 return typingStart(_that);case PresenceUpdateEvent():
 return presenceUpdate(_that);case VoiceStateUpdateEvent():
 return voiceStateUpdate(_that);case ChannelCreateEvent():
@@ -119,14 +123,16 @@ return unknown(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReadyEvent value)?  ready,TResult? Function( MessageCreateEvent value)?  messageCreate,TResult? Function( MessageUpdateEvent value)?  messageUpdate,TResult? Function( MessageDeleteEvent value)?  messageDelete,TResult? Function( TypingStartEvent value)?  typingStart,TResult? Function( PresenceUpdateEvent value)?  presenceUpdate,TResult? Function( VoiceStateUpdateEvent value)?  voiceStateUpdate,TResult? Function( ChannelCreateEvent value)?  channelCreate,TResult? Function( ChannelUpdateEvent value)?  channelUpdate,TResult? Function( ChannelDeleteEvent value)?  channelDelete,TResult? Function( DMUpdateEvent value)?  dmUpdate,TResult? Function( DMCallEvent value)?  dmCall,TResult? Function( UnknownEvent value)?  unknown,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ReadyEvent value)?  ready,TResult? Function( MessageCreateEvent value)?  messageCreate,TResult? Function( MessageUpdateEvent value)?  messageUpdate,TResult? Function( MessageDeleteEvent value)?  messageDelete,TResult? Function( MessageReactionUpdateEvent value)?  messageReactionUpdate,TResult? Function( UserUpdateEvent value)?  userUpdate,TResult? Function( TypingStartEvent value)?  typingStart,TResult? Function( PresenceUpdateEvent value)?  presenceUpdate,TResult? Function( VoiceStateUpdateEvent value)?  voiceStateUpdate,TResult? Function( ChannelCreateEvent value)?  channelCreate,TResult? Function( ChannelUpdateEvent value)?  channelUpdate,TResult? Function( ChannelDeleteEvent value)?  channelDelete,TResult? Function( DMUpdateEvent value)?  dmUpdate,TResult? Function( DMCallEvent value)?  dmCall,TResult? Function( UnknownEvent value)?  unknown,}){
 final _that = this;
 switch (_that) {
 case ReadyEvent() when ready != null:
 return ready(_that);case MessageCreateEvent() when messageCreate != null:
 return messageCreate(_that);case MessageUpdateEvent() when messageUpdate != null:
 return messageUpdate(_that);case MessageDeleteEvent() when messageDelete != null:
-return messageDelete(_that);case TypingStartEvent() when typingStart != null:
+return messageDelete(_that);case MessageReactionUpdateEvent() when messageReactionUpdate != null:
+return messageReactionUpdate(_that);case UserUpdateEvent() when userUpdate != null:
+return userUpdate(_that);case TypingStartEvent() when typingStart != null:
 return typingStart(_that);case PresenceUpdateEvent() when presenceUpdate != null:
 return presenceUpdate(_that);case VoiceStateUpdateEvent() when voiceStateUpdate != null:
 return voiceStateUpdate(_that);case ChannelCreateEvent() when channelCreate != null:
@@ -152,13 +158,15 @@ return unknown(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( ReadyData data)?  ready,TResult Function( Message message)?  messageCreate,TResult Function( Message message)?  messageUpdate,TResult Function( MessageDeleteData data)?  messageDelete,TResult Function( TypingStartData data)?  typingStart,TResult Function( PresenceUpdateData data)?  presenceUpdate,TResult Function( VoiceStateUpdateData data)?  voiceStateUpdate,TResult Function( Channel channel)?  channelCreate,TResult Function( Channel channel)?  channelUpdate,TResult Function( ChannelDeleteData data)?  channelDelete,TResult Function( DMConversation conversation)?  dmUpdate,TResult Function( DMCallData data)?  dmCall,TResult Function( String op)?  unknown,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( ReadyData data)?  ready,TResult Function( Message message)?  messageCreate,TResult Function( Message message)?  messageUpdate,TResult Function( MessageDeleteData data)?  messageDelete,TResult Function( MessageReactionUpdateData data)?  messageReactionUpdate,TResult Function( User user)?  userUpdate,TResult Function( TypingStartData data)?  typingStart,TResult Function( PresenceUpdateData data)?  presenceUpdate,TResult Function( VoiceStateUpdateData data)?  voiceStateUpdate,TResult Function( Channel channel)?  channelCreate,TResult Function( Channel channel)?  channelUpdate,TResult Function( ChannelDeleteData data)?  channelDelete,TResult Function( DMConversation conversation)?  dmUpdate,TResult Function( DMCallData data)?  dmCall,TResult Function( String op)?  unknown,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case ReadyEvent() when ready != null:
 return ready(_that.data);case MessageCreateEvent() when messageCreate != null:
 return messageCreate(_that.message);case MessageUpdateEvent() when messageUpdate != null:
 return messageUpdate(_that.message);case MessageDeleteEvent() when messageDelete != null:
-return messageDelete(_that.data);case TypingStartEvent() when typingStart != null:
+return messageDelete(_that.data);case MessageReactionUpdateEvent() when messageReactionUpdate != null:
+return messageReactionUpdate(_that.data);case UserUpdateEvent() when userUpdate != null:
+return userUpdate(_that.user);case TypingStartEvent() when typingStart != null:
 return typingStart(_that.data);case PresenceUpdateEvent() when presenceUpdate != null:
 return presenceUpdate(_that.data);case VoiceStateUpdateEvent() when voiceStateUpdate != null:
 return voiceStateUpdate(_that.data);case ChannelCreateEvent() when channelCreate != null:
@@ -185,13 +193,15 @@ return unknown(_that.op);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( ReadyData data)  ready,required TResult Function( Message message)  messageCreate,required TResult Function( Message message)  messageUpdate,required TResult Function( MessageDeleteData data)  messageDelete,required TResult Function( TypingStartData data)  typingStart,required TResult Function( PresenceUpdateData data)  presenceUpdate,required TResult Function( VoiceStateUpdateData data)  voiceStateUpdate,required TResult Function( Channel channel)  channelCreate,required TResult Function( Channel channel)  channelUpdate,required TResult Function( ChannelDeleteData data)  channelDelete,required TResult Function( DMConversation conversation)  dmUpdate,required TResult Function( DMCallData data)  dmCall,required TResult Function( String op)  unknown,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( ReadyData data)  ready,required TResult Function( Message message)  messageCreate,required TResult Function( Message message)  messageUpdate,required TResult Function( MessageDeleteData data)  messageDelete,required TResult Function( MessageReactionUpdateData data)  messageReactionUpdate,required TResult Function( User user)  userUpdate,required TResult Function( TypingStartData data)  typingStart,required TResult Function( PresenceUpdateData data)  presenceUpdate,required TResult Function( VoiceStateUpdateData data)  voiceStateUpdate,required TResult Function( Channel channel)  channelCreate,required TResult Function( Channel channel)  channelUpdate,required TResult Function( ChannelDeleteData data)  channelDelete,required TResult Function( DMConversation conversation)  dmUpdate,required TResult Function( DMCallData data)  dmCall,required TResult Function( String op)  unknown,}) {final _that = this;
 switch (_that) {
 case ReadyEvent():
 return ready(_that.data);case MessageCreateEvent():
 return messageCreate(_that.message);case MessageUpdateEvent():
 return messageUpdate(_that.message);case MessageDeleteEvent():
-return messageDelete(_that.data);case TypingStartEvent():
+return messageDelete(_that.data);case MessageReactionUpdateEvent():
+return messageReactionUpdate(_that.data);case UserUpdateEvent():
+return userUpdate(_that.user);case TypingStartEvent():
 return typingStart(_that.data);case PresenceUpdateEvent():
 return presenceUpdate(_that.data);case VoiceStateUpdateEvent():
 return voiceStateUpdate(_that.data);case ChannelCreateEvent():
@@ -214,13 +224,15 @@ return unknown(_that.op);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( ReadyData data)?  ready,TResult? Function( Message message)?  messageCreate,TResult? Function( Message message)?  messageUpdate,TResult? Function( MessageDeleteData data)?  messageDelete,TResult? Function( TypingStartData data)?  typingStart,TResult? Function( PresenceUpdateData data)?  presenceUpdate,TResult? Function( VoiceStateUpdateData data)?  voiceStateUpdate,TResult? Function( Channel channel)?  channelCreate,TResult? Function( Channel channel)?  channelUpdate,TResult? Function( ChannelDeleteData data)?  channelDelete,TResult? Function( DMConversation conversation)?  dmUpdate,TResult? Function( DMCallData data)?  dmCall,TResult? Function( String op)?  unknown,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( ReadyData data)?  ready,TResult? Function( Message message)?  messageCreate,TResult? Function( Message message)?  messageUpdate,TResult? Function( MessageDeleteData data)?  messageDelete,TResult? Function( MessageReactionUpdateData data)?  messageReactionUpdate,TResult? Function( User user)?  userUpdate,TResult? Function( TypingStartData data)?  typingStart,TResult? Function( PresenceUpdateData data)?  presenceUpdate,TResult? Function( VoiceStateUpdateData data)?  voiceStateUpdate,TResult? Function( Channel channel)?  channelCreate,TResult? Function( Channel channel)?  channelUpdate,TResult? Function( ChannelDeleteData data)?  channelDelete,TResult? Function( DMConversation conversation)?  dmUpdate,TResult? Function( DMCallData data)?  dmCall,TResult? Function( String op)?  unknown,}) {final _that = this;
 switch (_that) {
 case ReadyEvent() when ready != null:
 return ready(_that.data);case MessageCreateEvent() when messageCreate != null:
 return messageCreate(_that.message);case MessageUpdateEvent() when messageUpdate != null:
 return messageUpdate(_that.message);case MessageDeleteEvent() when messageDelete != null:
-return messageDelete(_that.data);case TypingStartEvent() when typingStart != null:
+return messageDelete(_that.data);case MessageReactionUpdateEvent() when messageReactionUpdate != null:
+return messageReactionUpdate(_that.data);case UserUpdateEvent() when userUpdate != null:
+return userUpdate(_that.user);case TypingStartEvent() when typingStart != null:
 return typingStart(_that.data);case PresenceUpdateEvent() when presenceUpdate != null:
 return presenceUpdate(_that.data);case VoiceStateUpdateEvent() when voiceStateUpdate != null:
 return voiceStateUpdate(_that.data);case ChannelCreateEvent() when channelCreate != null:
@@ -533,6 +545,156 @@ $MessageDeleteDataCopyWith<$Res> get data {
   
   return $MessageDeleteDataCopyWith<$Res>(_self.data, (value) {
     return _then(_self.copyWith(data: value));
+  });
+}
+}
+
+/// @nodoc
+
+
+class MessageReactionUpdateEvent extends GatewayEvent {
+  const MessageReactionUpdateEvent(this.data): super._();
+  
+
+ final  MessageReactionUpdateData data;
+
+/// Create a copy of GatewayEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$MessageReactionUpdateEventCopyWith<MessageReactionUpdateEvent> get copyWith => _$MessageReactionUpdateEventCopyWithImpl<MessageReactionUpdateEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MessageReactionUpdateEvent&&(identical(other.data, data) || other.data == data));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,data);
+
+@override
+String toString() {
+  return 'GatewayEvent.messageReactionUpdate(data: $data)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $MessageReactionUpdateEventCopyWith<$Res> implements $GatewayEventCopyWith<$Res> {
+  factory $MessageReactionUpdateEventCopyWith(MessageReactionUpdateEvent value, $Res Function(MessageReactionUpdateEvent) _then) = _$MessageReactionUpdateEventCopyWithImpl;
+@useResult
+$Res call({
+ MessageReactionUpdateData data
+});
+
+
+$MessageReactionUpdateDataCopyWith<$Res> get data;
+
+}
+/// @nodoc
+class _$MessageReactionUpdateEventCopyWithImpl<$Res>
+    implements $MessageReactionUpdateEventCopyWith<$Res> {
+  _$MessageReactionUpdateEventCopyWithImpl(this._self, this._then);
+
+  final MessageReactionUpdateEvent _self;
+  final $Res Function(MessageReactionUpdateEvent) _then;
+
+/// Create a copy of GatewayEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? data = null,}) {
+  return _then(MessageReactionUpdateEvent(
+null == data ? _self.data : data // ignore: cast_nullable_to_non_nullable
+as MessageReactionUpdateData,
+  ));
+}
+
+/// Create a copy of GatewayEvent
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$MessageReactionUpdateDataCopyWith<$Res> get data {
+  
+  return $MessageReactionUpdateDataCopyWith<$Res>(_self.data, (value) {
+    return _then(_self.copyWith(data: value));
+  });
+}
+}
+
+/// @nodoc
+
+
+class UserUpdateEvent extends GatewayEvent {
+  const UserUpdateEvent(this.user): super._();
+  
+
+ final  User user;
+
+/// Create a copy of GatewayEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$UserUpdateEventCopyWith<UserUpdateEvent> get copyWith => _$UserUpdateEventCopyWithImpl<UserUpdateEvent>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is UserUpdateEvent&&(identical(other.user, user) || other.user == user));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,user);
+
+@override
+String toString() {
+  return 'GatewayEvent.userUpdate(user: $user)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $UserUpdateEventCopyWith<$Res> implements $GatewayEventCopyWith<$Res> {
+  factory $UserUpdateEventCopyWith(UserUpdateEvent value, $Res Function(UserUpdateEvent) _then) = _$UserUpdateEventCopyWithImpl;
+@useResult
+$Res call({
+ User user
+});
+
+
+$UserCopyWith<$Res> get user;
+
+}
+/// @nodoc
+class _$UserUpdateEventCopyWithImpl<$Res>
+    implements $UserUpdateEventCopyWith<$Res> {
+  _$UserUpdateEventCopyWithImpl(this._self, this._then);
+
+  final UserUpdateEvent _self;
+  final $Res Function(UserUpdateEvent) _then;
+
+/// Create a copy of GatewayEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? user = null,}) {
+  return _then(UserUpdateEvent(
+null == user ? _self.user : user // ignore: cast_nullable_to_non_nullable
+as User,
+  ));
+}
+
+/// Create a copy of GatewayEvent
+/// with the given fields replaced by the non-null parameter values.
+@override
+@pragma('vm:prefer-inline')
+$UserCopyWith<$Res> get user {
+  
+  return $UserCopyWith<$Res>(_self.user, (value) {
+    return _then(_self.copyWith(user: value));
   });
 }
 }
@@ -1539,6 +1701,284 @@ $ServerSettingsCopyWith<$Res> get server {
     return _then(_self.copyWith(server: value));
   });
 }
+}
+
+
+/// @nodoc
+mixin _$MessageReactionUpdateData {
+
+ String get messageId; String get channelId; ReactionType get type; int get count; String get userId; bool get reacted;
+/// Create a copy of MessageReactionUpdateData
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$MessageReactionUpdateDataCopyWith<MessageReactionUpdateData> get copyWith => _$MessageReactionUpdateDataCopyWithImpl<MessageReactionUpdateData>(this as MessageReactionUpdateData, _$identity);
+
+  /// Serializes this MessageReactionUpdateData to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MessageReactionUpdateData&&(identical(other.messageId, messageId) || other.messageId == messageId)&&(identical(other.channelId, channelId) || other.channelId == channelId)&&(identical(other.type, type) || other.type == type)&&(identical(other.count, count) || other.count == count)&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.reacted, reacted) || other.reacted == reacted));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,messageId,channelId,type,count,userId,reacted);
+
+@override
+String toString() {
+  return 'MessageReactionUpdateData(messageId: $messageId, channelId: $channelId, type: $type, count: $count, userId: $userId, reacted: $reacted)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $MessageReactionUpdateDataCopyWith<$Res>  {
+  factory $MessageReactionUpdateDataCopyWith(MessageReactionUpdateData value, $Res Function(MessageReactionUpdateData) _then) = _$MessageReactionUpdateDataCopyWithImpl;
+@useResult
+$Res call({
+ String messageId, String channelId, ReactionType type, int count, String userId, bool reacted
+});
+
+
+
+
+}
+/// @nodoc
+class _$MessageReactionUpdateDataCopyWithImpl<$Res>
+    implements $MessageReactionUpdateDataCopyWith<$Res> {
+  _$MessageReactionUpdateDataCopyWithImpl(this._self, this._then);
+
+  final MessageReactionUpdateData _self;
+  final $Res Function(MessageReactionUpdateData) _then;
+
+/// Create a copy of MessageReactionUpdateData
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? messageId = null,Object? channelId = null,Object? type = null,Object? count = null,Object? userId = null,Object? reacted = null,}) {
+  return _then(_self.copyWith(
+messageId: null == messageId ? _self.messageId : messageId // ignore: cast_nullable_to_non_nullable
+as String,channelId: null == channelId ? _self.channelId : channelId // ignore: cast_nullable_to_non_nullable
+as String,type: null == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
+as ReactionType,count: null == count ? _self.count : count // ignore: cast_nullable_to_non_nullable
+as int,userId: null == userId ? _self.userId : userId // ignore: cast_nullable_to_non_nullable
+as String,reacted: null == reacted ? _self.reacted : reacted // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [MessageReactionUpdateData].
+extension MessageReactionUpdateDataPatterns on MessageReactionUpdateData {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _MessageReactionUpdateData value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _MessageReactionUpdateData() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _MessageReactionUpdateData value)  $default,){
+final _that = this;
+switch (_that) {
+case _MessageReactionUpdateData():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _MessageReactionUpdateData value)?  $default,){
+final _that = this;
+switch (_that) {
+case _MessageReactionUpdateData() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String messageId,  String channelId,  ReactionType type,  int count,  String userId,  bool reacted)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _MessageReactionUpdateData() when $default != null:
+return $default(_that.messageId,_that.channelId,_that.type,_that.count,_that.userId,_that.reacted);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String messageId,  String channelId,  ReactionType type,  int count,  String userId,  bool reacted)  $default,) {final _that = this;
+switch (_that) {
+case _MessageReactionUpdateData():
+return $default(_that.messageId,_that.channelId,_that.type,_that.count,_that.userId,_that.reacted);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String messageId,  String channelId,  ReactionType type,  int count,  String userId,  bool reacted)?  $default,) {final _that = this;
+switch (_that) {
+case _MessageReactionUpdateData() when $default != null:
+return $default(_that.messageId,_that.channelId,_that.type,_that.count,_that.userId,_that.reacted);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _MessageReactionUpdateData implements MessageReactionUpdateData {
+  const _MessageReactionUpdateData({required this.messageId, required this.channelId, required this.type, required this.count, required this.userId, required this.reacted});
+  factory _MessageReactionUpdateData.fromJson(Map<String, dynamic> json) => _$MessageReactionUpdateDataFromJson(json);
+
+@override final  String messageId;
+@override final  String channelId;
+@override final  ReactionType type;
+@override final  int count;
+@override final  String userId;
+@override final  bool reacted;
+
+/// Create a copy of MessageReactionUpdateData
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$MessageReactionUpdateDataCopyWith<_MessageReactionUpdateData> get copyWith => __$MessageReactionUpdateDataCopyWithImpl<_MessageReactionUpdateData>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$MessageReactionUpdateDataToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _MessageReactionUpdateData&&(identical(other.messageId, messageId) || other.messageId == messageId)&&(identical(other.channelId, channelId) || other.channelId == channelId)&&(identical(other.type, type) || other.type == type)&&(identical(other.count, count) || other.count == count)&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.reacted, reacted) || other.reacted == reacted));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode => Object.hash(runtimeType,messageId,channelId,type,count,userId,reacted);
+
+@override
+String toString() {
+  return 'MessageReactionUpdateData(messageId: $messageId, channelId: $channelId, type: $type, count: $count, userId: $userId, reacted: $reacted)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$MessageReactionUpdateDataCopyWith<$Res> implements $MessageReactionUpdateDataCopyWith<$Res> {
+  factory _$MessageReactionUpdateDataCopyWith(_MessageReactionUpdateData value, $Res Function(_MessageReactionUpdateData) _then) = __$MessageReactionUpdateDataCopyWithImpl;
+@override @useResult
+$Res call({
+ String messageId, String channelId, ReactionType type, int count, String userId, bool reacted
+});
+
+
+
+
+}
+/// @nodoc
+class __$MessageReactionUpdateDataCopyWithImpl<$Res>
+    implements _$MessageReactionUpdateDataCopyWith<$Res> {
+  __$MessageReactionUpdateDataCopyWithImpl(this._self, this._then);
+
+  final _MessageReactionUpdateData _self;
+  final $Res Function(_MessageReactionUpdateData) _then;
+
+/// Create a copy of MessageReactionUpdateData
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? messageId = null,Object? channelId = null,Object? type = null,Object? count = null,Object? userId = null,Object? reacted = null,}) {
+  return _then(_MessageReactionUpdateData(
+messageId: null == messageId ? _self.messageId : messageId // ignore: cast_nullable_to_non_nullable
+as String,channelId: null == channelId ? _self.channelId : channelId // ignore: cast_nullable_to_non_nullable
+as String,type: null == type ? _self.type : type // ignore: cast_nullable_to_non_nullable
+as ReactionType,count: null == count ? _self.count : count // ignore: cast_nullable_to_non_nullable
+as int,userId: null == userId ? _self.userId : userId // ignore: cast_nullable_to_non_nullable
+as String,reacted: null == reacted ? _self.reacted : reacted // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
 }
 
 

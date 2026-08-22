@@ -165,17 +165,29 @@ class ApiClient {
 
   /// Multipart upload with byte-level progress, which a 25MB video very much
   /// needs.
+  ///
+  /// Exactly one of [filePath] and [bytes] carries the file. A path is what a
+  /// picker hands back on Android, iOS and desktop; the web build has no
+  /// filesystem to point at and produces bytes instead.
   Future<T> upload<T>(
-    String path,
-    String filePath, {
+    String path, {
     required T Function(dynamic json) decode,
+    String? filePath,
+    List<int>? bytes,
     String? filename,
     void Function(double fraction)? onProgress,
     CancelToken? cancelToken,
   }) async {
+    assert(
+      (filePath == null) != (bytes == null),
+      'give upload a path or bytes, not both and not neither',
+    );
+
     try {
       final form = FormData.fromMap({
-        'file': await MultipartFile.fromFile(filePath, filename: filename),
+        'file': bytes != null
+            ? MultipartFile.fromBytes(bytes, filename: filename)
+            : await MultipartFile.fromFile(filePath!, filename: filename),
       });
       final response = await _dio.post<dynamic>(
         path,

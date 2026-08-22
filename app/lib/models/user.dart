@@ -10,6 +10,12 @@ abstract class User with _$User {
     required String username,
     required bool isAdmin,
 
+    /// Server-relative path to the profile photo (`/api/uploads/...`), or null
+    /// for the initials fallback. Both REST and the READY frame carry it, so
+    /// unlike [createdAt] this one is never absent for a reason — it is just
+    /// optional. Render it through `ApiClient.resolveAssetUrl`.
+    String? avatarUrl,
+
     /// Null when the user arrived on a gateway frame rather than from REST: the
     /// READY payload builds its `user` dict by hand and leaves `created_at` out,
     /// while `/api/users` includes it. Nothing in the UI needs it, so the model

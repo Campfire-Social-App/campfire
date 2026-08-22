@@ -143,14 +143,16 @@ void main() {
     });
   });
 
-  test('the union covers all twelve server ops plus the unknown case', () {
-    // The point of the sealed class: a thirteenth op on the server stops this
+  test('the union covers all fourteen server ops plus the unknown case', () {
+    // The point of the sealed class: a fifteenth op on the server stops this
     // switch compiling until someone handles it.
     String name(GatewayEvent event) => switch (event) {
           ReadyEvent() => 'READY',
           MessageCreateEvent() => 'MESSAGE_CREATE',
           MessageUpdateEvent() => 'MESSAGE_UPDATE',
           MessageDeleteEvent() => 'MESSAGE_DELETE',
+          MessageReactionUpdateEvent() => 'MESSAGE_REACTION_UPDATE',
+          UserUpdateEvent() => 'USER_UPDATE',
           TypingStartEvent() => 'TYPING_START',
           PresenceUpdateEvent() => 'PRESENCE_UPDATE',
           VoiceStateUpdateEvent() => 'VOICE_STATE_UPDATE',
