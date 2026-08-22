@@ -50,11 +50,13 @@ class VoiceSession {
     _listen(room);
 
     try {
-      // Before the microphone is published, not after: this is what keeps the
-      // capture alive once the app is no longer the thing on screen.
-      await startCallService();
       await room.connect(credentials.url, credentials.token);
       await _publishInitialState(room, camera: camera);
+      // After the microphone is published, not before: Android only lets the
+      // service declare the microphone type once `RECORD_AUDIO` is granted, and
+      // the thing that asks for it is the capture itself. Starting it first
+      // crashed the process on the very first call of a fresh install.
+      await startCallService();
       _voice.setConnection(channelId, VoiceConnectionStatus.connected);
       _sounds.join();
       if (camera) await _enableCameraAfterJoin(room);
@@ -78,8 +80,13 @@ class VoiceSession {
   }
 
   Future<void> _publishInitialState(Room room, {required bool camera}) async {
-    final muted = _ref.read(voiceProvider).localMuted;
-    await room.localParticipant?.setMicrophoneEnabled(!muted);
+    var muted = _ref.read(voiceProvider).localMuted;
+    if (!muted && !await _enableMicrophone(room)) {
+      // Refused, or no microphone at all. Joining to listen beats not joining,
+      // and the button already says which state you are in.
+      muted = true;
+      _voice.setLocalMuted(muted: true);
+    }
     _voice.setParticipantMuted(room.localParticipant!.identity, muted: muted);
 
     final deafened = _ref.read(voiceProvider).localDeafened;
@@ -95,6 +102,19 @@ class VoiceSession {
       );
     }
     if (deafened) await _applyDeafenToRemoteAudio(room, deafened: true);
+  }
+
+  /// Starts capturing, and says whether it worked. The first call of a fresh
+  /// install is where Android asks for `RECORD_AUDIO`, so this is also the
+  /// point where a refusal has to be survivable.
+  Future<bool> _enableMicrophone(Room room) async {
+    try {
+      await room.localParticipant?.setMicrophoneEnabled(true);
+      return true;
+    } on Object catch (error) {
+      debugPrint('voice: microphone unavailable — $error');
+      return false;
+    }
   }
 
   /// After the join is committed: a camera that will not start (no device,
@@ -242,16 +262,30 @@ class VoiceSession {
     _microphoneMutedByDeafen = false;
     final wasDeafened = _ref.read(voiceProvider).localDeafened;
 
-    await _room?.localParticipant?.setMicrophoneEnabled(!muted);
-    _voice.setLocalMuted(muted: muted);
-    final identity = _room?.localParticipant?.identity;
-    if (identity != null) _voice.setParticipantMuted(identity, muted: muted);
+    // What the microphone ended up doing, which is what the button and everyone
+    // else are told about — an unmute the device refuses leaves it muted.
+    final room = _room;
+    var applied = muted;
+    if (room != null) {
+      if (muted) {
+        await room.localParticipant?.setMicrophoneEnabled(false);
+      } else if (await _enableMicrophone(room)) {
+        // A call joined muted asks for `RECORD_AUDIO` here rather than at join,
+        // so this is where the service can finally claim the microphone type.
+        await startCallService();
+      } else {
+        applied = true;
+      }
+    }
+    _voice.setLocalMuted(muted: applied);
+    final identity = room?.localParticipant?.identity;
+    if (identity != null) _voice.setParticipantMuted(identity, muted: applied);
 
     // Unmuting while deafened turns the audio back on too. Let the undeafen
     // transition give the single sound that stands for both changes.
-    final willUndeafen = !muted && wasDeafened && syncAudio;
+    final willUndeafen = !applied && wasDeafened && syncAudio;
     if (playFeedback && !willUndeafen) {
-      muted ? _sounds.microphoneMute() : _sounds.microphoneUnmute();
+      applied ? _sounds.microphoneMute() : _sounds.microphoneUnmute();
     }
     if (willUndeafen) await setDeafened(deafened: false);
   }
