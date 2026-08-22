@@ -53,6 +53,10 @@ abstract final class CampfireIcons {
   static const IconData screenPlaying = LucideIcons.monitorPlay;
   static const IconData window = LucideIcons.appWindow;
 
+  /// Front camera to back and back again — a control the web client has no
+  /// use for, since a desktop has one camera.
+  static const IconData switchCamera = LucideIcons.switchCamera;
+
   // Media player
   static const IconData play = LucideIcons.play;
   static const IconData pause = LucideIcons.pause;
@@ -86,8 +90,9 @@ abstract final class CampfireIcons {
     connection, send, attach, reply, quoted, edit, delete, copy, download, more,
     add, remove, close, confirm, file, fileText, fileAudio, fileVideo,
     fileArchive, micOn, micOff, deafenOff, cameraOn, cameraOff, screenShareOn,
-    screenShareOff, callAnswer, callEnd, screen, screenPlaying, window, play,
-    pause, stop, loop, volumeLow, volumeHigh, volumeMuted, enterFullscreen,
+    screenShareOff, callAnswer, callEnd, screen, screenPlaying, window,
+    switchCamera, play, pause, stop, loop, volumeLow, volumeHigh,
+    volumeMuted, enterFullscreen,
     exitFullscreen, expand, pictureInPicture, spinner, retry, info, success,
     warning, error, chevronDown, chevronLeft, chevronRight,
   ];

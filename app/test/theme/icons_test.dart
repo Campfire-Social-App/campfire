@@ -15,12 +15,13 @@ void main() {
   test('covers the icons the React client draws, without duplicating a role', () {
     // The client imports 61 names from lucide-react, two pairs of which are the
     // same glyph under an alias (`X`/`XIcon`, `Loader2`/`Loader2Icon`), leaving
-    // 59 distinct roles here.
-    expect(CampfireIcons.all, hasLength(59));
+    // 59 distinct roles — plus `switchCamera`, which has no counterpart there
+    // because a desktop has one camera to point at you.
+    expect(CampfireIcons.all, hasLength(60));
 
     // Roles map onto glyphs almost one to one; the speaker is deliberately
     // shared, marking both a voice channel and the media player's volume.
-    expect(CampfireIcons.all.toSet(), hasLength(58));
+    expect(CampfireIcons.all.toSet(), hasLength(59));
     expect(CampfireIcons.voiceChannel, CampfireIcons.volumeHigh);
   });
 }

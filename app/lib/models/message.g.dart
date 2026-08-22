@@ -23,6 +23,26 @@ Map<String, dynamic> _$MessageReplyPreviewToJson(
   'has_attachments': instance.hasAttachments,
 };
 
+_MessageReaction _$MessageReactionFromJson(Map<String, dynamic> json) =>
+    _MessageReaction(
+      type: $enumDecode(_$ReactionTypeEnumMap, json['type']),
+      count: (json['count'] as num).toInt(),
+      reactedByMe: json['reacted_by_me'] as bool,
+    );
+
+Map<String, dynamic> _$MessageReactionToJson(_MessageReaction instance) =>
+    <String, dynamic>{
+      'type': _$ReactionTypeEnumMap[instance.type]!,
+      'count': instance.count,
+      'reacted_by_me': instance.reactedByMe,
+    };
+
+const _$ReactionTypeEnumMap = {
+  ReactionType.like: 'like',
+  ReactionType.love: 'love',
+  ReactionType.laugh: 'laugh',
+};
+
 _Message _$MessageFromJson(Map<String, dynamic> json) => _Message(
   id: json['id'] as String,
   channelId: json['channel_id'] as String,
@@ -40,6 +60,11 @@ _Message _$MessageFromJson(Map<String, dynamic> json) => _Message(
   replyTo: json['reply_to'] == null
       ? null
       : MessageReplyPreview.fromJson(json['reply_to'] as Map<String, dynamic>),
+  reactions:
+      (json['reactions'] as List<dynamic>?)
+          ?.map((e) => MessageReaction.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const <MessageReaction>[],
 );
 
 Map<String, dynamic> _$MessageToJson(_Message instance) => <String, dynamic>{
@@ -51,6 +76,7 @@ Map<String, dynamic> _$MessageToJson(_Message instance) => <String, dynamic>{
   'edited_at': instance.editedAt?.toIso8601String(),
   'attachments': instance.attachments.map((e) => e.toJson()).toList(),
   'reply_to': instance.replyTo?.toJson(),
+  'reactions': instance.reactions.map((e) => e.toJson()).toList(),
 };
 
 _MessagePage _$MessagePageFromJson(Map<String, dynamic> json) => _MessagePage(

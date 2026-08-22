@@ -22,28 +22,56 @@ environment:
   sdk: ^3.12.2
 
 dependencies:
+  audioplayers: ^6.8.1
   cupertino_icons: ^1.0.8
   dio: ^5.11.0                    # interceptors for the single-flight refresh + upload progress
+  file_picker: ^12.0.0             # any file, from the composer's paperclip
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.4.2        # the zustand stores map onto providers 1:1
   flutter_secure_storage: ^11.0.0 # Keychain/Keystore, where secureStore.ts used a plugin store
   freezed_annotation: ^3.1.0
   go_router: ^17.5.0
+  image_picker: ^1.2.3             # camera and gallery, which file_picker does not cover
   intl: ^0.20.3
   json_annotation: ^4.12.0
+  livekit_client: ^2.11.0
   lucide_icons_flutter: ^3.1.15   # same icon set the React client draws from
+  meta: ^1.18.0                    # @immutable on the pure value types in core/
+  url_launcher: ^6.3.2             # hands an attachment to the OS, like `openUrl` does in files.ts
+  video_player: ^2.14.0            # the surface under MediaPlayer's own controls
   web_socket_channel: ^3.0.3
 
 dev_dependencies:
   build_runner: ^2.15.1
   fake_async: ^1.3.3
+  flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
   freezed: ^3.2.5
   json_serializable: ^6.14.1
   stream_channel: ^2.1.4
   very_good_analysis: ^10.3.0
+
+# Launcher icon, fanned out across densities from the two sources in
+# `assets/icon/` (see `tool/generate_icon_sources.py`, which makes them from the
+# same artwork the Tauri client installs with).
+#
+#     python3 tool/generate_icon_sources.py
+#     dart run flutter_launcher_icons
+#
+# The generated icons are committed; this only runs again if the art changes.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  # Android 8+ draws the two layers under whatever mask the launcher uses.
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  # Only ever seen at the corners of the mask, so it is the scene's own night
+  # sky rather than a colour of its own.
+  adaptive_icon_background: "#0A1436"
+  # iOS rejects an icon with an alpha channel outright.
+  remove_alpha_ios: true
 
 # The following section is specific to Flutter packages.
 flutter:

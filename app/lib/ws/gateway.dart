@@ -100,8 +100,18 @@ class GatewayClient {
 
   void _openSocket() {
     final server = serverUrl();
+    if (server == null) return;
+
     final token = accessToken();
-    if (server == null || token == null) return;
+    if (token == null) {
+      // There is a session but no access token in hand: the app was reopened
+      // while the server was unreachable, so `restoreSession` kept the stored
+      // user and never got one (`state/auth.dart`). Recovering is the same job
+      // as a 1008 — mint a token, then retry. Returning quietly instead is what
+      // used to strand the shell on "Connecting…" until the app was restarted.
+      unawaited(onAuthRejected().whenComplete(_scheduleReconnect));
+      return;
+    }
 
     // http -> ws, https -> wss, leaving the rest of the URL alone.
     final base = server.replaceFirst(RegExp('^http', caseSensitive: false), 'ws');

@@ -121,19 +121,39 @@ class CampfireApi {
 
   // -------------------------------------------------------------- attachments
 
-  Future<Attachment> uploadAttachment(
-    String filePath, {
+  Future<Attachment> uploadAttachment({
+    String? filePath,
+    List<int>? bytes,
     String? filename,
     void Function(double fraction)? onProgress,
     CancelToken? cancelToken,
   }) =>
       client.upload(
         '/api/uploads',
-        filePath,
+        filePath: filePath,
+        bytes: bytes,
         filename: filename,
         onProgress: onProgress,
         cancelToken: cancelToken,
         decode: (json) => Attachment.fromJson(json as Map<String, dynamic>),
+      );
+
+  // --------------------------------------------------------------- reactions
+
+  /// Adding and removing answer with the new state of *that one* reaction, so
+  /// the caller does not have to wait for the broadcast to update its own view.
+  Future<MessageReaction> addReaction(String messageId, ReactionType type) =>
+      client.request(
+        '/api/messages/$messageId/reactions/${type.name}',
+        method: 'PUT',
+        decode: (json) => MessageReaction.fromJson(json as Map<String, dynamic>),
+      );
+
+  Future<MessageReaction> removeReaction(String messageId, ReactionType type) =>
+      client.request(
+        '/api/messages/$messageId/reactions/${type.name}',
+        method: 'DELETE',
+        decode: (json) => MessageReaction.fromJson(json as Map<String, dynamic>),
       );
 
   // --------------------------------------------------------------------- DMs

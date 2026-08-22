@@ -14,6 +14,21 @@ flutter test
 flutter analyze
 ```
 
+Para conferir o layout ao lado do cliente React sem depender de um aparelho, há o
+alvo web — **de desenvolvimento, não de entrega** (`PLANO_FLUTTER.md` §12):
+
+```sh
+flutter build web --release
+(cd build/web && python3 -m http.server 1421)   # a origem liberada no CORS
+```
+
+> **Depois de adicionar um plugin, apague `.dart_tool/flutter_build` antes de
+> compilar para a web.** O registrador de plugins do alvo web fica em cache ali;
+> um build por cima do cache antigo compila e roda, mas o plugin novo não está
+> registrado, e o erro que aparece é um `MissingPluginException` no meio de outra
+> coisa — de vez em quando, e sem relação óbvia com a mudança. Já custou uma
+> caçada duas vezes: uma na mídia (lane H), outra na voz (lane F).
+
 ## Código gerado
 
 Dois geradores, ambos com saída **commitada** e verificada no CI:
@@ -43,6 +58,43 @@ Espelha `../client/src` de propósito — quem conhece um acha as coisas no outr
 | `lib/screens/`, `lib/widgets/` | `src/screens/`, `src/components/` |
 | `lib/theme/` | `src/index.css` |
 | `lib/core/` | `src/lib/` (utilitários puros: mentions, files, secure store) |
+
+## Ícone
+
+A arte é a mesma que o cliente Tauri instala (`../client/src-tauri/app-icon.png`),
+para os dois aparecerem iguais na gaveta de apps. Dois formatos saem dela, porque
+o celular quer coisas opostas em cada plataforma:
+
+```sh
+python3 tool/generate_icon_sources.py   # assets/icon/{icon,icon_foreground}.png
+dart run flutter_launcher_icons          # espalha nas densidades
+```
+
+O `icon.png` é o quadrado opaco do iOS e do Android antigo — a moldura arredondada
+do desenho cai quase em cima da máscara do iOS, então ela fica, e os cantos
+transparentes são preenchidos com uma cópia borrada da própria arte em vez de uma
+cor chutada. O `icon_foreground.png` é só a cena, sem moldura: o ícone adaptativo
+do Android recorta com a máscara que o launcher quiser, e uma moldura quadrada ali
+viraria um quadrado preso dentro de um círculo. As duas saídas são commitadas; o
+script só roda de novo se a arte mudar.
+
+## Voz e chamadas
+
+A sala é a mesma do cliente React — mesmo SFU, mesmo token de
+`/api/voice/{id}/token`, mesma sala por canal. Duas coisas só existem deste lado
+porque só existem no celular:
+
+- **`CallService`** (`android/app/src/main/kotlin/.../CallService.kt`): um
+  *foreground service* que não faz nada além de existir. Sem ele o Android 11
+  tira o microfone assim que o app sai da tela, e o MediaProjection nem começa.
+  O Dart o liga e desliga por `MethodChannel` (`lib/core/call_service.dart`).
+- **Toques sintetizados** (`lib/core/ringtone.dart`): o navegador tem
+  oscilador, o celular não, então um ciclo inteiro do padrão vira um WAV em
+  memória e toca em *loop* — mesmas frequências e mesmo compasso de
+  `lib/ringtone.ts`.
+
+Para ver isso funcionando sem dois aparelhos, é o alvo web acima com duas abas
+(dois logins) e o Chromium com `--use-fake-device-for-media-stream`.
 
 ## Desvios do plano
 

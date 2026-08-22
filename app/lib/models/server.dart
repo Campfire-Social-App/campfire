@@ -36,6 +36,12 @@ abstract class VoiceParticipantState with _$VoiceParticipantState {
     required String username,
     required String channelId,
     @Default(false) bool muted,
+
+    /// Never sent by the server: it is a LiveKit participant attribute the
+    /// clients set on themselves, so it only becomes known once we are in the
+    /// same room. Someone in a channel we are not connected to always reads as
+    /// not deafened, exactly as in the web client.
+    @Default(false) bool deafened,
     @Default(false) bool speaking,
   }) = _VoiceParticipantState;
 

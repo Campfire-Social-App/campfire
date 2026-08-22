@@ -24,6 +24,19 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Campfire uses the microphone so you can talk in voice channels and calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Campfire uses the camera for video calls.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Campfire needs your photo library to attach pictures and set your profile photo.</string>
+	<!-- Audio only. A call that survives the app being closed would need voip
+	     here plus PushKit, and the server has no push to wake it with — see
+	     PLANO_FLUTTER.md §9. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

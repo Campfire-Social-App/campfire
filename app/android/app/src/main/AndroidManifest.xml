@@ -5,6 +5,33 @@
          `manifest_test.dart` guards against it going missing again. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Voice and video calls (lane F). CAMERA and RECORD_AUDIO are asked for at
+         the moment they are first used; the rest are install-time. BLUETOOTH is
+         capped at 30 because BLUETOOTH_CONNECT replaced it in 31 — WebRTC needs
+         one or the other to route a call to a headset. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <!-- A call runs under a foreground service (see CallService): without one
+         Android 11 takes the microphone away as soon as the app leaves the
+         screen, and MediaProjection refuses to start at all. POST_NOTIFICATIONS
+         is what makes that service's notification visible on 13+; the service
+         runs either way. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
+    <!-- Declared, not required: a device with no camera still gets to chat. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
+
     <application
         android:label="Campfire"
         android:name="${applicationName}"
@@ -31,6 +58,11 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <service
+            android:name=".CallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|mediaProjection"/>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

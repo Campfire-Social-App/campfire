@@ -55,9 +55,27 @@ final selectedChannelIdProvider = NotifierProvider<SelectedChannelNotifier, Stri
 
 class SelectedChannelNotifier extends Notifier<String?> {
   @override
-  String? build() => null;
+  String? build() {
+    // Not `watch`: a new channel arriving must not reset what the user is
+    // reading. The listener reconciles instead, and only when it has to.
+    ref.listen(channelsProvider, (_, channels) => state = _pick(channels, state));
+    return _pick(ref.read(channelsProvider), null);
+  }
 
   String? get selected => state;
 
   set selected(String? channelId) => state = channelId;
+
+  /// Keeps a channel on screen whenever there is one to show: the first text
+  /// channel at boot (what `setChannels` does in `state/channels.ts`), and a
+  /// fresh pick when the open channel is deleted out from under us.
+  String? _pick(List<Channel> channels, String? current) {
+    if (channels.isEmpty) return null;
+    if (current != null && channels.any((c) => c.id == current)) return current;
+
+    for (final channel in channels) {
+      if (channel.type == ChannelType.text) return channel.id;
+    }
+    return channels.first.id;
+  }
 }

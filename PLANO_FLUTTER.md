@@ -10,7 +10,7 @@ Este documento é o plano de obra. Cada tarefa tem id, dono de fila (*lane*), de
 
 **Dentro:** tudo que o cliente atual faz — conectar a servidor self-hosted, login/registro por convite, canais de texto, anexos (foto/vídeo/arquivo) com player próprio, menções, respostas, edição/exclusão, gateway em tempo real, presença, canais de voz, câmera, compartilhamento de tela, DMs com chamada 1:1 (toque, aceitar/recusar), notificações e sons.
 
-**Fora da v1:** paridade de atalhos de teclado do desktop, *picker* nativo de tela do Windows (aquilo é código Rust específico do Tauri), Flutter Web, e chamada com o app **fechado** — esta última depende de push (FCM/APNs), que o servidor não tem hoje. Ver §9.
+**Fora da v1:** paridade de atalhos de teclado do desktop, *picker* nativo de tela do Windows (aquilo é código Rust específico do Tauri), Flutter Web **como alvo de entrega**, e chamada com o app **fechado** — esta última depende de push (FCM/APNs), que o servidor não tem hoje. Ver §9.
 
 **Alvos:** Android e iOS primeiro (é o que o Tauri não entrega hoje), com desktop (Windows/macOS/Linux) saindo de graça do mesmo código, exceto o compartilhamento de tela.
 
@@ -109,7 +109,7 @@ O visual não é "tema escuro genérico": é um gradiente índigo com brilho de 
 Tudo isso já existe e está no ar — o app novo consome, não redefine.
 
 - **REST**: `/api/auth/{login,register,refresh,logout}`, `/api/channels` (+ `PATCH`/`DELETE`), `/api/channels/{id}/messages`, `/api/messages/{id}`, `/api/uploads`, `/api/dms` (+ `call`, `call/accept`, `read`), `/api/users`, `/api/server`, `/api/invites`, `/api/voice/{id}/token`.
-- **Gateway** (`/gateway`, 12 ops): `READY`, `MESSAGE_CREATE|UPDATE|DELETE`, `TYPING_START`, `PRESENCE_UPDATE`, `VOICE_STATE_UPDATE`, `CHANNEL_CREATE|UPDATE|DELETE`, `DM_UPDATE`, `DM_CALL`.
+- **Gateway** (`/gateway`, 14 ops): `READY`, `MESSAGE_CREATE|UPDATE|DELETE`, `MESSAGE_REACTION_UPDATE`, `USER_UPDATE`, `TYPING_START`, `PRESENCE_UPDATE`, `VOICE_STATE_UPDATE`, `CHANNEL_CREATE|UPDATE|DELETE`, `DM_UPDATE`, `DM_CALL`. Os dois do meio nasceram depois do plano — reações e foto de perfil — e entraram no cliente Flutter junto com a lane E.
 - **Autenticação**: JWT access (15 min) + refresh (30 dias); o refresh precisa ser de fila única, senão N requisições paralelas disparam N refreshes e invalidam a sessão.
 
 > O `READY` traz usuário, servidor, canais, DMs, presença e estado de voz numa frame só. O app **não** deve buscar essas listas por REST no boot — o cliente atual não busca, e duplicar isso gera divergência de estado.
@@ -139,7 +139,7 @@ linha) · sem marca = não começou.
 | ✅ A1 | `flutter create`, estrutura de pastas, `very_good_analysis`, `melos`/scripts | — | S | `flutter analyze` limpo no CI |
 | ✅ A2 | Script oklch→sRGB gerando `theme/tokens.dart` a partir de `index.css` | A1 | M | tokens do bloco `.dark` batem com o app atual em captura lado a lado |
 | ✅ A3 | `ThemeData`/`ColorScheme` + tipografia (Fraunces/Geist empacotadas) | A2 | M | tela em branco com fundo e fonte corretos |
-| 🟡 A4 | Widgets base: botão, input, diálogo, menu (popup + long-press), avatar com status, tooltip | A3 | L | galeria de widgets renderiza os 6 — *botão, input e diálogo saem do `ThemeData`; faltam avatar com status, menu por long-press e a galeria* |
+| 🟡 A4 | Widgets base: botão, input, diálogo, menu (popup + long-press), avatar com status, tooltip | A3 | L | galeria de widgets renderiza os 6 — *botão, input e diálogo saem do `ThemeData`; `UserAvatar` (paleta, iniciais, foto, bolinha, anel de fala) pronto; faltam menu por long-press e a galeria* |
 | ✅ A5 | Shell de fundo: gradiente night-sky + brasa animada | A3 | M | animação em 60fps, sem jank no perfil |
 | ✅ A6 | Ícones (`lucide_icons`) e mapa dos usados hoje | A1 | S | ícone equivalente para cada um do cliente |
 | 🟡 A7 | Sons de UI + assets de `client/public/sounds` | A1 | S | join/leave/ringtone tocam — *assets empacotados; falta o `audioplayers` e o ringtone, que hoje é sintetizado no `ringtone.ts` e não existe como arquivo* |
@@ -149,11 +149,11 @@ linha) · sem marca = não começou.
 | id | tarefa | dep | tam | pronto quando |
 | :-- | :-- | :-- | :-- | :-- |
 | ✅ B1 | Modelos freezed espelhando `lib/types.ts` | A1 | M | `flutter test` de serialização passa |
-| ✅ B2 | Eventos do gateway como união selada (12 ops) | B1 | S | `switch` exaustivo compila |
+| ✅ B2 | Eventos do gateway como união selada (14 ops) | B1 | S | `switch` exaustivo compila |
 | ✅ B3 | `ApiClient` dio: baseUrl do `serverUrl`, injeção de Bearer | B1 | M | GET `/api/server` autenticado responde |
 | ✅ B4 | Refresh em fila única + logout no 401 | B3 | M | teste com 5 requisições paralelas dispara 1 refresh |
 | 🟡 B5 | Os ~20 endpoints tipados | B3 | M | cada um coberto por teste contra fixture — *os ~20 escritos; só auth/refresh/server cobertos por teste* |
-| 🟡 B6 | Upload com progresso + `resolveAssetUrl` | B3 | M | barra de progresso reflete bytes enviados — *`upload` com `onSendProgress` e `resolveAssetUrl` prontos; falta a UI e o teste* |
+| ✅ B6 | Upload com progresso + `resolveAssetUrl` | B3 | M | barra de progresso reflete bytes enviados |
 | ✅ B7 | Secure storage: `serverUrl`, `refreshToken`, `user` | A1 | S | sobrevive a reinício do app |
 | B8 | Fixtures capturadas do servidor real + testes de contrato | B1 | M | quebra se o servidor mudar formato |
 
@@ -165,10 +165,10 @@ linha) · sem marca = não começou.
 | 🟡 C2 | `settingsProvider`: serverUrl + normalização | B7 | S | aceita `dominio.com` e vira `https://dominio.com` — *`normalizeServerUrl` portado e testado; falta o provider* |
 | ✅ C3 | `GatewayClient`: conexão, backoff, READY, dispatch | B2,C1 | L | reconecta sozinho ao derrubar o Wi-Fi |
 | ✅ C4 | `channelsProvider` (+ eventos CHANNEL_*) | C3 | S | canal criado em outro cliente aparece |
-| C5 | `messagesProvider`: paginação, envio otimista, MESSAGE_* | C3 | L | rolar para cima carrega página anterior |
-| C6 | `dmsProvider`: lista, não lidas, DM_UPDATE | C3 | M | contador zera ao abrir |
-| 🟡 C7 | `usersProvider` + `presenceProvider` | C3 | S | bolinha muda ao outro sair — *`presenceProvider` pronto; falta `usersProvider`* |
-| C8 | `voiceProvider`: participantes, mute, quem fala | C3 | M | estado bate com VOICE_STATE_UPDATE |
+| ✅ C5 | `messagesProvider`: paginação, envio otimista, MESSAGE_* | C3 | L | rolar para cima carrega página anterior |
+| ✅ C6 | `dmsProvider`: lista, não lidas, DM_UPDATE | C3 | M | contador zera ao abrir |
+| ✅ C7 | `usersProvider` + `presenceProvider` | C3 | S | bolinha muda ao outro sair |
+| ✅ C8 | `voiceProvider`: participantes, mute, quem fala | C3 | M | estado bate com VOICE_STATE_UPDATE |
 | ✅ C9 | `serverProvider` (nome, ícone, limite de upload) | C3 | S | nome do servidor no topo |
 
 ### Lane D — Onboarding
@@ -184,68 +184,69 @@ linha) · sem marca = não começou.
 
 | id | tarefa | dep | tam | pronto quando |
 | :-- | :-- | :-- | :-- | :-- |
-| E1 | Porte de `mentions.ts` (puro) + testes | A1 | M | mesmos casos do original passam |
-| E2 | Porte de `files.ts` (tipo, tamanho, download) + testes | A1 | S | idem |
-| E3 | Lista de mensagens: `ListView` reverso, agrupamento, separador de data | C5,A4 | L | 500 mensagens rolam sem jank |
-| E4 | `MessageItem`: autor, hora, editada, ações | E3 | M | editar/apagar refletem no outro cliente |
-| E5 | Render de menções com destaque | E1,E4 | S | `@fulano` e `#canal` estilizados |
-| E6 | Composer: texto, enviar, `TYPING_START` | C5 | M | indicador aparece no outro cliente |
-| E7 | Composer: anexos (arquivo, foto, câmera) + progresso | E6,B6 | L | 3 arquivos sobem com progresso |
-| E8 | Autocomplete de `@`/`#` | E1,E6 | M | navegação por teclado e toque |
-| E9 | Responder a mensagem | E4,E6 | M | prévia da citada acima do composer |
-| E10 | `AttachmentList` + cartão de arquivo + salvar | E2,E4 | M | arquivo salva com nome original |
-| E11 | Lightbox de imagem | E10 | S | pinça para zoom, arrastar para fechar |
-| E12 | `TypingIndicator` | E6 | S | some após timeout |
+| ✅ E1 | Porte de `mentions.ts` (puro) + testes | A1 | M | mesmos casos do original passam |
+| ✅ E2 | Porte de `files.ts` (tipo, tamanho, download) + testes | A1 | S | idem |
+| ✅ E3 | Lista de mensagens: `ListView` reverso, agrupamento, separador de data | C5,A4 | L | 500 mensagens rolam sem jank |
+| ✅ E4 | `MessageItem`: autor, hora, editada, ações | E3 | M | editar/apagar refletem no outro cliente |
+| ✅ E5 | Render de menções com destaque | E1,E4 | S | `@fulano` e `#canal` estilizados |
+| ✅ E6 | Composer: texto, enviar, `TYPING_START` | C5 | M | indicador aparece no outro cliente |
+| ✅ E7 | Composer: anexos (arquivo, foto, câmera) + progresso | E6,B6 | L | 3 arquivos sobem com progresso |
+| 🟡 E8 | Autocomplete de `@`/`#` | E1,E6 | M | navegação por teclado e toque — *lista e toque prontos; setas/Tab são de teclado físico, coisa de desktop* |
+| ✅ E9 | Responder a mensagem | E4,E6 | M | prévia da citada acima do composer |
+| ✅ E10 | `AttachmentList` + cartão de arquivo + salvar | E2,E4 | M | arquivo salva com nome original |
+| ✅ E11 | Lightbox de imagem | E10 | S | pinça para zoom, arrastar para fechar |
+| ✅ E12 | `TypingIndicator` | E6 | S | some após timeout |
 
 ### Lane F — Voz
 
 | id | tarefa | dep | tam | pronto quando |
 | :-- | :-- | :-- | :-- | :-- |
-| F1 | `livekit_client`: entrar/sair, permissões de microfone | C8,B5 | L | dois aparelhos se ouvem |
-| F2 | Mute, deafen, indicador de quem fala | F1 | M | anel do avatar acende ao falar |
-| F3 | Câmera (ligar/desligar, trocar frontal/traseira) | F1 | M | vídeo aparece nos dois lados |
-| F4 | Compartilhar tela: Android (MediaProjection + serviço em primeiro plano) | F1 | L | tela compartilhada é vista pelo outro |
-| F5 | Compartilhar tela: iOS (extensão ReplayKit) | F4 | L | idem — **isolado, cortável da v1** |
-| F6 | `VoiceChannelView`: grade de participantes/tiles | F2,A4 | L | 4 participantes cabem sem sobrepor |
-| F7 | Barra de controles adaptada ao mobile | F2 | M | alcançável com o polegar |
-| F8 | Sons de entrada/saída | F1,A7 | S | toca só para os outros, não para si |
+| ✅ F1 | `livekit_client`: entrar/sair, permissões de microfone | C8,B5 | L | dois aparelhos se ouvem |
+| ✅ F2 | Mute, deafen, indicador de quem fala | F1 | M | anel do avatar acende ao falar |
+| ✅ F3 | Câmera (ligar/desligar, trocar frontal/traseira) | F1 | M | vídeo aparece nos dois lados |
+| 🟡 F4 | Compartilhar tela: Android (MediaProjection + serviço em primeiro plano) | F1 | L | tela compartilhada é vista pelo outro — *`CallService` e o pedido de consentimento estão de pé; falta ver a tela chegando do outro lado, que precisa de aparelho* |
+| F5 | Compartilhar tela: iOS (extensão ReplayKit) | F4 | L | idem — **isolado, cortável da v1**, e continua fora: exige uma extensão de *broadcast* assinada junto com o app |
+| ✅ F6 | `VoiceChannelView`: grade de participantes/tiles | F2,A4 | L | 4 participantes cabem sem sobrepor |
+| ✅ F7 | Barra de controles adaptada ao mobile | F2 | M | alcançável com o polegar |
+| ✅ F8 | Sons de entrada/saída | F1,A7 | S | toca só para os outros, não para si |
 
 ### Lane G — DMs e chamadas
 
 | id | tarefa | dep | tam | pronto quando |
 | :-- | :-- | :-- | :-- | :-- |
-| G1 | Lista de DMs + não lidas | C6,A4 | M | ordena por última mensagem |
-| G2 | Tela de DM reaproveitando o chat | E3,G1 | M | anexos e respostas funcionam |
-| G3 | Iniciar DM com alguém da lista | C7,G1 | S | get-or-create não duplica conversa |
-| G4 | Sinalização `DM_CALL` (ringing/accept/decline/cancel) | C3,G1 | L | recusar encerra dos dois lados |
-| G5 | Tela de chamada + toque | G4,A7 | M | toca até atender ou expirar |
-| G6 | CallKit/ConnectionService (app em segundo plano) | G5 | L | chamada aparece na tela de bloqueio |
-| G7 | Painel da chamada em andamento (áudio/vídeo/tela) | G4,F3 | M | trocar de mídia sem cair |
+| ✅ G1 | Lista de DMs + não lidas | C6,A4 | M | ordena por última mensagem — no celular são os avatares do rail, no tablet/desktop a coluna `DmSidebar` |
+| ✅ G2 | Tela de DM reaproveitando o chat | E3,G1 | M | anexos e respostas funcionam |
+| ✅ G3 | Iniciar DM com alguém da lista | C7,G1 | S | get-or-create não duplica conversa |
+| ✅ G4 | Sinalização `DM_CALL` (ringing/accept/decline/cancel) | C3,G1 | L | recusar encerra dos dois lados |
+| ✅ G5 | Tela de chamada + toque | G4,A7 | M | toca até atender ou expirar |
+| G6 | CallKit/ConnectionService (app em segundo plano) | G5 | L | chamada aparece na tela de bloqueio — **fora por enquanto**: sem push (§9) ela só valeria com o app já vivo, que é o caso que o cartão na tela já cobre |
+| ✅ G7 | Painel da chamada em andamento (áudio/vídeo/tela) | G4,F3 | M | trocar de mídia sem cair |
 
 ### Lane H — Mídia
 
 | id | tarefa | dep | tam | pronto quando |
 | :-- | :-- | :-- | :-- | :-- |
-| H1 | `VideoPlayer` com controles próprios (porte do `MediaPlayer.tsx`) | A4 | L | play/scrub/volume/velocidade iguais |
-| H2 | `AudioPlayer` com os mesmos controles, sem imagem | H1 | S | clipe de voz na lista |
-| H3 | Tela cheia + PiP | H1 | M | rotação e PiP no Android |
+| ✅ H1 | `VideoPlayer` com controles próprios (porte do `MediaPlayer.tsx`) | A4 | L | play/scrub/volume/velocidade iguais |
+| ✅ H2 | `AudioPlayer` com os mesmos controles, sem imagem | H1 | S | clipe de voz na lista |
+| ✅ H4 | Reações (👍 ❤️ 😂) com `MESSAGE_REACTION_UPDATE` | C5 | M | contador bate nos dois clientes — *não estava no plano: nasceu no servidor depois dele* |
+| 🟡 H3 | Tela cheia + PiP | H1 | M | rotação e PiP no Android — *tela cheia pronta; falta PiP* |
 
 ### Lane I — Plataforma
 
 | id | tarefa | dep | tam | pronto quando |
 | :-- | :-- | :-- | :-- | :-- |
 | I1 | Notificações locais + permissão | C3 | M | menção notifica com app em segundo plano |
-| I2 | `AdaptiveShell` (drawer no celular, colunas no tablet/desktop) | A4 | L | mesmo código nos dois formatos |
-| I3 | Ciclo de vida: reconectar ao voltar, áudio em segundo plano | C3,F1 | M | chamada sobrevive a bloquear a tela |
+| ✅ I2 | `AdaptiveShell` (drawer no celular, colunas no tablet/desktop) | A4 | L | mesmo código nos dois formatos |
+| 🟡 I3 | Ciclo de vida: reconectar ao voltar, áudio em segundo plano | C3,F1 | M | chamada sobrevive a bloquear a tela — *o áudio sobrevive: a chamada roda sob o `CallService` no Android e o modo `audio` no iOS. Falta a metade do ciclo de vida (reagir a `AppLifecycleState` na volta)* |
 | I4 | Deep link de convite (`campfire://invite/CODE`) | D3 | M | link abre já no registro |
-| 🟡 I5 | Ícone, splash, nome, permissões declaradas | A1 | S | instala com identidade certa — *nome e `INTERNET` prontos; faltam ícone, splash e as permissões de mídia (lane F)* |
+| 🟡 I5 | Ícone, splash, nome, permissões declaradas | A1 | S | instala com identidade certa — *nome, ícone (mesma arte do cliente Tauri, com ícone adaptativo no Android) e as permissões de mídia/serviço prontos, com teste no `manifest_test.dart`; falta a splash* |
 
 ### Lane J — Qualidade e entrega
 
 | id | tarefa | dep | tam | pronto quando |
 | :-- | :-- | :-- | :-- | :-- |
 | ✅ J1 | CI: `analyze` + `test` em todo push | A1 | S | workflow verde |
-| J2 | CI: build de APK/AAB assinado, anexado ao release | J1 | M | instalável baixado do GitHub |
+| 🟡 J2 | CI: build de APK/AAB assinado, anexado ao release | J1 | M | instalável baixado do GitHub — *`build-app-android.yml` roda à mão, monta um APK por ABI e anexa ao pre-release rolante `app-dev`; falta a assinatura de verdade, que hoje é a chave de debug do runner* |
 | J3 | CI: build iOS sem assinatura (compila) | J1 | M | quebra cedo se o iOS quebrar |
 | J4 | Testes de integração contra o compose de dev | B8,D2 | L | roda no CI com o servidor em serviço |
 | J5 | Distribuição interna (pre-release rolante, igual ao Windows) | J2 | S | link único sempre com o build novo |
@@ -257,11 +258,11 @@ linha) · sem marca = não começou.
 | Marco | Entrega | Tarefas |
 | :-- | :-- | :-- |
 | ✅ **M0** | App abre com a identidade visual certa | A1–A3, A6, B1, B7, J1 |
-| 🟡 **M1** | Entra no servidor de produção e vê a lista de canais | B3–B5, C1–C4, C9, D1–D4 |
-| **M2** | Conversa: lê, escreve, menciona, responde, edita | C5, E1, E3–E6, E8, E9, E12 |
-| **M3** | Manda e abre mídia | B6, E2, E7, E10, E11, H1, H2 |
-| **M4** | Fala: canal de voz com mute, fala e câmera | C8, F1–F3, F6–F8 |
-| **M5** | DM com chamada, notificação, celular de verdade | C6, C7, G1–G7, I1–I3 |
+| ✅ **M1** | Entra no servidor de produção e vê a lista de canais | B3–B5, C1–C4, C9, D1–D4 |
+| ✅ **M2** | Conversa: lê, escreve, menciona, responde, edita | C5, E1, E3–E6, E8, E9, E12 |
+| ✅ **M3** | Manda e abre mídia | B6, E2, E7, E10, E11, H1, H2 |
+| ✅ **M4** | Fala: canal de voz com mute, fala e câmera | C8, F1–F3, F6–F8 |
+| 🟡 **M5** | DM com chamada, notificação, celular de verdade | C6, C7, G1–G7, I1–I3 |
 | **M6** | Entrega contínua | I5, J2–J5, e então F4/F5 se ficarem de pé |
 
 **M0 fechou** — mais A5 (brasa animada) e B2 (união dos eventos), que vieram junto
@@ -269,12 +270,29 @@ porque A5 é o que faz "identidade visual certa" significar alguma coisa e B2 é
 tarefa S em cima de B1. O `flutter analyze --fatal-infos` e os 43 testes passam,
 e o APK debug compila e instala.
 
-**M1 está de pé menos a prova final.** O caminho completo existe e é testado —
-connect com `/health`, login, registro por convite, sessão restaurada, socket
-aberto, READY preenchendo canais/servidor/presença, lista de canais na tela. O que
-falta é rodar isso contra o servidor de produção com uma conta de verdade; até lá
-M1 fica 🟡. B5 e B6 têm código completo mas cobertura parcial, e A4 ainda não
-existe como conjunto de widgets — as telas de auth se viram com o `ThemeData`.
+**M2 fechou.** O chat funciona de ponta a ponta contra o servidor: histórico
+paginado, envio otimista, edição, exclusão, resposta, menções destacadas e com
+autocomplete, indicador de digitação, anexos com progresso, players próprios de
+vídeo e áudio, lightbox e reações. Falta o que é de teclado físico (E8) e o PiP
+(H3).
+
+**M1 fechou** quando o APK rodou no aparelho contra o servidor de produção, com
+conta de verdade: connect com `/health`, login, sessão restaurada, socket aberto,
+READY preenchendo canais/servidor/presença e o histórico na tela. B5 e B6 têm
+código completo mas cobertura parcial, e A4 ainda não existe como conjunto de
+widgets — as telas de auth se viram com o `ThemeData`.
+
+**M4 fechou.** Dois clientes entram na mesma sala, se veem na grade, e mute,
+deafen, câmera, quem-fala, os sons e a saída valem nos dois lados. A prova está
+em `app/` com dois Chromium de microfone falso contra o LiveKit do compose de
+dev (ver `app/README.md`); o que ainda não passou por aparelho é o
+compartilhamento de tela (F4), que precisa da tela de consentimento do Android.
+
+**M5 está a duas tarefas do fim.** A chamada 1:1 funciona ponta a ponta — toca,
+atende, recusa, cai dos dois lados, e o painel dentro da conversa troca microfone
+e câmera sem derrubar a sala. Faltam as notificações locais (I1), a metade do
+ciclo de vida que reage ao app voltar do segundo plano (I3) e o CallKit (G6),
+que sem push só cobriria o caso que o cartão na tela já cobre.
 
 **Frentes que rodam em paralelo desde o dia 1**, sem esperar ninguém: ~~A1 (fundação)~~, E1 e E2 (portes puros com teste, não dependem de UI), H1 (player, só precisa do tema), B8 (fixtures do servidor, que já está no ar), ~~J1 (CI)~~.
 
@@ -286,8 +304,9 @@ Com três frentes simultâneas, M0–M2 é a metade do caminho e é onde o app d
 
 | Risco | Impacto | Como atacar |
 | :-- | :-- | :-- |
-| **Compartilhar tela no iOS** exige extensão ReplayKit, processo separado, com limite de memória | alto | F5 isolada e cortável; a v1 pode sair só com Android |
+| **Compartilhar tela no iOS** exige extensão ReplayKit, processo separado, com limite de memória | alto | F5 isolada e cortável; a v1 sai só com Android — **foi o que aconteceu**: o botão de compartilhar nem aparece no iOS, em vez de aparecer e não funcionar |
 | **Chamada com app fechado** precisa de push (FCM/APNs); o servidor não tem | alto | v1 toca só com socket vivo (app aberto ou em segundo plano recente). Push é trabalho **de servidor**, planejado à parte |
+| **O microfone some quando o app sai da tela** (Android 11+) e o MediaProjection nem começa sem serviço | médio | Já resolvido: a chamada roda sob o `CallService`, um *foreground service* de tipo `microphone\|mediaProjection` que o Dart liga ao entrar na sala. É a razão de o app pedir `POST_NOTIFICATIONS` |
 | **Refresh de token em paralelo** invalidando sessão | médio | B4 com teste explícito de concorrência antes de qualquer tela |
 | **Fidelidade visual** (translucidez, brasa, oklch) | médio | A2 gera tokens do CSS; revisão por captura lado a lado, não por memória |
 | **Rolagem de listas longas** com anexos e vídeo | médio | E3 com `ListView.builder` reverso e teste de 500 mensagens desde cedo |
@@ -299,10 +318,25 @@ Com três frentes simultâneas, M0–M2 é a metade do caminho e é onde o app d
 
 ## 10. O servidor precisa mudar?
 
-Para a v1, **não**. Três ressalvas:
+Para a v1, quase nada — mas a lane E encontrou duas coisas que **já estavam
+quebradas** e foram consertadas junto:
+
+- **Reações davam 500 em qualquer deploy migrado.** A migration `d239f4c8a671`
+  criou `message_reactions.type` como enum do Postgres; o modelo depois virou
+  `String(80)` ("reaction keys are extensible"), e ninguém reconciliou os dois —
+  todo `INSERT` batia `DatatypeMismatchError`. A migration `f1a7c0b93e42`
+  converte a coluna para texto e normaliza as linhas antigas para minúsculas.
+- **CORS não expunha `Content-Range`**, o que impede um `<video>`/`<audio>` em
+  modo CORS de tocar por faixa de bytes. Só afeta o alvo web (§12); o webview do
+  Tauri carrega mídia sem CORS.
+
+Três ressalvas que continuam de pé:
 
 1. **Push** (chamada com app fechado) exigiria endpoint de registro de token e envio via FCM/APNs.
-2. **Flutter Web**, se um dia entrar, exige acrescentar a origem em `cors_origins`.
+2. **Flutter Web** entrou como alvo de *desenvolvimento* (§12), e por isso
+   `cors_origins` ganhou `http://localhost:1421` e `http://127.0.0.1:1421` —
+   as mesmas duas linhas que já existiam para o `tauri dev` na 1420. Nada muda
+   em produção; entregar o app pela web continua fora do escopo.
 3. **Avatares**: hoje o usuário não tem foto; o app mostra inicial. Se quiser foto, é upload + campo no modelo — mesma mudança nos dois clientes.
 
 ---
@@ -310,3 +344,52 @@ Para a v1, **não**. Três ressalvas:
 ## 11. Como isso convive com o cliente atual
 
 Os dois falam com o mesmo servidor e podem ficar no ar ao mesmo tempo, inclusive na mesma conta. O repositório ganha `app/` ao lado de `client/` e `server/`; a esteira de deploy do servidor não muda, e o Flutter entra com workflows próprios (J1–J3), do mesmo jeito que `check-client.yml` e `build-windows.yml` cuidam do Tauri hoje.
+
+---
+
+## 12. Layout no celular
+
+O cliente Tauri tem quatro colunas (rail, canais, chat, membros) porque nasceu no
+desktop. No celular a referência é o **Discord mobile**: o mesmo conteúdo, mas
+uma coluna por vez, com as outras atrás das bordas.
+
+| Onde | Desktop (Tauri) | Celular |
+| :--- | :--- | :--- |
+| Rail + canais | duas colunas fixas à esquerda | gaveta esquerda, abre por *swipe* ou pela seta do topo |
+| Chat | terceira coluna | a tela inteira |
+| Membros | quarta coluna | gaveta direita, no ícone de pessoas |
+| Canal aberto | cabeçalho da coluna do chat | `AppBar`: `#nome` + quantos estão online |
+| Voz | painel na barra do usuário | painel de baixo, no alcance do polegar (a barra do usuário mantém o dela, para quando a voz não é a tela aberta) |
+| Chamada recebida | cartão flutuante no canto | mesmo cartão, ocupando a largura da tela — nunca um modal: uma chamada indesejada não sequestra o app |
+| Câmera | uma, apontada para você | duas, e um botão para virar entre elas que o desktop não tem |
+| Compartilhar tela | *picker* próprio em Rust (Windows) | a folha de consentimento do próprio Android; no iOS o botão não existe |
+| Ações da mensagem | barra que aparece no *hover* | *long press* abre a folha com reações, responder, copiar, editar e apagar; toque duplo curte |
+| Anexar | `<input type=file>` + colar | folha com fotos, câmera e arquivo |
+
+Os *tiles* de uma chamada dimensionam o avatar pela caixa que couberam, não por
+um tamanho fixo: a mesma célula "normal" é um terço de uma janela de desktop e
+metade da largura de um celular.
+
+**O design não muda** — os tokens continuam saindo de `index.css` pelo gerador, e
+as colunas continuam translúcidas sobre o *night sky*. A única concessão é que,
+numa gaveta, a translucidez seria sobre o chat em vez de sobre o fundo; por isso
+`overSky()` resolve o mesmo token contra a cor do céu (`theme/night_sky.dart`).
+
+O corte entre os dois formatos é `ShellScreen.wideBreakpoint` (900 lógicos).
+
+### Comparar os dois clientes lado a lado
+
+Web não é alvo de entrega, mas é o jeito mais rápido de ver o layout do Flutter
+ao lado do React sem depender de um aparelho:
+
+```sh
+flutter build web --release
+(cd build/web && python3 -m http.server 1421)   # a origem que o CORS libera
+```
+
+O `web-server` do `flutter run` (debug/DDC) carrega os scripts e nunca monta a
+view neste ambiente — o build release é o que renderiza. Como o Flutter pinta num
+canvas, um script de automação precisa clicar em
+`flutter-semantics-placeholder` primeiro para ligar a árvore de semântica e ter
+o que consultar; agir sobre os elementos dela, porém, não funciona — clique e
+digitação têm que ir por mouse e teclado de verdade.
