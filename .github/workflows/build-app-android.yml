@@ -1,0 +1,115 @@
+name: Build Flutter client (Android)
+
+# Same shape as build-app-windows.yml: a manual run publishes to the rolling
+# "app-dev" draft pre-release, so the newest build of the app — either
+# platform — is always behind one link, and an `app-v*` tag cuts a proper
+# versioned one. The APKs are attached as workflow artifacts either way.
+#
+# **These APKs are signed with the debug key** (see `android/app/
+# build.gradle.kts`, which still has the template's TODO). They install and
+# run, but the runner generates its own debug keystore, so a build from here
+# cannot upgrade one built on your machine, or the other way round — Android
+# refuses with INSTALL_FAILED_UPDATE_INCOMPATIBLE and the fix is to uninstall
+# first. A real signing config settles both halves of that (PLANO_FLUTTER.md,
+# task J2).
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "app-v*"
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gradle 9 + AGP 9 need a modern JDK, and 21 is what the app is built
+      # with on the machine this was verified on.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # The runner image ships an Android SDK, but not the pieces this app
+      # pins: platform 37, which `compileSdk` is set to because
+      # flutter_secure_storage builds against it, and the NDK, which a release
+      # build needs to strip the WebRTC and engine `.so` files. Gradle would
+      # try to fetch them mid-build; asking up front means a missing package
+      # fails here, with the package name in the log, instead of somewhere
+      # inside a Gradle task.
+      - name: Install the SDK packages this app pins
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" "platforms;android-37.0" "build-tools;37.0.0" "ndk;28.2.13676358"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.8
+          channel: stable
+          cache: true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('app/android/**/*.gradle*', 'app/android/gradle/wrapper/gradle-wrapper.properties', 'app/pubspec.lock') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # One APK per ABI rather than one fat one: the WebRTC and Flutter engine
+      # libraries are most of the download (a universal APK is ~97 MB), and a
+      # phone only ever needs its own — arm64-v8a for anything recent.
+      - name: Build
+        run: flutter build apk --release --split-per-abi
+
+      - name: Collect the APKs
+        run: |
+          mkdir -p dist
+          for apk in build/app/outputs/flutter-apk/app-*-release.apk; do
+            abi=$(basename "$apk" | sed -E 's/^app-(.*)-release\.apk$/\1/')
+            cp "$apk" "dist/campfire-$abi.apk"
+          done
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: campfire-android
+          path: app/dist/*.apk
+          if-no-files-found: error
+
+      - name: Determine release tag
+        id: release
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/app-v* ]]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "name=Campfire app ${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=app-dev" >> "$GITHUB_OUTPUT"
+            echo "name=Campfire app (dev build)" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: ${{ steps.release.outputs.name }}
+          body: "Build automático via GitHub Actions."
+          draft: true
+          prerelease: ${{ steps.release.outputs.prerelease }}
+          files: app/dist/*.apk
