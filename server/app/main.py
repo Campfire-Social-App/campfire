@@ -45,6 +45,12 @@ def create_app() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # A <video>/<audio> element loaded in CORS mode (which is what the
+        # Flutter web player does) streams by byte range, and the browser
+        # rejects the media as a "format error" unless these come back readable
+        # to script. The Tauri webview never hits this: it loads media without
+        # crossorigin, so no CORS response is involved at all.
+        expose_headers=["Content-Range", "Accept-Ranges", "Content-Length", "Content-Disposition"],
     )
 
     @app.get("/health")

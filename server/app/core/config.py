@@ -14,11 +14,16 @@ class Settings(BaseSettings):
     # this http://<scheme>.localhost form there — see tauri-apps/tauri
     # crates/tauri/src/manager/mod.rs `tauri_protocol_url`).
     # http://localhost:1420 -> `npm run dev` / `tauri dev`.
+    # http://localhost:1421 -> `flutter run -d chrome --web-port 1421`, the web
+    # build of the Flutter client, used to compare layout against the React one
+    # side by side (PLANO_FLUTTER.md §10).
     cors_origins: list[str] = [
         "tauri://localhost",
         "http://tauri.localhost",
         "http://localhost:1420",
         "http://127.0.0.1:1420",
+        "http://localhost:1421",
+        "http://127.0.0.1:1421",
     ]
 
     # Database
