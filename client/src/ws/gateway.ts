@@ -40,6 +40,12 @@ class GatewayClient {
   private manualDisconnect = true;
 
   connect(): void {
+    if (
+      this.ws?.readyState === WebSocket.CONNECTING ||
+      this.ws?.readyState === WebSocket.OPEN
+    ) {
+      return;
+    }
     this.manualDisconnect = false;
     this.reconnectAttempt = 0;
     this.openSocket();
@@ -47,10 +53,14 @@ class GatewayClient {
 
   disconnect(): void {
     this.manualDisconnect = true;
-    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.stopHeartbeat();
-    this.ws?.close();
+    const socket = this.ws;
     this.ws = null;
+    socket?.close();
   }
 
   sendTyping(channelId: string): void {
@@ -64,6 +74,14 @@ class GatewayClient {
   }
 
   private openSocket(): void {
+    if (this.manualDisconnect) return;
+    if (
+      this.ws?.readyState === WebSocket.CONNECTING ||
+      this.ws?.readyState === WebSocket.OPEN
+    ) {
+      return;
+    }
+
     const serverUrl = useSettingsStore.getState().serverUrl;
     const accessToken = useAuthStore.getState().accessToken;
     if (!serverUrl || !accessToken) return;
@@ -73,11 +91,13 @@ class GatewayClient {
     this.ws = socket;
 
     socket.onopen = () => {
+      if (this.ws !== socket) return;
       this.reconnectAttempt = 0;
       this.startHeartbeat();
     };
 
     socket.onmessage = (event) => {
+      if (this.ws !== socket) return;
       try {
         this.handleMessage(JSON.parse(event.data as string) as GatewayEvent);
       } catch {
@@ -86,6 +106,11 @@ class GatewayClient {
     };
 
     socket.onclose = (event) => {
+      // React StrictMode mounts, cleans up, and mounts effects again in
+      // development. The close event from that retired socket may arrive after
+      // its replacement is connected; it must not start a second connection.
+      if (this.ws !== socket) return;
+      this.ws = null;
       this.stopHeartbeat();
       if (this.manualDisconnect) return;
 
@@ -100,9 +125,13 @@ class GatewayClient {
   }
 
   private scheduleReconnect(): void {
+    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
     const delay = Math.min(1000 * 2 ** this.reconnectAttempt, MAX_BACKOFF_MS);
     this.reconnectAttempt += 1;
-    this.reconnectTimer = window.setTimeout(() => this.openSocket(), delay);
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.openSocket();
+    }, delay);
   }
 
   private startHeartbeat(): void {
@@ -114,26 +143,33 @@ class GatewayClient {
     this.heartbeatTimer = null;
   }
 
-  /** Fires an OS notification for an incoming message the user should know about
-   * — a mention (directly or via @everyone), or any direct message, which is
-   * addressed to them by definition — unless they're already looking at it. */
-  private notifyIfRelevant(message: Message): void {
+  /** Marks text channels as unread and fires an OS notification for every
+   * incoming message, unless its conversation is currently visible. */
+  private handleIncomingMessage(message: Message): void {
     const currentUser = useAuthStore.getState().user;
     if (!currentUser || message.author.id === currentUser.id) return;
 
     const dmState = useDmsStore.getState();
+    const channelsState = useChannelsStore.getState();
     const isDm = dmState.conversations.some((c) => c.id === message.channel_id);
-    if (!isDm && !messageMentionsUser(message.content, currentUser.username)) return;
 
     const isViewing = isDm
       ? dmState.activeDmId === message.channel_id
-      : useChannelsStore.getState().selectedChannelId === message.channel_id;
+      : dmState.activeDmId === null &&
+        channelsState.selectedChannelId === message.channel_id;
     if (document.hasFocus() && isViewing) return;
 
-    const channel = useChannelsStore.getState().channels.find((c) => c.id === message.channel_id);
+    const channel = channelsState.channels.find((c) => c.id === message.channel_id);
+    if (channel?.type === "text") {
+      channelsState.markChannelUnread(channel.id);
+      if (messageMentionsUser(message.content, currentUser.username)) {
+        channelsState.incrementChannelMention(channel.id);
+      }
+    }
+
     notify(
       `${message.author.username}${!isDm && channel ? ` in #${channel.name}` : ""}`,
-      message.content.trim() ||
+      message.content.trim().slice(0, 240) ||
         (message.attachments.length > 1 ? "Sent attachments" : "Sent an attachment"),
     );
   }
@@ -191,7 +227,7 @@ class GatewayClient {
         const data = event.data as Message;
         useMessagesStore.getState().addMessage(data);
         useUsersStore.getState().upsertUser(data.author);
-        this.notifyIfRelevant(data);
+        this.handleIncomingMessage(data);
         break;
       }
       case "MESSAGE_UPDATE": {

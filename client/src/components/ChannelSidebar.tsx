@@ -37,6 +37,8 @@ const VOICE_PARTICIPANT_DRAG_TYPE = "application/x-campfire-voice-participant";
 export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
   const channels = useChannelsStore((s) => s.channels);
   const selectedChannelId = useChannelsStore((s) => s.selectedChannelId);
+  const unreadChannelIds = useChannelsStore((s) => s.unreadChannelIds);
+  const mentionCounts = useChannelsStore((s) => s.mentionCounts);
   const selectChannel = useChannelsStore((s) => s.selectChannel);
   const isAdmin = useAuthStore((s) => s.user?.is_admin ?? false);
 
@@ -105,6 +107,8 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
               <ChannelRow
                 channel={channel}
                 active={selectedChannelId === channel.id}
+                unread={!!unreadChannelIds[channel.id]}
+                mentionCount={mentionCounts[channel.id] ?? 0}
                 onClick={() => selectChannel(channel.id)}
               />
             </ChannelMenu>
@@ -170,11 +174,15 @@ function ChannelCategory({
 function ChannelRow({
   channel,
   active,
+  unread = false,
+  mentionCount = 0,
   onClick,
   onParticipantDrop,
 }: {
   channel: Channel;
   active: boolean;
+  unread?: boolean;
+  mentionCount?: number;
   onClick: () => void;
   onParticipantDrop?: (userId: string) => void;
 }) {
@@ -213,7 +221,19 @@ function ChannelRow({
       )}
     >
       <Icon className={cn("size-4 shrink-0", active && "text-primary")} />
-      <span className="min-w-0 truncate">{channel.name}</span>
+      <span
+        className={cn(
+          "min-w-0 truncate",
+          !active && unread && "font-semibold text-foreground",
+        )}
+      >
+        {channel.name}
+      </span>
+      {mentionCount > 0 && (
+        <span className="ml-auto flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">
+          {mentionCount > 99 ? "99+" : mentionCount}
+        </span>
+      )}
     </button>
   );
 }

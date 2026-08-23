@@ -21,6 +21,7 @@ import { useModerationStore } from "@/state/moderation";
 export function ServerShell() {
   const channels = useChannelsStore((s) => s.channels);
   const selectedChannelId = useChannelsStore((s) => s.selectedChannelId);
+  const markChannelRead = useChannelsStore((s) => s.markChannelRead);
   const gatewayReady = useChannelsStore((s) => s.ready);
   const activeDmId = useDmsStore((s) => s.activeDmId);
   const conversations = useDmsStore((s) => s.conversations);
@@ -32,12 +33,27 @@ export function ServerShell() {
   }, []);
 
   useEffect(() => {
+    // Start resolving notification permission before the gateway can deliver
+    // its first message. Notifications received while the prompt is open queue
+    // behind this initialization.
+    void initNotifications();
     gatewayClient.connect();
     void fetchUsers();
-    void initNotifications();
     return () => gatewayClient.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const markVisibleChannelRead = () => {
+      if (document.hasFocus() && activeDmId === null && selectedChannelId) {
+        markChannelRead(selectedChannelId);
+      }
+    };
+
+    markVisibleChannelRead();
+    window.addEventListener("focus", markVisibleChannelRead);
+    return () => window.removeEventListener("focus", markVisibleChannelRead);
+  }, [activeDmId, selectedChannelId, markChannelRead]);
 
   const selectedChannel = channels.find((c) => c.id === selectedChannelId) ?? null;
   const activeConversation = conversations.find((c) => c.id === activeDmId) ?? null;

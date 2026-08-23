@@ -130,6 +130,7 @@ export function mentionCandidates(
   query: string,
   users: User[],
   channels: Channel[],
+  excludedUserId?: string,
 ): MentionCandidate[] {
   const lowerQuery = query.toLowerCase();
 
@@ -145,7 +146,7 @@ export function mentionCandidates(
     candidates.push({ key: "everyone", label: "everyone", insert: "everyone" });
   }
   for (const user of users) {
-    if (user.username.toLowerCase().startsWith(lowerQuery)) {
+    if (user.id !== excludedUserId && user.username.toLowerCase().startsWith(lowerQuery)) {
       candidates.push({ key: user.id, label: user.username, insert: user.username });
     }
   }
