@@ -20,6 +20,7 @@ import { InviteDialog } from "@/components/InviteDialog";
 import { UserAvatar } from "@/components/UserAvatar";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { UserBar } from "@/components/UserBar";
+import { ScreenShareLiveBadge } from "@/components/ScreenShareLiveBadge";
 import { joinVoiceChannel } from "@/livekit/voice";
 import { moveVoiceParticipant } from "@/api/endpoints";
 import { cn } from "@/lib/utils";
@@ -220,6 +221,7 @@ function ChannelRow({
 function VoiceParticipants({ channelId }: { channelId: string }) {
   const participants = useVoiceStore(useShallow((s) => s.participantsInChannel(channelId)));
   const speakingUserIds = useVoiceStore((s) => s.speakingUserIds);
+  const screenShareTracks = useVoiceStore((s) => s.screenShareTracks);
   const onlineUserIds = usePresenceStore((s) => s.onlineUserIds);
   const isAdmin = useAuthStore((s) => s.user?.is_admin ?? false);
   const usersById = useUsersStore((s) => s.byId);
@@ -255,10 +257,15 @@ function VoiceParticipants({ channelId }: { channelId: string }) {
                   ring={!!speakingUserIds[p.user_id]}
                 />
                 <span className="min-w-0 truncate text-sm text-muted-foreground">{p.username}</span>
-                {(p.muted || p.deafened) && (
-                  <div className="ml-auto flex shrink-0 items-center gap-1.5 text-destructive">
-                    {p.muted && <MicOff aria-label="Microphone muted" className="size-3.5" />}
-                    {p.deafened && <VolumeX aria-label="Audio deafened" className="size-3.5" />}
+                {(screenShareTracks[p.user_id] || p.muted || p.deafened) && (
+                  <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                    {p.muted && (
+                      <MicOff aria-label="Microphone muted" className="size-3.5 text-destructive" />
+                    )}
+                    {p.deafened && (
+                      <VolumeX aria-label="Audio deafened" className="size-3.5 text-destructive" />
+                    )}
+                    {screenShareTracks[p.user_id] && <ScreenShareLiveBadge />}
                   </div>
                 )}
               </button>

@@ -13,6 +13,8 @@ interface VoiceState {
   localDeafened: boolean;
   localCameraEnabled: boolean;
   localScreenShareEnabled: boolean;
+  /** Tile currently expanded in theater mode; kept while navigating through chat. */
+  focusedCallTileKey: string | null;
   /** Our own source picker — global, since the share button lives in two places. */
   screenPickerOpen: boolean;
   speakingUserIds: Record<string, true>;
@@ -29,6 +31,7 @@ interface VoiceState {
   setLocalDeafened: (deafened: boolean) => void;
   setLocalCameraEnabled: (enabled: boolean) => void;
   setLocalScreenShareEnabled: (enabled: boolean) => void;
+  setFocusedCallTileKey: (key: string | null) => void;
   setScreenPickerOpen: (open: boolean) => void;
   setSpeaking: (userIds: string[]) => void;
   setCameraTrack: (userId: string, track: VideoTrack | null) => void;
@@ -44,6 +47,7 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
   localDeafened: false,
   localCameraEnabled: false,
   localScreenShareEnabled: false,
+  focusedCallTileKey: null,
   screenPickerOpen: false,
   speakingUserIds: {},
   cameraTracks: {},
@@ -95,6 +99,7 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
             screenShareTracks: {},
             localCameraEnabled: false,
             localScreenShareEnabled: false,
+            focusedCallTileKey: null,
           }
         : {}),
     }),
@@ -115,6 +120,7 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
   setLocalDeafened: (deafened) => set({ localDeafened: deafened }),
   setLocalCameraEnabled: (enabled) => set({ localCameraEnabled: enabled }),
   setLocalScreenShareEnabled: (enabled) => set({ localScreenShareEnabled: enabled }),
+  setFocusedCallTileKey: (key) => set({ focusedCallTileKey: key }),
   setScreenPickerOpen: (open) => set({ screenPickerOpen: open }),
 
   setSpeaking: (userIds) =>

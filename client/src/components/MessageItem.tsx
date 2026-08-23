@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { CornerUpLeft, Pencil, Reply, Trash2 } from "lucide-react";
 import { AttachmentList } from "@/components/AttachmentList";
+import { LinkPreviewList } from "@/components/LinkPreview";
 import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +18,7 @@ import {
 import type { Channel, Message, ReactionType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { messageMentionsUser, splitMentions } from "@/lib/mentions";
+import { splitLinks } from "@/lib/links";
 import { useMessagesStore } from "@/state/messages";
 import { useModerationStore } from "@/state/moderation";
 
@@ -190,6 +192,8 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
           <AttachmentList attachments={message.attachments} />
         )}
 
+        {!editing && <LinkPreviewList content={message.content} />}
+
         {reactions.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {REACTIONS.map(({ type, emoji, label }) => {
@@ -282,7 +286,7 @@ function MentionText({
   return (
     <>
       {segments.map((segment, i) => {
-        if (!segment.mention) return <span key={i}>{segment.text}</span>;
+        if (!segment.mention) return <LinkifiedText key={i} content={segment.text} />;
 
         if (segment.mention === "channel") {
           return (
@@ -311,6 +315,28 @@ function MentionText({
           </span>
         );
       })}
+    </>
+  );
+}
+
+function LinkifiedText({ content }: { content: string }) {
+  return (
+    <>
+      {splitLinks(content).map((segment, index) =>
+        segment.url ? (
+          <a
+            key={index}
+            href={segment.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+          >
+            {segment.text}
+          </a>
+        ) : (
+          <span key={index}>{segment.text}</span>
+        ),
+      )}
     </>
   );
 }
