@@ -29,6 +29,7 @@ class VoiceParticipantState:
     channel_id: uuid.UUID
     username: str
     muted: bool = False
+    deafened: bool = False
     speaking: bool = False
 
 

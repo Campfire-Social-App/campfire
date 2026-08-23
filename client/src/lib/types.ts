@@ -188,6 +188,7 @@ export interface VoiceStateUpdateData {
   username?: string;
   channel_id: string | null;
   muted?: boolean;
+  deafened?: boolean;
 }
 
 

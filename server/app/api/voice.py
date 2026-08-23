@@ -7,7 +7,12 @@ from app.core.deps import AdminUser, CurrentUser, DbSession, require_not_timed_o
 from app.gateway.events import GatewayEvent, GatewayEventType
 from app.gateway.manager import manager
 from app.models.channel import Channel, ChannelType
-from app.schemas.voice import MoveVoiceParticipantRequest, VoiceTokenResponse
+from app.schemas.voice import (
+    MoveVoiceParticipantRequest,
+    UpdateOwnVoiceStateRequest,
+    VoiceTokenRequest,
+    VoiceTokenResponse,
+)
 from app.services import dm_service
 from app.services.livekit_service import (
     create_voice_token,
@@ -19,7 +24,12 @@ router = APIRouter(prefix="/api/voice", tags=["voice"])
 
 
 @router.post("/{channel_id}/token", response_model=VoiceTokenResponse)
-async def get_voice_token(channel_id: uuid.UUID, user: CurrentUser, db: DbSession) -> VoiceTokenResponse:
+async def get_voice_token(
+    channel_id: uuid.UUID,
+    user: CurrentUser,
+    db: DbSession,
+    payload: VoiceTokenRequest | None = None,
+) -> VoiceTokenResponse:
     """Mints a LiveKit token for a room. Two kinds of room qualify: a voice
     channel (open to every member) and a DM (a 1:1 call — only its two members,
     and an outsider gets 404 rather than 403, matching the DM message routes)."""
@@ -34,7 +44,14 @@ async def get_voice_token(channel_id: uuid.UUID, user: CurrentUser, db: DbSessio
 
     settings = get_settings()
     room = str(channel.id)
-    token = create_voice_token(room=room, identity=str(user.id), name=user.username)
+    voice_state = payload or VoiceTokenRequest()
+    token = create_voice_token(
+        room=room,
+        identity=str(user.id),
+        name=user.username,
+        muted=voice_state.muted,
+        deafened=voice_state.deafened,
+    )
     return VoiceTokenResponse(token=token, url=settings.livekit_url, room=room)
 
 
@@ -43,6 +60,40 @@ async def _voice_participant_or_404(user_id: uuid.UUID):
     if participant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Participant is not in voice")
     return participant
+
+
+async def _dispatch_voice_state(db: DbSession, channel_id: uuid.UUID, event: GatewayEvent) -> None:
+    channel = await db.get(Channel, channel_id)
+    if channel is not None and channel.type == ChannelType.DM:
+        for member_id in await dm_service.participant_ids(db, channel_id):
+            await manager.send_to_user(member_id, event)
+        return
+    await manager.broadcast(event)
+
+
+@router.patch("/state", status_code=status.HTTP_204_NO_CONTENT)
+async def update_own_voice_state(
+    payload: UpdateOwnVoiceStateRequest,
+    user: CurrentUser,
+    db: DbSession,
+) -> None:
+    participant = await _voice_participant_or_404(user.id)
+    participant.muted = payload.muted
+    participant.deafened = payload.deafened
+    await _dispatch_voice_state(
+        db,
+        participant.channel_id,
+        GatewayEvent(
+            op=GatewayEventType.VOICE_STATE_UPDATE,
+            data={
+                "action": "updated",
+                "user_id": str(user.id),
+                "channel_id": str(participant.channel_id),
+                "muted": payload.muted,
+                "deafened": payload.deafened,
+            },
+        ),
+    )
 
 
 @router.post("/participants/{user_id}/move", status_code=status.HTTP_204_NO_CONTENT)
@@ -76,7 +127,9 @@ async def move_voice_participant(
 
 
 @router.post("/participants/{user_id}/mute", status_code=status.HTTP_204_NO_CONTENT)
-async def mute_voice_participant(user_id: uuid.UUID, _admin: AdminUser) -> None:
+async def mute_voice_participant(
+    user_id: uuid.UUID, _admin: AdminUser, db: DbSession
+) -> None:
     participant = await _voice_participant_or_404(user_id)
     try:
         await mute_participant_microphone(identity=str(user_id), room=str(participant.channel_id))
@@ -88,7 +141,9 @@ async def mute_voice_participant(user_id: uuid.UUID, _admin: AdminUser) -> None:
             detail="LiveKit could not mute the participant",
         ) from exc
     participant.muted = True
-    await manager.broadcast(
+    await _dispatch_voice_state(
+        db,
+        participant.channel_id,
         GatewayEvent(
             op=GatewayEventType.VOICE_STATE_UPDATE,
             data={
@@ -97,5 +152,5 @@ async def mute_voice_participant(user_id: uuid.UUID, _admin: AdminUser) -> None:
                 "channel_id": str(participant.channel_id),
                 "muted": True,
             },
-        )
+        ),
     )

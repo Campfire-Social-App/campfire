@@ -1,6 +1,8 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { LocalVideoTrack, RemoteVideoTrack } from "livekit-client";
 import type { VoiceParticipantState, VoiceStateUpdateData } from "@/lib/types";
+import { createSecureStorage } from "@/state/persist";
 
 export type VoiceConnectionStatus = "disconnected" | "connecting" | "connected";
 export type VideoTrack = LocalVideoTrack | RemoteVideoTrack;
@@ -11,8 +13,12 @@ interface VoiceState {
   connectionStatus: VoiceConnectionStatus;
   localMuted: boolean;
   localDeafened: boolean;
+  /** Distinguishes a deafen-induced mic mute from an explicit user mute. */
+  microphoneMutedByDeafen: boolean;
   localCameraEnabled: boolean;
   localScreenShareEnabled: boolean;
+  /** Tile currently expanded in theater mode; kept while navigating through chat. */
+  focusedCallTileKey: string | null;
   /** Our own source picker — global, since the share button lives in two places. */
   screenPickerOpen: boolean;
   speakingUserIds: Record<string, true>;
@@ -24,11 +30,13 @@ interface VoiceState {
   applyVoiceStateUpdate: (data: VoiceStateUpdateData) => void;
   setConnection: (channelId: string | null, status: VoiceConnectionStatus) => void;
   setLocalMuted: (muted: boolean) => void;
+  setMicrophoneMutedByDeafen: (muted: boolean) => void;
   setParticipantMuted: (userId: string, muted: boolean) => void;
   setParticipantDeafened: (userId: string, deafened: boolean) => void;
   setLocalDeafened: (deafened: boolean) => void;
   setLocalCameraEnabled: (enabled: boolean) => void;
   setLocalScreenShareEnabled: (enabled: boolean) => void;
+  setFocusedCallTileKey: (key: string | null) => void;
   setScreenPickerOpen: (open: boolean) => void;
   setSpeaking: (userIds: string[]) => void;
   setCameraTrack: (userId: string, track: VideoTrack | null) => void;
@@ -36,14 +44,16 @@ interface VoiceState {
   participantsInChannel: (channelId: string) => VoiceParticipantState[];
 }
 
-export const useVoiceStore = create<VoiceState>()((set, get) => ({
+export const useVoiceStore = create<VoiceState>()(persist((set, get) => ({
   states: [],
   connectedChannelId: null,
   connectionStatus: "disconnected",
   localMuted: false,
   localDeafened: false,
+  microphoneMutedByDeafen: false,
   localCameraEnabled: false,
   localScreenShareEnabled: false,
+  focusedCallTileKey: null,
   screenPickerOpen: false,
   speakingUserIds: {},
   cameraTracks: {},
@@ -59,8 +69,8 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
           user_id: data.user_id,
           username: data.username ?? data.user_id,
           channel_id: data.channel_id,
-          muted: false,
-          deafened: false,
+          muted: data.muted ?? false,
+          deafened: data.deafened ?? false,
           speaking: false,
         });
         return { states: next };
@@ -75,7 +85,11 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
         return {
           states: state.states.map((participant) =>
             participant.user_id === data.user_id
-              ? { ...participant, ...(data.muted !== undefined ? { muted: data.muted } : {}) }
+              ? {
+                  ...participant,
+                  ...(data.muted !== undefined ? { muted: data.muted } : {}),
+                  ...(data.deafened !== undefined ? { deafened: data.deafened } : {}),
+                }
               : participant,
           ),
         };
@@ -95,11 +109,13 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
             screenShareTracks: {},
             localCameraEnabled: false,
             localScreenShareEnabled: false,
+            focusedCallTileKey: null,
           }
         : {}),
     }),
 
   setLocalMuted: (muted) => set({ localMuted: muted }),
+  setMicrophoneMutedByDeafen: (muted) => set({ microphoneMutedByDeafen: muted }),
   setParticipantMuted: (userId, muted) =>
     set((state) => ({
       states: state.states.map((participant) =>
@@ -115,6 +131,7 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
   setLocalDeafened: (deafened) => set({ localDeafened: deafened }),
   setLocalCameraEnabled: (enabled) => set({ localCameraEnabled: enabled }),
   setLocalScreenShareEnabled: (enabled) => set({ localScreenShareEnabled: enabled }),
+  setFocusedCallTileKey: (key) => set({ focusedCallTileKey: key }),
   setScreenPickerOpen: (open) => set({ screenPickerOpen: open }),
 
   setSpeaking: (userIds) =>
@@ -137,4 +154,13 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
     }),
 
   participantsInChannel: (channelId) => get().states.filter((s) => s.channel_id === channelId),
+}), {
+  name: "campfire-voice-preferences",
+  storage: createSecureStorage(),
+  partialize: (state) =>
+    ({
+      localMuted: state.localMuted,
+      localDeafened: state.localDeafened,
+      microphoneMutedByDeafen: state.microphoneMutedByDeafen,
+    }) as VoiceState,
 }));

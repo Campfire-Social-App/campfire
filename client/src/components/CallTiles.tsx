@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { MicOff, MonitorPlay, VolumeX } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { ScreenShareLiveBadge } from "@/components/ScreenShareLiveBadge";
 import type { VideoTrack } from "@/state/voice";
 import type { VoiceParticipantState } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ export interface CallTile {
   kind: "camera" | "screen";
   participant: VoiceParticipantState;
   track: VideoTrack | null;
+  isScreenSharing: boolean;
 }
 
 export function buildTiles(
@@ -26,12 +28,19 @@ export function buildTiles(
       kind: "camera",
       participant: p,
       track: cameraTracks[p.user_id] ?? null,
+      isScreenSharing: !!screenShareTracks[p.user_id],
     };
     const screenTrack = screenShareTracks[p.user_id];
     if (!screenTrack) return [tile];
     return [
       tile,
-      { key: `scr:${p.user_id}`, kind: "screen", participant: p, track: screenTrack } satisfies CallTile,
+      {
+        key: `scr:${p.user_id}`,
+        kind: "screen",
+        participant: p,
+        track: screenTrack,
+        isScreenSharing: true,
+      } satisfies CallTile,
     ];
   });
 }
@@ -79,6 +88,15 @@ export function TileVisual({
         </div>
       )}
 
+      {compact && isScreen && (
+        <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-linear-to-t from-black/80 to-transparent px-2 py-1.5 text-white">
+          <MonitorPlay className="size-3 shrink-0" />
+          <span className="truncate text-[11px] font-medium">
+            {tile.participant.username} · screen
+          </span>
+        </div>
+      )}
+
       {!compact && (
         <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-linear-to-t from-black/70 to-transparent px-2.5 py-2">
           {isScreen ? (
@@ -88,16 +106,18 @@ export function TileVisual({
             {tile.participant.username}
             {isScreen && " · screen"}
           </span>
-          {!isScreen && (tile.participant.muted || tile.participant.deafened) && (
-            <div className="ml-auto flex shrink-0 items-center gap-1.5 text-destructive">
-              {tile.participant.muted && (
-                <MicOff aria-label="Microphone muted" className="size-3.5" />
-              )}
-              {tile.participant.deafened && (
-                <VolumeX aria-label="Audio deafened" className="size-3.5" />
-              )}
-            </div>
-          )}
+          {!isScreen &&
+            (tile.isScreenSharing || tile.participant.muted || tile.participant.deafened) && (
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {tile.participant.muted && (
+                  <MicOff aria-label="Microphone muted" className="size-3.5 text-destructive" />
+                )}
+                {tile.participant.deafened && (
+                  <VolumeX aria-label="Audio deafened" className="size-3.5 text-destructive" />
+                )}
+                {tile.isScreenSharing && <ScreenShareLiveBadge />}
+              </div>
+            )}
         </div>
       )}
     </div>
