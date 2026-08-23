@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
@@ -35,6 +36,8 @@ async def get_current_user(
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if user.is_banned:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is banned")
     return user
 
 
@@ -48,3 +51,11 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 AdminUser = Annotated[User, Depends(require_admin)]
+
+
+def require_not_timed_out(user: User) -> None:
+    if user.timed_out_until is not None and user.timed_out_until > datetime.now(UTC):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You are in timeout until {user.timed_out_until.isoformat()}",
+        )

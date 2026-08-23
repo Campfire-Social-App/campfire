@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { CornerUpLeft, Pencil, Reply, Trash2 } from "lucide-react";
 import { AttachmentList } from "@/components/AttachmentList";
 import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
+import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/state/auth";
 import { useUsersStore } from "@/state/users";
@@ -17,6 +18,7 @@ import type { Channel, Message, ReactionType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { messageMentionsUser, splitMentions } from "@/lib/mentions";
 import { useMessagesStore } from "@/state/messages";
+import { useModerationStore } from "@/state/moderation";
 
 const REACTIONS: ReadonlyArray<{ type: ReactionType; emoji: string; label: string }> = [
   { type: "like", emoji: "👍", label: "Like" },
@@ -101,7 +103,17 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
     >
       <div className="w-9 shrink-0 pt-0.5 text-center">
         {showHeader ? (
-          <UserAvatar username={message.author.username} />
+          <UserModerationMenu user={message.author}>
+            <button
+              type="button"
+              disabled={!currentUser?.is_admin}
+              title={currentUser?.is_admin ? `Moderate ${message.author.username}` : undefined}
+              onClick={() => useModerationStore.getState().openUser(message.author)}
+              className="rounded-full disabled:cursor-default"
+            >
+              <UserAvatar username={message.author.username} />
+            </button>
+          </UserModerationMenu>
         ) : (
           <span className="text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
             {time}

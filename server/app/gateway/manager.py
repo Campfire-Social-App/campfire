@@ -1,9 +1,12 @@
+import logging
 import uuid
 from dataclasses import dataclass
 
 from fastapi import WebSocket
 
 from app.gateway.events import GatewayEvent
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -73,6 +76,15 @@ class ConnectionManager:
         for sockets in list(self._connections.values()):
             for ws in list(sockets):
                 await ws.send_json(payload)
+
+    async def close_user_connections(self, user_id: uuid.UUID) -> None:
+        sockets = list(self._connections.get(user_id, set()))
+        for websocket in sockets:
+            try:
+                await websocket.close(code=4003, reason="Account moderated")
+            except Exception:
+                logger.exception("Failed to close a moderated user's gateway connection")
+        self._connections.pop(user_id, None)
 
     def pending_call(self, channel_id: uuid.UUID) -> DMCallInvite | None:
         return self.dm_calls.get(channel_id)

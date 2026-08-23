@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { CallCenter } from "@/components/CallCenter";
 import { ScreenSharePicker } from "@/components/ScreenSharePicker";
@@ -6,6 +6,7 @@ import { ServerRail } from "@/components/ServerRail";
 import { ChannelSidebar } from "@/components/ChannelSidebar";
 import { DirectMessageSidebar } from "@/components/DirectMessageSidebar";
 import { MemberList } from "@/components/MemberList";
+import { UserModerationDialog } from "@/components/UserModerationDialog";
 import { TextChannelView } from "@/screens/TextChannelView";
 import { VoiceChannelView } from "@/screens/VoiceChannelView";
 import { DirectMessageView } from "@/screens/DirectMessageView";
@@ -15,6 +16,7 @@ import { useServerStore } from "@/state/server";
 import { useUsersStore } from "@/state/users";
 import { gatewayClient } from "@/ws/gateway";
 import { initNotifications } from "@/lib/notifications";
+import { useModerationStore } from "@/state/moderation";
 
 export function ServerShell() {
   const channels = useChannelsStore((s) => s.channels);
@@ -24,6 +26,10 @@ export function ServerShell() {
   const conversations = useDmsStore((s) => s.conversations);
   const fetchUsers = useUsersStore((s) => s.fetch);
   const serverName = useServerStore((s) => s.name);
+  const moderationUser = useModerationStore((s) => s.selectedUser);
+  const setModerationOpen = useCallback((open: boolean) => {
+    if (!open) useModerationStore.getState().close();
+  }, []);
 
   useEffect(() => {
     gatewayClient.connect();
@@ -54,6 +60,11 @@ export function ServerShell() {
         <DirectMessageView conversation={activeConversation} />
         <CallCenter />
         <ScreenSharePicker />
+        <UserModerationDialog
+          user={moderationUser}
+          open={moderationUser !== null}
+          onOpenChange={setModerationOpen}
+        />
       </div>
     );
   }
@@ -80,6 +91,11 @@ export function ServerShell() {
           from inside a conversation — so this lives outside the DM branch too. */}
       <CallCenter />
       <ScreenSharePicker />
+      <UserModerationDialog
+        user={moderationUser}
+        open={moderationUser !== null}
+        onOpenChange={setModerationOpen}
+      />
     </div>
   );
 }

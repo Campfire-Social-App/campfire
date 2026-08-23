@@ -19,6 +19,7 @@ import {
   type NativeCapture,
 } from "@/lib/screenCapture";
 import { useDmsStore } from "@/state/dms";
+import { useChannelsStore } from "@/state/channels";
 import { useVoiceStore } from "@/state/voice";
 import {
   playJoinSound,
@@ -74,6 +75,25 @@ export async function joinVoiceChannel(
   nextRoom
     .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
       useVoiceStore.getState().setSpeaking(speakers.map((p) => p.identity));
+    })
+    .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+      if (topic !== "campfire.moderation") return;
+      try {
+        const command = JSON.parse(new TextDecoder().decode(payload)) as {
+          action?: string;
+          channel_id?: string;
+          channel_name?: string;
+        };
+        if (command.action !== "move" || !command.channel_id) return;
+        void joinVoiceChannel(command.channel_id)
+          .then(() => {
+            useChannelsStore.getState().selectChannel(command.channel_id!);
+            toast(`A moderator moved you to ${command.channel_name ?? "another voice channel"}.`);
+          })
+          .catch(() => toast.error("A moderator tried to move you, but joining failed."));
+      } catch {
+        // Ignore data packets that are not valid Campfire moderation commands.
+      }
     })
     .on(RoomEvent.ParticipantAttributesChanged, (attributes, participant) => {
       if (attributes.deafened !== undefined) {

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.core.deps import CurrentUser, DbSession
+from app.core.deps import CurrentUser, DbSession, require_not_timed_out
 from app.gateway.events import GatewayEvent, GatewayEventType
 from app.gateway.manager import manager
 from app.models.attachment import Attachment
@@ -158,6 +158,7 @@ async def list_messages(
 async def create_message(
     channel_id: uuid.UUID, payload: MessageCreateRequest, user: CurrentUser, db: DbSession
 ) -> MessageRead:
+    require_not_timed_out(user)
     channel = await _get_readable_channel_or_404(channel_id, user, db)
 
     reply_to_id: uuid.UUID | None = None
@@ -242,6 +243,7 @@ async def _get_own_message_or_404(
 async def update_message(
     message_id: uuid.UUID, payload: MessageUpdateRequest, user: CurrentUser, db: DbSession
 ) -> MessageRead:
+    require_not_timed_out(user)
     message, channel = await _get_own_message_or_404(message_id, user, db)
     message.content = payload.content
     message.edited_at = datetime.now(UTC)
@@ -334,6 +336,7 @@ async def add_reaction(
     user: CurrentUser,
     db: DbSession,
 ) -> MessageReactionRead:
+    require_not_timed_out(user)
     message, channel = await _get_reactable_message_or_404(message_id, user, db)
     statement = (
         pg_insert(MessageReaction)

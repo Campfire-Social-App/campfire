@@ -1,3 +1,5 @@
+import json
+
 from livekit import api as livekit_api
 
 from app.core.config import get_settings
@@ -23,6 +25,104 @@ def create_voice_token(*, room: str, identity: str, name: str) -> str:
         )
     )
     return token.to_jwt()
+
+
+def _api_url(url: str) -> str:
+    """The browser connects over WebSocket, while LiveKit's admin API uses HTTP."""
+    if url.startswith("wss://"):
+        return f"https://{url.removeprefix('wss://')}"
+    if url.startswith("ws://"):
+        return f"http://{url.removeprefix('ws://')}"
+    return url
+
+
+def _livekit_api() -> livekit_api.LiveKitAPI:
+    settings = get_settings()
+    return livekit_api.LiveKitAPI(
+        url=_api_url(settings.livekit_api_url or settings.livekit_url),
+        api_key=settings.livekit_api_key,
+        api_secret=settings.livekit_api_secret,
+    )
+
+
+async def mute_participant_microphone(*, identity: str, room: str) -> None:
+    """Server-mute the participant's published microphone track, if present."""
+    client = _livekit_api()
+    try:
+        participant = await client.room.get_participant(
+            livekit_api.RoomParticipantIdentity(room=room, identity=identity)
+        )
+        microphone = next(
+            (track for track in participant.tracks if track.source == livekit_api.TrackSource.MICROPHONE),
+            None,
+        )
+        if microphone is None:
+            raise ValueError("Participant has no published microphone")
+        await client.room.mute_published_track(
+            livekit_api.MuteRoomTrackRequest(
+                room=room,
+                identity=identity,
+                track_sid=microphone.sid,
+                muted=True,
+            )
+        )
+    finally:
+        await client.aclose()
+
+
+async def request_participant_move(
+    *, identity: str, source_room: str, destination_room: str, destination_name: str
+) -> None:
+    """Send a reliable, targeted moderation command over the active LiveKit room."""
+    client = _livekit_api()
+    try:
+        payload = json.dumps(
+            {
+                "action": "move",
+                "channel_id": destination_room,
+                "channel_name": destination_name,
+            }
+        ).encode()
+        await client.room.send_data(
+            livekit_api.SendDataRequest(
+                room=source_room,
+                data=payload,
+                kind=livekit_api.DataPacket.RELIABLE,
+                destination_identities=[identity],
+                topic="campfire.moderation",
+            )
+        )
+    finally:
+        await client.aclose()
+
+
+async def disconnect_participant(*, identity: str, room: str) -> None:
+    client = _livekit_api()
+    try:
+        await client.room.remove_participant(
+            livekit_api.RoomParticipantIdentity(room=room, identity=identity)
+        )
+    finally:
+        await client.aclose()
+
+
+async def list_active_participants() -> list[tuple[str, str, str]]:
+    """Return (identity, display name, room) for participants already connected."""
+    client = _livekit_api()
+    try:
+        rooms = await client.room.list_rooms(livekit_api.ListRoomsRequest())
+        active: list[tuple[str, str, str]] = []
+        for room in rooms.rooms:
+            participants = await client.room.list_participants(
+                livekit_api.ListParticipantsRequest(room=room.name)
+            )
+            active.extend(
+                (participant.identity, participant.name or participant.identity, room.name)
+                for participant in participants.participants
+            )
+        return active
+    finally:
+        await client.aclose()
 
 
 def get_webhook_receiver() -> livekit_api.WebhookReceiver:

@@ -2,6 +2,8 @@ export interface User {
   id: string;
   username: string;
   is_admin: boolean;
+  is_banned?: boolean;
+  timed_out_until?: string | null;
   avatar_url: string | null;
   created_at: string;
 }
@@ -90,6 +92,21 @@ export interface MessagePage {
   has_more: boolean;
 }
 
+export interface ModerationMessage {
+  id: string;
+  channel_id: string;
+  channel_name: string;
+  content: string;
+  created_at: string;
+  edited_at: string | null;
+  attachments: Attachment[];
+}
+
+export interface UserModerationOverview {
+  user: User;
+  messages: ModerationMessage[];
+}
+
 export interface Invite {
   id: string;
   code: string;
@@ -166,11 +183,13 @@ export interface TypingStartData {
 }
 
 export interface VoiceStateUpdateData {
-  action: "joined" | "left" | "room_finished";
+  action: "joined" | "left" | "room_finished" | "updated";
   user_id?: string;
   username?: string;
   channel_id: string | null;
+  muted?: boolean;
 }
+
 
 /** A step in a DM call's ring: `from` is whoever caused it — the caller when
  * ringing or cancelling, the callee when accepting or declining. Once a call is

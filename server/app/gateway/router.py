@@ -27,7 +27,8 @@ async def _authenticate(websocket: WebSocket) -> User | None:
         return None
 
     async with async_session_maker() as db:
-        return await db.get(User, user_id)
+        user = await db.get(User, user_id)
+        return user if user is not None and not user.is_banned else None
 
 
 async def _visible_voice_states(

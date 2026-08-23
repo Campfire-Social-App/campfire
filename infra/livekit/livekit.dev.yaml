@@ -2,15 +2,16 @@
 port: 7880
 
 rtc:
-  tcp_port: 7881
-  port_range_start: 50000
-  port_range_end: 50100
+  # A stack de producao usa 7881 no mesmo host. Uma porta distinta permite
+  # manter os ambientes ativos sem o LiveKit de desenvolvimento falhar no bind.
+  tcp_port: 7883
+  # Porta UDP unica e multiplexada. Evita conflitos com stacks antigas que
+  # ainda tenham a faixa 50000-50100 publicada no host.
+  udp_port: 7884
   use_external_ip: false
-  # Without this, LiveKit advertises the container's internal Docker IP as the
-  # ICE candidate address, which isn't reachable from outside Docker (client
-  # connects but media/ICE never completes). 127.0.0.1 works because ports are
-  # published to the host and WSL2 forwards both TCP and UDP for localhost.
-  node_ip: 127.0.0.1
+  # O container usa a rede do host no compose de desenvolvimento. Assim o
+  # LiveKit descobre os enderecos reais da maquina e nao anuncia 127.0.0.1 ou
+  # um IP interno do Docker como candidato ICE.
 
 keys:
   devkey: 324a9697e5bbde9de2844644ac03966ceab4bf67
@@ -18,6 +19,6 @@ keys:
 webhook:
   api_key: devkey
   urls:
-    - http://host.docker.internal:8000/api/webhooks/livekit
+    - http://127.0.0.1:8000/api/webhooks/livekit
 
 log_level: info

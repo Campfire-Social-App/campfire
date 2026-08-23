@@ -43,6 +43,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-campfire}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-campfire}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       LIVEKIT_URL: wss://${LIVEKIT_DOMAIN}
+      LIVEKIT_API_URL: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
       UPLOAD_DIR: /data/uploads

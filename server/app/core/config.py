@@ -45,6 +45,10 @@ class Settings(BaseSettings):
 
     # LiveKit
     livekit_url: str = "ws://localhost:7880"
+    # Optional internal HTTP endpoint for server-side moderation calls. This is
+    # different from livekit_url when the URL returned to clients points at the
+    # host/public domain rather than an address reachable from this process.
+    livekit_api_url: str | None = None
     livekit_api_key: str = "devkey"
     livekit_api_secret: str = "324a9697e5bbde9de2844644ac03966ceab4bf67"
 

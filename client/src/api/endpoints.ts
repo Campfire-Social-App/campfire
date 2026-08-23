@@ -11,6 +11,7 @@ import type {
   ReactionType,
   ServerSettings,
   User,
+  UserModerationOverview,
   VoiceTokenResponse,
 } from "@/lib/types";
 
@@ -82,6 +83,18 @@ export const markDmRead = (channelId: string) =>
 
 export const listUsers = () => apiFetch<User[]>("/api/users");
 
+export const getUserModerationOverview = (userId: string) =>
+  apiFetch<UserModerationOverview>(`/api/users/${userId}/moderation`);
+
+export const kickUserFromVoice = (userId: string) =>
+  apiFetch<void>(`/api/users/${userId}/kick`, { method: "POST" });
+
+export const banUser = (userId: string) =>
+  apiFetch<User>(`/api/users/${userId}/ban`, { method: "POST" });
+
+export const timeoutUser = (userId: string) =>
+  apiFetch<User>(`/api/users/${userId}/timeout`, { method: "POST" });
+
 export const updateMyAvatar = (attachmentId: string) =>
   apiFetch<User>("/api/users/@me/avatar", {
     method: "PUT",
@@ -102,3 +115,12 @@ export const deleteInvite = (id: string) => apiFetch<void>(`/api/invites/${id}`,
 
 export const getVoiceToken = (channelId: string) =>
   apiFetch<VoiceTokenResponse>(`/api/voice/${channelId}/token`, { method: "POST" });
+
+export const moveVoiceParticipant = (userId: string, channelId: string) =>
+  apiFetch<void>(`/api/voice/participants/${userId}/move`, {
+    method: "POST",
+    body: { channel_id: channelId },
+  });
+
+export const muteVoiceParticipant = (userId: string) =>
+  apiFetch<void>(`/api/voice/participants/${userId}/mute`, { method: "POST" });
