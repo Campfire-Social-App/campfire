@@ -47,8 +47,15 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
         # (set from the access token minted in services/livekit_service.py), so no
         # DB lookup is needed here to tell clients who joined.
         username = event.participant.name or str(user_id)
+        attributes = event.participant.attributes
+        muted = attributes.get("muted") == "true"
+        deafened = attributes.get("deafened") == "true"
         manager.voice_state[user_id] = VoiceParticipantState(
-            user_id=user_id, channel_id=channel_id, username=username
+            user_id=user_id,
+            channel_id=channel_id,
+            username=username,
+            muted=muted,
+            deafened=deafened,
         )
         await _dispatch_voice_event(
             channel_id,
@@ -59,6 +66,33 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
                     "user_id": str(user_id),
                     "username": username,
                     "channel_id": str(channel_id),
+                    "muted": muted,
+                    "deafened": deafened,
+                },
+            ),
+        )
+
+    elif event.event == "participant_updated":
+        try:
+            user_id = uuid.UUID(event.participant.identity)
+        except ValueError:
+            return
+        participant = manager.voice_state.get(user_id)
+        if participant is None:
+            return
+        attributes = event.participant.attributes
+        participant.muted = attributes.get("muted") == "true"
+        participant.deafened = attributes.get("deafened") == "true"
+        await _dispatch_voice_event(
+            participant.channel_id,
+            GatewayEvent(
+                op=GatewayEventType.VOICE_STATE_UPDATE,
+                data={
+                    "action": "updated",
+                    "user_id": str(user_id),
+                    "channel_id": str(participant.channel_id),
+                    "muted": participant.muted,
+                    "deafened": participant.deafened,
                 },
             ),
         )

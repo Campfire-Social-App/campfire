@@ -140,6 +140,42 @@ async def test_member_cannot_mute_another_voice_participant(
         manager.voice_state.pop(target.id, None)
 
 
+async def test_member_can_publish_own_voice_state_to_the_server_roster(
+    client: AsyncClient, db_session, monkeypatch
+) -> None:
+    from app.gateway.manager import VoiceParticipantState, manager
+    from app.models.channel import Channel, ChannelType
+
+    member = await _make_member(db_session, "voice-state-member")
+    channel = Channel(name="voice-state", type=ChannelType.VOICE)
+    db_session.add(channel)
+    await db_session.commit()
+    state = VoiceParticipantState(
+        user_id=member.id, channel_id=channel.id, username=member.username
+    )
+    manager.voice_state[member.id] = state
+    dispatched = []
+
+    async def fake_broadcast(event) -> None:
+        dispatched.append(event)
+
+    monkeypatch.setattr(manager, "broadcast", fake_broadcast)
+    try:
+        response = await client.patch(
+            "/api/voice/state",
+            json={"muted": True, "deafened": True},
+            headers=_headers(member),
+        )
+        assert response.status_code == 204, response.text
+        assert state.muted is True
+        assert state.deafened is True
+        assert len(dispatched) == 1
+        assert dispatched[0].data["muted"] is True
+        assert dispatched[0].data["deafened"] is True
+    finally:
+        manager.voice_state.pop(member.id, None)
+
+
 async def test_admin_can_mute_another_voice_participant(
     client: AsyncClient, admin_headers: dict[str, str], db_session, monkeypatch
 ) -> None:

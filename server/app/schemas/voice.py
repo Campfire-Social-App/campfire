@@ -9,5 +9,15 @@ class VoiceTokenResponse(BaseModel):
     room: str
 
 
+class VoiceTokenRequest(BaseModel):
+    muted: bool = False
+    deafened: bool = False
+
+
 class MoveVoiceParticipantRequest(BaseModel):
     channel_id: uuid.UUID
+
+
+class UpdateOwnVoiceStateRequest(BaseModel):
+    muted: bool
+    deafened: bool

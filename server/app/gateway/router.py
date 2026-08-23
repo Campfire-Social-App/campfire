@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
@@ -13,8 +14,10 @@ from app.models.channel import Channel, ChannelType
 from app.models.server_settings import SINGLETON_ID, ServerSettings
 from app.models.user import User
 from app.services import dm_service
+from app.services.livekit_service import list_active_participants
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _authenticate(websocket: WebSocket) -> User | None:
@@ -57,6 +60,35 @@ async def _visible_voice_states(
 
 
 async def _build_ready_payload(user: User) -> dict:
+    # READY must be authoritative even if this process missed an earlier mute
+    # update. Observers are not in the LiveKit room, so reconcile the public
+    # roster from LiveKit before sending their initial platform snapshot.
+    try:
+        for identity, username, room, muted, deafened in await list_active_participants():
+            try:
+                user_id = uuid.UUID(identity)
+                channel_id = uuid.UUID(room)
+            except ValueError:
+                continue
+            current = manager.voice_state.get(user_id)
+            if current is None:
+                manager.voice_state[user_id] = VoiceParticipantState(
+                    user_id=user_id,
+                    channel_id=channel_id,
+                    username=username,
+                    muted=muted,
+                    deafened=deafened,
+                )
+            else:
+                current.channel_id = channel_id
+                current.username = username
+                current.muted = muted
+                current.deafened = deafened
+    except Exception:
+        # Keep the webhook-maintained cache available if LiveKit's admin API is
+        # temporarily unreachable; platform access must not fail with it.
+        logger.warning("Could not refresh voice state for READY", exc_info=True)
+
     async with async_session_maker() as db:
         channels = (
             (
@@ -97,6 +129,7 @@ async def _build_ready_payload(user: User) -> dict:
                 "username": s.username,
                 "channel_id": str(s.channel_id),
                 "muted": s.muted,
+                "deafened": s.deafened,
                 "speaking": s.speaking,
             }
             for s in voice_states

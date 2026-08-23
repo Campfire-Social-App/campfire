@@ -113,8 +113,17 @@ export const listInvites = () => apiFetch<Invite[]>("/api/invites");
 
 export const deleteInvite = (id: string) => apiFetch<void>(`/api/invites/${id}`, { method: "DELETE" });
 
-export const getVoiceToken = (channelId: string) =>
-  apiFetch<VoiceTokenResponse>(`/api/voice/${channelId}/token`, { method: "POST" });
+export const getVoiceToken = (channelId: string, muted: boolean, deafened: boolean) =>
+  apiFetch<VoiceTokenResponse>(`/api/voice/${channelId}/token`, {
+    method: "POST",
+    body: { muted, deafened },
+  });
+
+export const updateOwnVoiceState = (muted: boolean, deafened: boolean) =>
+  apiFetch<void>("/api/voice/state", {
+    method: "PATCH",
+    body: { muted, deafened },
+  });
 
 export const moveVoiceParticipant = (userId: string, channelId: string) =>
   apiFetch<void>(`/api/voice/participants/${userId}/move`, {
