@@ -18,18 +18,46 @@ services:
       timeout: 5s
       retries: 10
 
+  server:
+    build: ../server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: development
+      # O servidor compartilha a rede do host com o LiveKit; o Postgres publica
+      # 5432 no host para continuar acessivel por localhost.
+      DATABASE_URL: postgresql+asyncpg://campfire:campfire@127.0.0.1:5432/campfire
+      JWT_SECRET: campfire-local-development-secret-2026-admin
+      ACCESS_TOKEN_EXPIRE_MINUTES: 15
+      REFRESH_TOKEN_EXPIRE_DAYS: 30
+      FIRST_ADMIN_USERNAME: admin
+      FIRST_ADMIN_PASSWORD: admin123
+      UPLOAD_DIR: /data/uploads
+      MAX_UPLOAD_BYTES: 26214400
+      # Este endereco e devolvido aos clientes, por isso aponta para o host.
+      LIVEKIT_URL: ws://localhost:7880
+      LIVEKIT_API_URL: http://127.0.0.1:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: 324a9697e5bbde9de2844644ac03966ceab4bf67
+    # Compartilhar a rede torna a API administrativa do LiveKit e o webhook
+    # mutuamente alcancaveis sem depender do firewall entre bridge e host.
+    network_mode: host
+    volumes:
+      - campfire_dev_uploads:/data/uploads
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
   livekit:
     image: livekit/livekit-server:latest
     restart: unless-stopped
     command: --config /etc/livekit.yaml
+    # WebRTC precisa anunciar um endereco alcancavel pelo cliente. Em Linux, a
+    # rede do host evita que o LiveKit anuncie o IP interno do container.
+    network_mode: host
     volumes:
       - ./livekit/livekit.dev.yaml:/etc/livekit.yaml:ro
-    ports:
-      - "7880:7880" # HTTP/WS
-      - "7881:7881" # RTC TCP fallback
-      - "50000-50100:50000-50100/udp" # RTC UDP (dev range, small on purpose)
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
 
   adminer:
     image: adminer:latest
@@ -41,3 +69,4 @@ services:
 
 volumes:
   campfire_dev_postgres:
+  campfire_dev_uploads:

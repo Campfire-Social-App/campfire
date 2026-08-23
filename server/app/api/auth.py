@@ -71,6 +71,8 @@ async def login(payload: LoginRequest, db: DbSession) -> AuthResponse:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password"
         )
+    if user.is_banned:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is banned")
 
     return AuthResponse(
         access_token=create_access_token(user.id),
@@ -89,6 +91,8 @@ async def refresh(payload: RefreshRequest, db: DbSession) -> AccessTokenResponse
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if user.is_banned:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is banned")
 
     return AccessTokenResponse(access_token=create_access_token(user.id))
 

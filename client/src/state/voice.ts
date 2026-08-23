@@ -71,6 +71,15 @@ export const useVoiceStore = create<VoiceState>()((set, get) => ({
       if (data.action === "room_finished" && data.channel_id) {
         return { states: state.states.filter((s) => s.channel_id !== data.channel_id) };
       }
+      if (data.action === "updated" && data.user_id) {
+        return {
+          states: state.states.map((participant) =>
+            participant.user_id === data.user_id
+              ? { ...participant, ...(data.muted !== undefined ? { muted: data.muted } : {}) }
+              : participant,
+          ),
+        };
+      }
       return state;
     }),
 

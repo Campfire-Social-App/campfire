@@ -1,3 +1,5 @@
+import logging
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,8 +21,12 @@ from app.api import (
 )
 from app.core.config import get_settings
 from app.db import async_session_maker
+from app.gateway.manager import VoiceParticipantState, manager
 from app.gateway.router import router as gateway_router
 from app.services.bootstrap import ensure_admin
+from app.services.livekit_service import list_active_participants
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -31,6 +37,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.first_admin_username and settings.first_admin_password:
         async with async_session_maker() as db:
             await ensure_admin(db, settings.first_admin_username, settings.first_admin_password)
+
+    # Voice presence is ephemeral, but LiveKit may outlive an API restart. Rebuild
+    # the in-memory index so moderation and channel rosters keep working without
+    # requiring everyone to leave and rejoin their calls.
+    try:
+        manager.voice_state.clear()
+        for identity, username, room in await list_active_participants():
+            try:
+                user_id = uuid.UUID(identity)
+                channel_id = uuid.UUID(room)
+            except ValueError:
+                continue
+            manager.voice_state[user_id] = VoiceParticipantState(
+                user_id=user_id,
+                channel_id=channel_id,
+                username=username,
+            )
+    except Exception:
+        logger.warning("Could not restore voice state from LiveKit", exc_info=True)
 
     yield
 
