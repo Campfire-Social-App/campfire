@@ -1,6 +1,7 @@
 import {
   Room,
   RoomEvent,
+  ScreenSharePresets,
   Track,
   type AudioCaptureOptions,
   type LocalTrackPublication,
@@ -111,7 +112,18 @@ export async function joinVoiceChannel(
   const { localMuted, localDeafened } = useVoiceStore.getState();
   const { token, url } = await getVoiceToken(channelId, localMuted, localDeafened);
 
-  const nextRoom = new Room();
+  const nextRoom = new Room({
+    adaptiveStream: true,
+    dynacast: true,
+    audioCaptureDefaults: microphoneCaptureOptions(
+      useSettingsStore.getState().noiseSuppressionEnabled,
+    ),
+    publishDefaults: {
+      simulcast: true,
+      screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
+      screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
+    },
+  });
   room = nextRoom;
 
   nextRoom
@@ -425,10 +437,12 @@ export async function startNativeScreenShare(
     await currentRoom.localParticipant.publishTrack(capture.track, {
       name: "screen",
       source: Track.Source.ScreenShare,
-      // Screen content degrades badly when scaled: drop frames before pixels.
-      simulcast: false,
-      degradationPreference: "maintain-resolution",
-      videoEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: fps },
+      // A half-resolution layer lets the SFU switch weak subscribers quickly;
+      // dynacast stops paying for it when nobody needs it.
+      simulcast: true,
+      screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
+      degradationPreference: "balanced",
+      screenShareEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: fps },
     });
   } catch (err) {
     await capture.stop();
@@ -449,12 +463,26 @@ export async function requestScreenShare(): Promise<void> {
   await startWebViewScreenShare();
 }
 
-/** The WebView's own picker — the fallback outside the desktop app. */
-export async function startWebViewScreenShare(): Promise<void> {
+/** The platform picker, used by browsers and by the desktop's audio-sharing
+ * mode because getDisplayMedia must return screen video and system audio in a
+ * single permission grant. */
+export async function startWebViewScreenShare(captureAudio = true): Promise<void> {
   if (!room) return;
   try {
-    await room.localParticipant.setScreenShareEnabled(true, { audio: true });
+    await room.localParticipant.setScreenShareEnabled(true, {
+      audio: captureAudio,
+      resolution: ScreenSharePresets.h720fps30,
+      contentHint: "detail",
+      systemAudio: captureAudio ? "include" : "exclude",
+      surfaceSwitching: "include",
+    });
     useVoiceStore.getState().setLocalScreenShareEnabled(true);
+    if (
+      captureAudio &&
+      !room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)
+    ) {
+      toast.warning("The selected source doesn't provide system audio. Sharing video only.");
+    }
   } catch (err) {
     useVoiceStore.getState().setLocalScreenShareEnabled(false);
     throw err;

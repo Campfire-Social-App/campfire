@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { AppWindow, Loader2, Monitor, RefreshCw } from "lucide-react";
+import { AppWindow, Loader2, Monitor, RefreshCw, Volume2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useVoiceStore } from "@/state/voice";
-import { startNativeScreenShare } from "@/livekit/voice";
+import { startNativeScreenShare, startWebViewScreenShare } from "@/livekit/voice";
 import { listCaptureSources, type CaptureQuality, type CaptureSource } from "@/lib/screenCapture";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -29,8 +29,12 @@ export function ScreenSharePicker() {
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>("window");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [quality, setQuality] = useState<CaptureQuality>("1080p");
+  // 720p/30 is the responsive default: text remains readable while capture,
+  // JPEG bridging and WebRTC encoding all finish materially sooner. Users can
+  // still opt into 1080p/native when fidelity matters more than motion delay.
+  const [quality, setQuality] = useState<CaptureQuality>("720p");
   const [fps, setFps] = useState(30);
+  const [shareAudio, setShareAudio] = useState(false);
   const [sharing, setSharing] = useState(false);
 
   const load = async () => {
@@ -56,10 +60,11 @@ export function ScreenSharePicker() {
   const selected = sources.find((source) => source.id === selectedId) ?? null;
 
   const handleShare = async () => {
-    if (!selected) return;
+    if (!shareAudio && !selected) return;
     setSharing(true);
     try {
-      await startNativeScreenShare(selected.id, quality, fps);
+      if (shareAudio) await startWebViewScreenShare(true);
+      else await startNativeScreenShare(selected!.id, quality, fps);
       setOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't start sharing.");
@@ -92,7 +97,20 @@ export function ScreenSharePicker() {
         </div>
 
         <div className="max-h-96 min-h-56 overflow-y-auto">
-          {loading && sources.length === 0 ? (
+          {shareAudio ? (
+            <div className="flex h-56 flex-col items-center justify-center gap-3 px-8 text-center">
+              <div className="flex size-11 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <Volume2 className="size-5" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-foreground">Choose the source in the system picker</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Audio and video must be captured together. Only sources your system marks as
+                  audio-capable will include sound.
+                </p>
+              </div>
+            </div>
+          ) : loading && sources.length === 0 ? (
             <div className="flex h-56 items-center justify-center">
               <Loader2 className="size-6 animate-spin text-muted-foreground" />
             </div>
@@ -134,24 +152,42 @@ export function ScreenSharePicker() {
         </div>
 
         <div className="flex flex-wrap items-center gap-4 border-t border-glass-border pt-4">
-          <Segmented
-            label="Quality"
-            options={QUALITIES.map((q) => ({ value: q.value, label: q.label }))}
-            value={quality}
-            onChange={setQuality}
-          />
-          <Segmented
-            label="Frame rate"
-            options={FRAME_RATES.map((rate) => ({ value: rate, label: `${rate}fps` }))}
-            value={fps}
-            onChange={setFps}
-          />
+          {!shareAudio && (
+            <>
+              <Segmented
+                label="Quality"
+                options={QUALITIES.map((q) => ({ value: q.value, label: q.label }))}
+                value={quality}
+                onChange={setQuality}
+              />
+              <Segmented
+                label="Frame rate"
+                options={FRAME_RATES.map((rate) => ({ value: rate, label: `${rate}fps` }))}
+                value={fps}
+                onChange={setFps}
+              />
+            </>
+          )}
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={shareAudio}
+              onChange={(event) => setShareAudio(event.target.checked)}
+              className="size-4 accent-primary"
+            />
+            <Volume2 className="size-4 text-muted-foreground" />
+            Share system audio
+          </label>
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => void handleShare()} disabled={!selected || sharing}>
+            <Button
+              onClick={() => void handleShare()}
+              disabled={(!shareAudio && !selected) || sharing}
+            >
               {sharing && <Loader2 className="size-4 animate-spin" />}
               Share
             </Button>

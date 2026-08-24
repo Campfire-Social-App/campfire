@@ -10,6 +10,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 
+const _responsiveScreenShare = VideoParameters(
+  dimensions: VideoDimensions(1280, 720),
+  encoding: VideoEncoding(maxFramerate: 30, maxBitrate: 2000000),
+);
+
 /// The LiveKit half of voice: one room at a time, its events folded into
 /// [voiceProvider]. Port of `livekit/voice.ts`.
 ///
@@ -57,7 +62,24 @@ class VoiceSession {
       // Both off by default in the SDK, and both matter on a phone: adaptive
       // stream drops the resolution of tiles that are small or off screen, and
       // dynacast stops publishing layers nobody has subscribed to.
-      roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true),
+      roomOptions: const RoomOptions(
+        adaptiveStream: true,
+        dynacast: true,
+        defaultScreenShareCaptureOptions: ScreenShareCaptureOptions(
+          params: _responsiveScreenShare,
+        ),
+        defaultVideoPublishOptions: VideoPublishOptions(
+          simulcast: true,
+          screenShareEncoding: VideoEncoding(
+            maxFramerate: 30,
+            maxBitrate: 2000000,
+          ),
+          screenShareSimulcastLayers: [
+            VideoParametersPresets.screenShareH360FPS15,
+          ],
+          degradationPreference: DegradationPreference.balanced,
+        ),
+      ),
     );
     _room = room;
     _listen(room);
@@ -390,7 +412,10 @@ class VoiceSession {
   /// Android hands the frames over through MediaProjection, which needs the
   /// system's consent dialog first and a foreground service to stay alive; the
   /// permission call is a no-op everywhere else.
-  Future<void> setScreenShareEnabled({required bool enabled}) async {
+  Future<void> setScreenShareEnabled({
+    required bool enabled,
+    bool captureAudio = false,
+  }) async {
     final room = _room;
     if (room == null) return;
 
@@ -406,7 +431,18 @@ class VoiceSession {
         // the mediaProjection service type to be declared in.
         await startCallService(screenShare: true);
       }
-      await room.localParticipant?.setScreenShareEnabled(enabled);
+      await room.localParticipant?.setScreenShareEnabled(
+        enabled,
+        captureScreenAudio: captureAudio,
+        screenShareCaptureOptions: ScreenShareCaptureOptions(
+          captureScreenAudio: captureAudio,
+          params: _responsiveScreenShare,
+        ),
+      );
+      if (enabled && captureAudio &&
+          room.localParticipant?.isScreenShareAudioEnabled() != true) {
+        debugPrint('voice: the selected screen source did not provide audio');
+      }
       _voice.setLocalScreenShareEnabled(enabled: enabled);
       // Back to a plain call: the service stays, its projection type does not.
       if (!enabled) await startCallService();
