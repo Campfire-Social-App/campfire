@@ -15,6 +15,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { ProfileDialog } from "@/components/ProfileDialog";
 import {
   DropdownMenu,
@@ -159,13 +160,17 @@ export function UserBar() {
             inVoice && "border-t border-glass-border",
           )}
         >
-          <UserAvatar username={user.username} size="sm" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {user.is_admin ? "Admin" : "Member"}
-            </p>
-          </div>
+          <UserProfileHoverCard user={user}>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <UserAvatar username={user.username} avatarUrl={user.avatar_url} size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {user.is_admin ? "Admin" : "Member"}
+                </p>
+              </div>
+            </div>
+          </UserProfileHoverCard>
 
           <IconToggle
             active={localMuted}

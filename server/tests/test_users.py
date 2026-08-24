@@ -48,6 +48,44 @@ async def test_user_can_update_profile_photo(
     assert response.json()["avatar_url"] == f"/api/uploads/{attachment.id}"
 
 
+async def test_user_can_update_avatar_and_profile_background_together(
+    client: AsyncClient, admin_headers: dict[str, str], admin_user, db_session
+) -> None:
+    from app.models.attachment import Attachment
+
+    avatar = Attachment(
+        uploaded_by_id=admin_user.id,
+        filename="avatar.webp",
+        content_type="image/webp",
+        size_bytes=256,
+        storage_path="avatar.webp",
+    )
+    banner = Attachment(
+        uploaded_by_id=admin_user.id,
+        filename="banner.jpg",
+        content_type="image/jpeg",
+        size_bytes=512,
+        storage_path="banner.jpg",
+    )
+    db_session.add_all([avatar, banner])
+    await db_session.commit()
+    await db_session.refresh(avatar)
+    await db_session.refresh(banner)
+
+    response = await client.put(
+        "/api/users/@me/profile-images",
+        json={
+            "avatar_attachment_id": str(avatar.id),
+            "banner_attachment_id": str(banner.id),
+        },
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["avatar_url"] == f"/api/uploads/{avatar.id}"
+    assert response.json()["banner_url"] == f"/api/uploads/{banner.id}"
+
+
 async def test_admin_moderation_overview_contains_public_history_but_not_dms(
     client: AsyncClient, admin_headers: dict[str, str], admin_user, db_session
 ) -> None:

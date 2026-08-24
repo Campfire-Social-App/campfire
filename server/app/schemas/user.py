@@ -15,11 +15,17 @@ class UserRead(BaseModel):
     is_banned: bool = False
     timed_out_until: datetime | None = None
     avatar_url: str | None = None
+    banner_url: str | None = None
     created_at: datetime
 
 
 class UserAvatarUpdateRequest(BaseModel):
     attachment_id: uuid.UUID
+
+
+class UserProfileImagesUpdateRequest(BaseModel):
+    avatar_attachment_id: uuid.UUID | None = None
+    banner_attachment_id: uuid.UUID | None = None
 
 
 class ModerationMessageRead(BaseModel):

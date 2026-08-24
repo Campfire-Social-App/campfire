@@ -214,6 +214,7 @@ class GatewayClient {
           username: data.user.username,
           is_admin: data.user.is_admin,
           avatar_url: data.user.avatar_url,
+          banner_url: data.user.banner_url,
           created_at: useAuthStore.getState().user?.created_at ?? new Date().toISOString(),
         });
         useServerStore.getState().setServer(data.server);

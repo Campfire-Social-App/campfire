@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { useAuthStore } from "@/state/auth";
 import { useDmsStore } from "@/state/dms";
@@ -65,21 +66,23 @@ function MemberGroup({
       <div className="space-y-0.5">
         {users.map((user) => (
           <UserModerationMenu key={user.id} user={user}>
-            <button
-              onClick={() => void startDm(user)}
-              title={isAdmin ? `Moderate ${user.username}` : user.id === currentUserId ? undefined : `Message ${user.username}`}
-              className={`flex w-full items-center gap-2 rounded-md px-1 py-1.5 pr-8 text-left hover:bg-white/5 ${
-                status === "offline" ? "opacity-50" : ""
-              }`}
-            >
-              <UserAvatar username={user.username} size="sm" status={status} />
-              <span className="truncate text-sm text-foreground">{user.username}</span>
-              {user.is_admin && (
-                <span className="ml-auto text-[10px] font-semibold tracking-wide text-primary uppercase">
-                  Admin
-                </span>
-              )}
-            </button>
+            <UserProfileHoverCard user={user}>
+              <button
+                onClick={() => void startDm(user)}
+                title={isAdmin ? `Moderate ${user.username}` : user.id === currentUserId ? undefined : `Message ${user.username}`}
+                className={`flex w-full items-center gap-2 rounded-md px-1 py-1.5 pr-8 text-left hover:bg-white/5 ${
+                  status === "offline" ? "opacity-50" : ""
+                }`}
+              >
+                <UserAvatar username={user.username} avatarUrl={user.avatar_url} size="sm" status={status} />
+                <span className="truncate text-sm text-foreground">{user.username}</span>
+                {user.is_admin && (
+                  <span className="ml-auto text-[10px] font-semibold tracking-wide text-primary uppercase">
+                    Admin
+                  </span>
+                )}
+              </button>
+            </UserProfileHoverCard>
           </UserModerationMenu>
         ))}
       </div>

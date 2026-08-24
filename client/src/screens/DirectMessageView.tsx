@@ -2,6 +2,7 @@ import { Phone, Video } from "lucide-react";
 import { ChatPane } from "@/components/ChatPane";
 import { DirectCallPanel } from "@/components/DirectCallPanel";
 import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
+import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCallsStore } from "@/state/calls";
 import { usePresenceStore } from "@/state/presence";
@@ -39,12 +40,17 @@ export function DirectMessageView({ conversation }: DirectMessageViewProps) {
       composerPlaceholder={`Message @${username}`}
       header={
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4 shadow-sm">
-          <UserAvatar
-            username={username}
-            size="sm"
-            status={isOnline ? "online" : "offline"}
-          />
-          <span className="font-heading text-sm font-semibold text-foreground">{username}</span>
+          <UserProfileHoverCard user={conversation.recipient}>
+            <div className="flex items-center gap-2">
+              <UserAvatar
+                username={username}
+                avatarUrl={conversation.recipient.avatar_url}
+                size="sm"
+                status={isOnline ? "online" : "offline"}
+              />
+              <span className="font-heading text-sm font-semibold text-foreground">{username}</span>
+            </div>
+          </UserProfileHoverCard>
           <span className="text-xs text-muted-foreground">{isOnline ? "Online" : "Offline"}</span>
 
           {canStartCall && (

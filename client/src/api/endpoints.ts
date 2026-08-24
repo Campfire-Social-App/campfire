@@ -101,6 +101,18 @@ export const updateMyAvatar = (attachmentId: string) =>
     body: { attachment_id: attachmentId },
   });
 
+export const updateMyProfileImages = (
+  avatarAttachmentId?: string,
+  bannerAttachmentId?: string,
+) =>
+  apiFetch<User>("/api/users/@me/profile-images", {
+    method: "PUT",
+    body: {
+      avatar_attachment_id: avatarAttachmentId ?? null,
+      banner_attachment_id: bannerAttachmentId ?? null,
+    },
+  });
+
 export const getServerSettings = () => apiFetch<ServerSettings>("/api/server");
 
 export const createInvite = (maxUses?: number, expiresInHours?: number) =>

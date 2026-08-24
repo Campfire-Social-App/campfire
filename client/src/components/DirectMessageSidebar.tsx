@@ -2,6 +2,7 @@ import { useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { Phone, Plus } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { UserBar } from "@/components/UserBar";
 import { NewDirectMessageDialog } from "@/components/NewDirectMessageDialog";
 import { useDmsStore } from "@/state/dms";
@@ -72,6 +73,7 @@ function ConversationRow({
   const unread = conversation.unread_count;
 
   return (
+    <UserProfileHoverCard user={conversation.recipient}>
     <button
       onClick={onClick}
       className={cn(
@@ -101,5 +103,6 @@ function ConversationRow({
         )
       )}
     </button>
+    </UserProfileHoverCard>
   );
 }
