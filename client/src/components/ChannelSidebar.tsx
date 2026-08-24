@@ -7,17 +7,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/state/auth";
 import { useChannelsStore } from "@/state/channels";
 import { useVoiceStore } from "@/state/voice";
 import { usePresenceStore } from "@/state/presence";
 import { useUsersStore } from "@/state/users";
-import { useModerationStore } from "@/state/moderation";
 import { ChannelMenu } from "@/components/ChannelMenu";
 import { CreateChannelDialog } from "@/components/CreateChannelDialog";
 import { InviteDialog } from "@/components/InviteDialog";
 import { UserAvatar } from "@/components/UserAvatar";
+import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { UserBar } from "@/components/UserBar";
 import { ScreenShareLiveBadge } from "@/components/ScreenShareLiveBadge";
@@ -250,50 +249,55 @@ function VoiceParticipants({ channelId }: { channelId: string }) {
 
   return (
     <div className="ml-4 space-y-1 border-l border-sidebar-border pl-3 py-1">
-      {participants.map((p) => (
-        <UserModerationMenu key={p.user_id} user={usersById[p.user_id] ?? null}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                disabled={!isAdmin || !usersById[p.user_id]}
-                draggable={isAdmin && !!usersById[p.user_id]}
-                onDragStart={(event) => {
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData(VOICE_PARTICIPANT_DRAG_TYPE, p.user_id);
-                  event.dataTransfer.setData("text/plain", p.username);
-                }}
-                onClick={() => {
-                  const participant = usersById[p.user_id];
-                  if (isAdmin && participant) useModerationStore.getState().openUser(participant);
-                }}
-                title={isAdmin ? `Drag ${p.username} to another voice channel` : undefined}
-                className="flex w-full cursor-grab items-center gap-2 rounded-md py-0.5 pr-8 text-left active:cursor-grabbing enabled:hover:bg-white/5 disabled:cursor-default"
-              >
-                <UserAvatar
-                  username={p.username}
-                  size="sm"
-                  status={onlineUserIds[p.user_id] ? "online" : "offline"}
-                  ring={!!speakingUserIds[p.user_id]}
-                />
-                <span className="min-w-0 truncate text-sm text-muted-foreground">{p.username}</span>
-                {(screenShareTracks[p.user_id] || p.muted || p.deafened) && (
-                  <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                    {p.muted && (
-                      <MicOff aria-label="Microphone muted" className="size-3.5 text-destructive" />
-                    )}
-                    {p.deafened && (
-                      <VolumeX aria-label="Audio deafened" className="size-3.5 text-destructive" />
-                    )}
-                    {screenShareTracks[p.user_id] && <ScreenShareLiveBadge />}
-                  </div>
+      {participants.map((p) => {
+        const user = usersById[p.user_id] ?? null;
+        const row = (
+          <button
+            type="button"
+            draggable={isAdmin && !!user}
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData(VOICE_PARTICIPANT_DRAG_TYPE, p.user_id);
+              event.dataTransfer.setData("text/plain", p.username);
+            }}
+            title={
+              isAdmin && user
+                ? `View ${p.username}'s profile or drag to another voice channel`
+                : `View ${p.username}'s profile`
+            }
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md py-0.5 pr-8 text-left hover:bg-white/5",
+              isAdmin && user && "cursor-grab active:cursor-grabbing",
+            )}
+          >
+            <UserAvatar
+              username={p.username}
+              avatarUrl={user?.avatar_url}
+              size="sm"
+              status={onlineUserIds[p.user_id] ? "online" : "offline"}
+              ring={!!speakingUserIds[p.user_id]}
+            />
+            <span className="min-w-0 truncate text-sm text-muted-foreground">{p.username}</span>
+            {(screenShareTracks[p.user_id] || p.muted || p.deafened) && (
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {p.muted && (
+                  <MicOff aria-label="Microphone muted" className="size-3.5 text-destructive" />
                 )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">{p.username}</TooltipContent>
-          </Tooltip>
-        </UserModerationMenu>
-      ))}
+                {p.deafened && (
+                  <VolumeX aria-label="Audio deafened" className="size-3.5 text-destructive" />
+                )}
+                {screenShareTracks[p.user_id] && <ScreenShareLiveBadge />}
+              </div>
+            )}
+          </button>
+        );
+
+        return (
+          <UserModerationMenu key={p.user_id} user={user}>
+            {user ? <UserProfileHoverCard user={user}>{row}</UserProfileHoverCard> : row}
+          </UserModerationMenu>
+        );
+      })}
     </div>
   );
 }

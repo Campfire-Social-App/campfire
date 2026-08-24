@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { Eye, MicOff, MoreHorizontal } from "lucide-react";
+import { MicOff, MoreHorizontal, Shield } from "lucide-react";
 import { muteVoiceParticipant } from "@/api/endpoints";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuLabel,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -14,7 +13,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ApiError, type User } from "@/lib/types";
@@ -53,13 +51,12 @@ export function UserModerationMenu({
   const items = (
     Item: typeof ContextMenuItem | typeof DropdownMenuItem,
     Label: typeof ContextMenuLabel | typeof DropdownMenuLabel,
-    Separator: typeof ContextMenuSeparator | typeof DropdownMenuSeparator,
   ) => (
     <>
       <Item onSelect={() => useModerationStore.getState().openUser(user)}>
-        <Eye className="size-4" /> View moderation profile
+        <Shield className="size-4" />
+        Open moderator view
       </Item>
-      <Separator />
       <Item
         disabled={!voiceState || voiceState.muted || pending}
         variant="destructive"
@@ -88,13 +85,13 @@ export function UserModerationMenu({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
-              {items(DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator)}
+              {items(DropdownMenuItem, DropdownMenuLabel)}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-60">
-        {items(ContextMenuItem, ContextMenuLabel, ContextMenuSeparator)}
+        {items(ContextMenuItem, ContextMenuLabel)}
       </ContextMenuContent>
     </ContextMenu>
   );

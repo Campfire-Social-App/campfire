@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { messageMentionsUser, splitMentions } from "@/lib/mentions";
 import { splitLinks } from "@/lib/links";
 import { useMessagesStore } from "@/state/messages";
-import { useModerationStore } from "@/state/moderation";
 
 const REACTIONS: ReadonlyArray<{ type: ReactionType; emoji: string; label: string }> = [
   { type: "like", emoji: "👍", label: "Like" },
@@ -111,10 +110,7 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
               <UserModerationMenu user={message.author}>
                 <button
                   type="button"
-                  title={currentUser?.is_admin ? `Moderate ${message.author.username}` : undefined}
-                  onClick={() => {
-                    if (currentUser?.is_admin) useModerationStore.getState().openUser(message.author);
-                  }}
+                  title={`View ${message.author.username}'s profile`}
                   className="rounded-full"
                 >
                   <UserAvatar username={message.author.username} avatarUrl={message.author.avatar_url} />

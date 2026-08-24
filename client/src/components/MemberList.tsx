@@ -6,7 +6,6 @@ import { useAuthStore } from "@/state/auth";
 import { useDmsStore } from "@/state/dms";
 import { usePresenceStore } from "@/state/presence";
 import { useUsersStore } from "@/state/users";
-import { useModerationStore } from "@/state/moderation";
 import { ApiError, type User } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -40,14 +39,9 @@ function MemberGroup({
   status: "online" | "offline";
 }) {
   const currentUserId = useAuthStore((s) => s.user?.id);
-  const isAdmin = useAuthStore((s) => s.user?.is_admin ?? false);
   const openWithUser = useDmsStore((s) => s.openWithUser);
 
   const startDm = async (user: User) => {
-    if (isAdmin) {
-      useModerationStore.getState().openUser(user);
-      return;
-    }
     // Clicking yourself is a no-op rather than an error — the server rejects it.
     if (user.id === currentUserId) return;
     try {
@@ -66,10 +60,13 @@ function MemberGroup({
       <div className="space-y-0.5">
         {users.map((user) => (
           <UserModerationMenu key={user.id} user={user}>
-            <UserProfileHoverCard user={user}>
+            <UserProfileHoverCard
+              user={user}
+              onMessage={user.id === currentUserId ? undefined : () => void startDm(user)}
+            >
               <button
-                onClick={() => void startDm(user)}
-                title={isAdmin ? `Moderate ${user.username}` : user.id === currentUserId ? undefined : `Message ${user.username}`}
+                type="button"
+                title={`View ${user.username}'s profile`}
                 className={`flex w-full items-center gap-2 rounded-md px-1 py-1.5 pr-8 text-left hover:bg-white/5 ${
                   status === "offline" ? "opacity-50" : ""
                 }`}
