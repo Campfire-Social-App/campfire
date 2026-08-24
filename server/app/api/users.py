@@ -16,8 +16,8 @@ from app.schemas.attachment import AttachmentRead
 from app.schemas.user import (
     ModerationMessageRead,
     UserAvatarUpdateRequest,
+    UserBannerUpdateRequest,
     UserModerationOverview,
-    UserProfileImagesUpdateRequest,
     UserRead,
 )
 from app.services.livekit_service import disconnect_participant
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 logger = logging.getLogger(__name__)
 
 PROFILE_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}
-MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_PROFILE_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 async def _moderation_target(user_id: uuid.UUID, admin: AdminUser, db: DbSession) -> User:
@@ -61,7 +61,7 @@ async def _profile_image(attachment_id: uuid.UUID, user: User, db: DbSession) ->
     if attachment.size_bytes > MAX_PROFILE_IMAGE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail="Profile image exceeds 5 MB",
+            detail="Profile image exceeds 8 MB",
         )
     return attachment
 
@@ -180,21 +180,12 @@ async def update_avatar(payload: UserAvatarUpdateRequest, user: CurrentUser, db:
     return await _broadcast_user(user)
 
 
-@router.put("/@me/profile-images", response_model=UserRead)
-async def update_profile_images(
-    payload: UserProfileImagesUpdateRequest, user: CurrentUser, db: DbSession
+@router.put("/@me/banner", response_model=UserRead)
+async def update_banner(
+    payload: UserBannerUpdateRequest, user: CurrentUser, db: DbSession
 ) -> UserRead:
-    if payload.avatar_attachment_id is None and payload.banner_attachment_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Choose an avatar or profile background",
-        )
-    if payload.avatar_attachment_id is not None:
-        avatar = await _profile_image(payload.avatar_attachment_id, user, db)
-        user.avatar_attachment_id = avatar.id
-    if payload.banner_attachment_id is not None:
-        banner = await _profile_image(payload.banner_attachment_id, user, db)
-        user.banner_attachment_id = banner.id
+    banner = await _profile_image(payload.attachment_id, user, db)
+    user.banner_attachment_id = banner.id
     await db.commit()
     await db.refresh(user)
     return await _broadcast_user(user)

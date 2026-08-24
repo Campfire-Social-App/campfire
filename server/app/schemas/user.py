@@ -23,9 +23,8 @@ class UserAvatarUpdateRequest(BaseModel):
     attachment_id: uuid.UUID
 
 
-class UserProfileImagesUpdateRequest(BaseModel):
-    avatar_attachment_id: uuid.UUID | None = None
-    banner_attachment_id: uuid.UUID | None = None
+class UserBannerUpdateRequest(BaseModel):
+    attachment_id: uuid.UUID
 
 
 class ModerationMessageRead(BaseModel):

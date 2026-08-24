@@ -101,16 +101,10 @@ export const updateMyAvatar = (attachmentId: string) =>
     body: { attachment_id: attachmentId },
   });
 
-export const updateMyProfileImages = (
-  avatarAttachmentId?: string,
-  bannerAttachmentId?: string,
-) =>
-  apiFetch<User>("/api/users/@me/profile-images", {
+export const updateMyBanner = (attachmentId: string) =>
+  apiFetch<User>("/api/users/@me/banner", {
     method: "PUT",
-    body: {
-      avatar_attachment_id: avatarAttachmentId ?? null,
-      banner_attachment_id: bannerAttachmentId ?? null,
-    },
+    body: { attachment_id: attachmentId },
   });
 
 export const getServerSettings = () => apiFetch<ServerSettings>("/api/server");

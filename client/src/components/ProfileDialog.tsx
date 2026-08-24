@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, ImagePlus, Loader2 } from "lucide-react";
 import { resolveAssetUrl } from "@/api/client";
-import { updateMyProfileImages, uploadAttachment } from "@/api/endpoints";
+import { updateMyAvatar, updateMyBanner, uploadAttachment } from "@/api/endpoints";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,8 +10,18 @@ import { useAuthStore } from "@/state/auth";
 import { useUsersStore } from "@/state/users";
 import { toast } from "sonner";
 
-const MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_PROFILE_IMAGE_BYTES = 8 * 1024 * 1024;
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/avif";
+
+function profileImageError(file: File): string | null {
+  if (!file.type.startsWith("image/") || file.type === "image/svg+xml") {
+    return "Choose a PNG, JPG, WebP, AVIF or GIF image.";
+  }
+  if (file.size > MAX_PROFILE_IMAGE_BYTES) {
+    return "Profile images can be at most 8 MB.";
+  }
+  return null;
+}
 
 function useFilePreview(file: File | null): string | null {
   const [url, setUrl] = useState<string | null>(null);
@@ -54,12 +64,11 @@ export function ProfileDialog({
 
   const chooseFile = (selected: File | undefined, kind: "avatar" | "banner") => {
     if (!selected) return;
-    if (!selected.type.startsWith("image/") || selected.type === "image/svg+xml") {
-      toast.error("Choose a PNG, JPG, WebP, AVIF or GIF image.");
-      return;
-    }
-    if (selected.size > MAX_PROFILE_IMAGE_BYTES) {
-      toast.error("Profile images can be at most 5 MB.");
+    const error = profileImageError(selected);
+    if (error) {
+      if (kind === "avatar") setAvatarFile(null);
+      else setBannerFile(null);
+      toast.error(error);
       return;
     }
     if (kind === "avatar") setAvatarFile(selected);
@@ -68,16 +77,22 @@ export function ProfileDialog({
 
   const save = async () => {
     if (!avatarFile && !bannerFile) return;
+    const invalidFile = [avatarFile, bannerFile].find(
+      (file): file is File => !!file && profileImageError(file) !== null,
+    );
+    if (invalidFile) {
+      toast.error(profileImageError(invalidFile));
+      return;
+    }
     setSaving(true);
     try {
       const [avatarAttachment, bannerAttachment] = await Promise.all([
         avatarFile ? uploadAttachment(avatarFile) : null,
         bannerFile ? uploadAttachment(bannerFile) : null,
       ]);
-      const updated = await updateMyProfileImages(
-        avatarAttachment?.id,
-        bannerAttachment?.id,
-      );
+      let updated = user;
+      if (avatarAttachment) updated = await updateMyAvatar(avatarAttachment.id);
+      if (bannerAttachment) updated = await updateMyBanner(bannerAttachment.id);
       useAuthStore.getState().setUser(updated);
       useUsersStore.getState().upsertUser(updated);
       onOpenChange(false);
@@ -140,7 +155,7 @@ export function ProfileDialog({
 
           <p className="font-heading text-xl font-semibold text-foreground">{user.username}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Avatar and background · PNG, JPG, WebP, AVIF or GIF · max 5 MB each
+            Avatar and background · PNG, JPG, WebP, AVIF or GIF · max 8 MB each
           </p>
 
           <input
@@ -148,14 +163,20 @@ export function ProfileDialog({
             type="file"
             accept={IMAGE_ACCEPT}
             className="hidden"
-            onChange={(event) => chooseFile(event.target.files?.[0], "avatar")}
+            onChange={(event) => {
+              chooseFile(event.currentTarget.files?.[0], "avatar");
+              event.currentTarget.value = "";
+            }}
           />
           <input
             ref={bannerInputRef}
             type="file"
             accept={IMAGE_ACCEPT}
             className="hidden"
-            onChange={(event) => chooseFile(event.target.files?.[0], "banner")}
+            onChange={(event) => {
+              chooseFile(event.currentTarget.files?.[0], "banner");
+              event.currentTarget.value = "";
+            }}
           />
 
           <div className="mt-6 flex justify-end gap-2">
