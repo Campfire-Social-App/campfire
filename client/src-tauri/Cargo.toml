@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 serde = { version = "1", features = ["derive"] }
@@ -28,4 +28,3 @@ tauri-plugin-notification = "2.3.3"
 # only one that can see hardware-accelerated windows (browsers, games).
 xcap = { version = "0.9.8", features = ["image", "wgc"] }
 base64 = "0.22"
-
