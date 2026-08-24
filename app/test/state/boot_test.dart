@@ -91,6 +91,26 @@ void main() {
       expect(await SessionStore(store).readServerUrl(), 'https://dominio.com');
     });
 
+    test('persists the noise suppression preference', () async {
+      final container = containerWith();
+      await container.read(settingsProvider.notifier).ready;
+      await container
+          .read(settingsProvider.notifier)
+          .setNoiseSuppressionEnabled(enabled: false);
+
+      expect(container.read(settingsProvider).noiseSuppressionEnabled, isFalse);
+      expect(await SessionStore(store).readNoiseSuppressionEnabled(), isFalse);
+    });
+
+    test('restores a disabled noise suppression preference', () async {
+      await SessionStore(store).writeNoiseSuppressionEnabled(enabled: false);
+      final container = containerWith();
+
+      await container.read(settingsProvider.notifier).ready;
+
+      expect(container.read(settingsProvider).noiseSuppressionEnabled, isFalse);
+    });
+
     test('finishes loading even when the keystore will not open', () async {
       // The failure mode this guards against is the worst kind: `loaded` never
       // flipping leaves the app on the splash screen with no way out.

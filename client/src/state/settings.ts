@@ -4,8 +4,10 @@ import { createSecureStorage } from "./persist";
 
 interface SettingsState {
   serverUrl: string | null;
+  noiseSuppressionEnabled: boolean;
   setServerUrl: (url: string) => void;
   clearServerUrl: () => void;
+  setNoiseSuppressionEnabled: (enabled: boolean) => void;
 }
 
 function normalizeServerUrl(url: string): string {
@@ -20,8 +22,10 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       serverUrl: null,
+      noiseSuppressionEnabled: true,
       setServerUrl: (url) => set({ serverUrl: normalizeServerUrl(url) }),
       clearServerUrl: () => set({ serverUrl: null }),
+      setNoiseSuppressionEnabled: (enabled) => set({ noiseSuppressionEnabled: enabled }),
     }),
     {
       name: "campfire-settings",

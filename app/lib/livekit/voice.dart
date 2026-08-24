@@ -4,6 +4,7 @@ import 'package:campfire/core/call_service.dart';
 import 'package:campfire/core/sounds.dart';
 import 'package:campfire/state/api.dart';
 import 'package:campfire/state/dms.dart';
+import 'package:campfire/state/settings.dart';
 import 'package:campfire/state/voice.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,6 +31,18 @@ class VoiceSession {
 
   VoiceNotifier get _voice => _ref.read(voiceProvider.notifier);
   Sounds get _sounds => _ref.read(soundsProvider);
+
+  AudioCaptureOptions get _microphoneCaptureOptions {
+    final enabled = _ref.read(settingsProvider).noiseSuppressionEnabled;
+    return AudioCaptureOptions(
+      noiseSuppression: enabled,
+      echoCancellation: true,
+      autoGainControl: true,
+      highPassFilter: enabled,
+      voiceIsolation: enabled,
+      typingNoiseDetection: enabled,
+    );
+  }
 
   /// Joins [channelId]'s room, publishing the camera straight away when
   /// [camera] — which is how a video call starts as one rather than as an audio
@@ -109,11 +122,30 @@ class VoiceSession {
   /// point where a refusal has to be survivable.
   Future<bool> _enableMicrophone(Room room) async {
     try {
-      await room.localParticipant?.setMicrophoneEnabled(true);
+      await room.localParticipant?.setMicrophoneEnabled(
+        true,
+        audioCaptureOptions: _microphoneCaptureOptions,
+      );
       return true;
     } on Object catch (error) {
       debugPrint('voice: microphone unavailable — $error');
       return false;
+    }
+  }
+
+  /// Updates WebRTC's native audio-processing module in place when possible.
+  /// A joined-muted call has no local track, so its next unmute simply picks up
+  /// the setting through [_microphoneCaptureOptions].
+  Future<void> applyNoiseSuppression({required bool enabled}) async {
+    final publication = _room?.localParticipant
+        ?.getTrackPublicationBySource(TrackSource.microphone);
+    if (publication?.track case final LocalAudioTrack track) {
+      await track.setAudioProcessingOptions(AudioProcessingOptions(
+        echoCancellation: true,
+        noiseSuppression: enabled,
+        autoGainControl: true,
+        highPassFilter: enabled,
+      ));
     }
   }
 
