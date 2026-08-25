@@ -5,6 +5,7 @@ import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
 import { sendMessage, uploadAttachment } from "@/api/endpoints";
 import { gatewayClient } from "@/ws/gateway";
 import { useUsersStore } from "@/state/users";
+import { useAuthStore } from "@/state/auth";
 import { useChannelsStore } from "@/state/channels";
 import { useServerStore } from "@/state/server";
 import { formatBytes } from "@/lib/files";
@@ -57,10 +58,11 @@ export function MessageComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const users = useUsersStore((s) => s.users);
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const channels = useChannelsStore((s) => s.channels);
   const maxUploadBytes = useServerStore((s) => s.maxUploadBytes);
   const mentionCandidatesList = mentionQuery
-    ? mentionCandidates(mentionQuery.trigger, mentionQuery.query, users, channels)
+    ? mentionCandidates(mentionQuery.trigger, mentionQuery.query, users, channels, currentUserId)
     : [];
 
   const notifyTyping = () => {

@@ -5,6 +5,7 @@ export interface User {
   is_banned?: boolean;
   timed_out_until?: string | null;
   avatar_url: string | null;
+  banner_url: string | null;
   created_at: string;
 }
 
@@ -164,7 +165,13 @@ export interface GatewayEvent<T = unknown> {
 }
 
 export interface ReadyEventData {
-  user: { id: string; username: string; is_admin: boolean; avatar_url: string | null };
+  user: {
+    id: string;
+    username: string;
+    is_admin: boolean;
+    avatar_url: string | null;
+    banner_url: string | null;
+  };
   server: ServerSettings;
   channels: Channel[];
   dms: DMConversation[];

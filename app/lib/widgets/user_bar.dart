@@ -145,6 +145,30 @@ class UserBar extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Consumer(
+              builder: (context, ref, _) {
+                final enabled = ref.watch(settingsProvider).noiseSuppressionEnabled;
+                return SwitchListTile.adaptive(
+                  secondary: const Icon(CampfireIcons.micOn, size: 18),
+                  title: const Text('Noise suppression'),
+                  subtitle: const Text('Reduce fans, keyboard and background noise'),
+                  value: enabled,
+                  onChanged: (value) async {
+                    await ref
+                        .read(settingsProvider.notifier)
+                        .setNoiseSuppressionEnabled(enabled: value);
+                    try {
+                      await ref
+                          .read(voiceSessionProvider)
+                          .applyNoiseSuppression(enabled: value);
+                    } on Object {
+                      // The preference still applies when capture starts again;
+                      // some platform audio paths cannot be reconfigured live.
+                    }
+                  },
+                );
+              },
+            ),
             ListTile(
               leading: const Icon(LucideIcons.repeat, size: 18),
               title: const Text('Switch server'),

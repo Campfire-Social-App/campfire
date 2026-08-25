@@ -4,10 +4,16 @@ import 'package:campfire/core/call_service.dart';
 import 'package:campfire/core/sounds.dart';
 import 'package:campfire/state/api.dart';
 import 'package:campfire/state/dms.dart';
+import 'package:campfire/state/settings.dart';
 import 'package:campfire/state/voice.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
+
+const _responsiveScreenShare = VideoParameters(
+  dimensions: VideoDimensions(1280, 720),
+  encoding: VideoEncoding(maxFramerate: 30, maxBitrate: 2000000),
+);
 
 /// The LiveKit half of voice: one room at a time, its events folded into
 /// [voiceProvider]. Port of `livekit/voice.ts`.
@@ -31,6 +37,18 @@ class VoiceSession {
   VoiceNotifier get _voice => _ref.read(voiceProvider.notifier);
   Sounds get _sounds => _ref.read(soundsProvider);
 
+  AudioCaptureOptions get _microphoneCaptureOptions {
+    final enabled = _ref.read(settingsProvider).noiseSuppressionEnabled;
+    return AudioCaptureOptions(
+      noiseSuppression: enabled,
+      echoCancellation: true,
+      autoGainControl: true,
+      highPassFilter: enabled,
+      voiceIsolation: enabled,
+      typingNoiseDetection: enabled,
+    );
+  }
+
   /// Joins [channelId]'s room, publishing the camera straight away when
   /// [camera] — which is how a video call starts as one rather than as an audio
   /// call somebody then turns the camera on in.
@@ -44,7 +62,24 @@ class VoiceSession {
       // Both off by default in the SDK, and both matter on a phone: adaptive
       // stream drops the resolution of tiles that are small or off screen, and
       // dynacast stops publishing layers nobody has subscribed to.
-      roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true),
+      roomOptions: const RoomOptions(
+        adaptiveStream: true,
+        dynacast: true,
+        defaultScreenShareCaptureOptions: ScreenShareCaptureOptions(
+          params: _responsiveScreenShare,
+        ),
+        defaultVideoPublishOptions: VideoPublishOptions(
+          simulcast: true,
+          screenShareEncoding: VideoEncoding(
+            maxFramerate: 30,
+            maxBitrate: 2000000,
+          ),
+          screenShareSimulcastLayers: [
+            VideoParametersPresets.screenShareH360FPS15,
+          ],
+          degradationPreference: DegradationPreference.balanced,
+        ),
+      ),
     );
     _room = room;
     _listen(room);
@@ -109,11 +144,30 @@ class VoiceSession {
   /// point where a refusal has to be survivable.
   Future<bool> _enableMicrophone(Room room) async {
     try {
-      await room.localParticipant?.setMicrophoneEnabled(true);
+      await room.localParticipant?.setMicrophoneEnabled(
+        true,
+        audioCaptureOptions: _microphoneCaptureOptions,
+      );
       return true;
     } on Object catch (error) {
       debugPrint('voice: microphone unavailable — $error');
       return false;
+    }
+  }
+
+  /// Updates WebRTC's native audio-processing module in place when possible.
+  /// A joined-muted call has no local track, so its next unmute simply picks up
+  /// the setting through [_microphoneCaptureOptions].
+  Future<void> applyNoiseSuppression({required bool enabled}) async {
+    final publication = _room?.localParticipant
+        ?.getTrackPublicationBySource(TrackSource.microphone);
+    if (publication?.track case final LocalAudioTrack track) {
+      await track.setAudioProcessingOptions(AudioProcessingOptions(
+        echoCancellation: true,
+        noiseSuppression: enabled,
+        autoGainControl: true,
+        highPassFilter: enabled,
+      ));
     }
   }
 
@@ -358,7 +412,10 @@ class VoiceSession {
   /// Android hands the frames over through MediaProjection, which needs the
   /// system's consent dialog first and a foreground service to stay alive; the
   /// permission call is a no-op everywhere else.
-  Future<void> setScreenShareEnabled({required bool enabled}) async {
+  Future<void> setScreenShareEnabled({
+    required bool enabled,
+    bool captureAudio = false,
+  }) async {
     final room = _room;
     if (room == null) return;
 
@@ -374,7 +431,18 @@ class VoiceSession {
         // the mediaProjection service type to be declared in.
         await startCallService(screenShare: true);
       }
-      await room.localParticipant?.setScreenShareEnabled(enabled);
+      await room.localParticipant?.setScreenShareEnabled(
+        enabled,
+        captureScreenAudio: captureAudio,
+        screenShareCaptureOptions: ScreenShareCaptureOptions(
+          captureScreenAudio: captureAudio,
+          params: _responsiveScreenShare,
+        ),
+      );
+      if (enabled && captureAudio &&
+          room.localParticipant?.isScreenShareAudioEnabled() != true) {
+        debugPrint('voice: the selected screen source did not provide audio');
+      }
       _voice.setLocalScreenShareEnabled(enabled: enabled);
       // Back to a plain call: the service stays, its projection type does not.
       if (!enabled) await startCallService();

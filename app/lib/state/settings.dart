@@ -9,9 +9,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// apart from "there is no server saved" — without it, the app would flash the
 /// connect screen on every cold start before the stored URL arrived.
 class SettingsState {
-  const SettingsState({this.serverUrl, this.loaded = false});
+  const SettingsState({
+    this.serverUrl,
+    this.noiseSuppressionEnabled = true,
+    this.loaded = false,
+  });
 
   final String? serverUrl;
+  final bool noiseSuppressionEnabled;
   final bool loaded;
 
   bool get hasServer => serverUrl != null;
@@ -34,8 +39,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
 
   Future<void> _load() async {
     String? url;
+    var noiseSuppressionEnabled = true;
     try {
       url = await _store.readServerUrl();
+      noiseSuppressionEnabled = await _store.readNoiseSuppressionEnabled();
     } on Object catch (error, stackTrace) {
       // A keystore that will not open (locked device, a platform channel that
       // is not there) must not strand the app on the splash screen forever.
@@ -50,7 +57,11 @@ class SettingsNotifier extends Notifier<SettingsState> {
         ),
       );
     }
-    state = SettingsState(serverUrl: url, loaded: true);
+    state = SettingsState(
+      serverUrl: url,
+      noiseSuppressionEnabled: noiseSuppressionEnabled,
+      loaded: true,
+    );
   }
 
   /// Normalises before storing, so everything downstream — the API base URL,
@@ -58,12 +69,28 @@ class SettingsNotifier extends Notifier<SettingsState> {
   Future<void> setServerUrl(String url) async {
     final normalized = normalizeServerUrl(url);
     await _store.writeServerUrl(normalized);
-    state = SettingsState(serverUrl: normalized, loaded: true);
+    state = SettingsState(
+      serverUrl: normalized,
+      noiseSuppressionEnabled: state.noiseSuppressionEnabled,
+      loaded: true,
+    );
   }
 
   Future<void> clearServerUrl() async {
     await _store.clearServerUrl();
-    state = const SettingsState(loaded: true);
+    state = SettingsState(
+      noiseSuppressionEnabled: state.noiseSuppressionEnabled,
+      loaded: true,
+    );
+  }
+
+  Future<void> setNoiseSuppressionEnabled({required bool enabled}) async {
+    await _store.writeNoiseSuppressionEnabled(enabled: enabled);
+    state = SettingsState(
+      serverUrl: state.serverUrl,
+      noiseSuppressionEnabled: enabled,
+      loaded: true,
+    );
   }
 }
 

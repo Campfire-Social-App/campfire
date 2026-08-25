@@ -53,6 +53,7 @@ class SessionStore {
   static const _serverUrlKey = 'campfire.server_url';
   static const _refreshTokenKey = 'campfire.refresh_token';
   static const _userKey = 'campfire.user';
+  static const _noiseSuppressionKey = 'campfire.noise_suppression';
 
   final SecureStore _store;
 
@@ -63,6 +64,12 @@ class SessionStore {
   Future<void> writeServerUrl(String url) => _store.write(_serverUrlKey, url);
 
   Future<void> clearServerUrl() => _store.delete(_serverUrlKey);
+
+  Future<bool> readNoiseSuppressionEnabled() async =>
+      (await _store.read(_noiseSuppressionKey)) != 'false';
+
+  Future<void> writeNoiseSuppressionEnabled({required bool enabled}) =>
+      _store.write(_noiseSuppressionKey, '$enabled');
 
   Future<String?> readRefreshToken() => _store.read(_refreshTokenKey);
 

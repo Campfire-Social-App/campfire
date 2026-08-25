@@ -83,10 +83,24 @@ class VoiceControls extends ConsumerWidget {
             active: voice.localScreenShareEnabled,
             activeStyle: _ActiveStyle.primary,
             dense: dense,
-            onTap: () => guarded(
-              () => session.setScreenShareEnabled(enabled: !voice.localScreenShareEnabled),
-              'Couldn’t share the screen.',
-            ),
+            onTap: () async {
+              if (voice.localScreenShareEnabled) {
+                await guarded(
+                  () => session.setScreenShareEnabled(enabled: false),
+                  'Couldn’t stop sharing the screen.',
+                );
+                return;
+              }
+              final captureAudio = await _chooseScreenAudio(context);
+              if (captureAudio == null) return;
+              await guarded(
+                () => session.setScreenShareEnabled(
+                  enabled: true,
+                  captureAudio: captureAudio,
+                ),
+                'Couldn’t share the screen.',
+              );
+            },
           ),
         _ControlButton(
           icon: CampfireIcons.callEnd,
@@ -114,6 +128,31 @@ class VoiceControls extends ConsumerWidget {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
+
+  Future<bool?> _chooseScreenAudio(BuildContext context) => showModalBottomSheet<bool>(
+        context: context,
+        backgroundColor: CampfireTokens.popover,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(CampfireIcons.volumeHigh),
+                title: const Text('Share with audio'),
+                subtitle: const Text('Include sound from apps when the system supports it'),
+                onTap: () => Navigator.of(sheetContext).pop(true),
+              ),
+              ListTile(
+                leading: const Icon(CampfireIcons.screenShareOn),
+                title: const Text('Screen only'),
+                subtitle: const Text('Share video without system audio'),
+                onTap: () => Navigator.of(sheetContext).pop(false),
+              ),
+            ],
+          ),
+        ),
+      );
 }
 
 enum _ActiveStyle { muted, primary, danger }

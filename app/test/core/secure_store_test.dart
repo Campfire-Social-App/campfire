@@ -28,6 +28,12 @@ void main() {
     expect(await store.readServerUrl(), isNull);
     expect(await store.readRefreshToken(), isNull);
     expect(await store.readUser(), isNull);
+    expect(await store.readNoiseSuppressionEnabled(), isTrue);
+  });
+
+  test('persists the noise suppression preference', () async {
+    await store.writeNoiseSuppressionEnabled(enabled: false);
+    expect(await SessionStore(backing).readNoiseSuppressionEnabled(), isFalse);
   });
 
   test('signing out keeps the server so the next login lands on it', () async {

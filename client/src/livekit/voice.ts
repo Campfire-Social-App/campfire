@@ -1,13 +1,16 @@
 import {
   Room,
   RoomEvent,
+  ScreenSharePresets,
   Track,
+  type AudioCaptureOptions,
   type LocalTrackPublication,
   type Participant,
   type RemoteTrack,
   type RemoteTrackPublication,
   type TrackPublication,
   type LocalVideoTrack,
+  type LocalAudioTrack,
   type RemoteVideoTrack,
 } from "livekit-client";
 import { toast } from "sonner";
@@ -21,6 +24,7 @@ import {
 import { useDmsStore } from "@/state/dms";
 import { useChannelsStore } from "@/state/channels";
 import { useVoiceStore } from "@/state/voice";
+import { useSettingsStore } from "@/state/settings";
 import {
   playJoinSound,
   playLeaveSound,
@@ -31,6 +35,27 @@ import {
 } from "@/lib/sounds";
 
 let room: Room | null = null;
+
+/** WebRTC's audio processing module runs before LiveKit hands the signal to
+ * Opus. Keeping the complete speech preset here makes capture consistent
+ * across Chromium/WebView versions instead of relying on SDK defaults. */
+function microphoneCaptureOptions(noiseSuppressionEnabled: boolean): AudioCaptureOptions {
+  const supported =
+    typeof navigator === "undefined"
+      ? undefined
+      : navigator.mediaDevices?.getSupportedConstraints?.();
+  return {
+    echoCancellation: true,
+    autoGainControl: true,
+    ...(supported?.noiseSuppression !== false
+      ? { noiseSuppression: noiseSuppressionEnabled }
+      : {}),
+    ...(supported && "voiceIsolation" in supported
+      ? { voiceIsolation: noiseSuppressionEnabled }
+      : {}),
+    channelCount: 1,
+  };
+}
 /** Set while the screen share is coming from our own capture rather than the
  * WebView's — it owns a Rust capture thread that has to be torn down with it. */
 let nativeCapture: NativeCapture | null = null;
@@ -87,7 +112,18 @@ export async function joinVoiceChannel(
   const { localMuted, localDeafened } = useVoiceStore.getState();
   const { token, url } = await getVoiceToken(channelId, localMuted, localDeafened);
 
-  const nextRoom = new Room();
+  const nextRoom = new Room({
+    adaptiveStream: true,
+    dynacast: true,
+    audioCaptureDefaults: microphoneCaptureOptions(
+      useSettingsStore.getState().noiseSuppressionEnabled,
+    ),
+    publishDefaults: {
+      simulcast: true,
+      screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
+      screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
+    },
+  });
   room = nextRoom;
 
   nextRoom
@@ -222,7 +258,10 @@ export async function joinVoiceChannel(
 
   try {
     await nextRoom.connect(url, token);
-    await nextRoom.localParticipant.setMicrophoneEnabled(!localMuted);
+    await nextRoom.localParticipant.setMicrophoneEnabled(
+      !localMuted,
+      microphoneCaptureOptions(useSettingsStore.getState().noiseSuppressionEnabled),
+    );
     useVoiceStore.getState().setParticipantMuted(nextRoom.localParticipant.identity, localMuted);
     // Presence decoration must never make an otherwise healthy voice join
     // fail (for example while talking to an older server token without the
@@ -284,7 +323,10 @@ export async function setMicrophoneMuted(
   // output audio is deafened.
   useVoiceStore.getState().setMicrophoneMutedByDeafen(false);
   const wasDeafened = useVoiceStore.getState().localDeafened;
-  await room?.localParticipant.setMicrophoneEnabled(!muted);
+  await room?.localParticipant.setMicrophoneEnabled(
+    !muted,
+    microphoneCaptureOptions(useSettingsStore.getState().noiseSuppressionEnabled),
+  );
   const voiceState = useVoiceStore.getState();
   voiceState.setLocalMuted(muted);
   if (room) voiceState.setParticipantMuted(room.localParticipant.identity, muted);
@@ -302,6 +344,22 @@ export async function setMicrophoneMuted(
   else if (options.syncPresence !== false) {
     await syncOwnVoiceState();
   }
+}
+
+/** Applies a settings change to an already-open microphone without leaving the
+ * room. When no mic exists yet (for example, the user joined muted), the next
+ * unmute consumes the persisted setting through microphoneCaptureOptions. */
+export async function applyNoiseSuppression(enabled: boolean): Promise<void> {
+  const publication = room?.localParticipant.getTrackPublication(Track.Source.Microphone);
+  const track = publication?.track as LocalAudioTrack | undefined;
+  if (!track) return;
+  const options = microphoneCaptureOptions(enabled);
+  await track.applyConstraints({
+    echoCancellation: options.echoCancellation,
+    autoGainControl: options.autoGainControl,
+    noiseSuppression: options.noiseSuppression,
+    voiceIsolation: options.voiceIsolation,
+  });
 }
 
 export async function setDeafened(deafened: boolean): Promise<void> {
@@ -379,10 +437,12 @@ export async function startNativeScreenShare(
     await currentRoom.localParticipant.publishTrack(capture.track, {
       name: "screen",
       source: Track.Source.ScreenShare,
-      // Screen content degrades badly when scaled: drop frames before pixels.
-      simulcast: false,
-      degradationPreference: "maintain-resolution",
-      videoEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: fps },
+      // A half-resolution layer lets the SFU switch weak subscribers quickly;
+      // dynacast stops paying for it when nobody needs it.
+      simulcast: true,
+      screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
+      degradationPreference: "balanced",
+      screenShareEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: fps },
     });
   } catch (err) {
     await capture.stop();
@@ -403,12 +463,26 @@ export async function requestScreenShare(): Promise<void> {
   await startWebViewScreenShare();
 }
 
-/** The WebView's own picker — the fallback outside the desktop app. */
-export async function startWebViewScreenShare(): Promise<void> {
+/** The platform picker, used by browsers and by the desktop's audio-sharing
+ * mode because getDisplayMedia must return screen video and system audio in a
+ * single permission grant. */
+export async function startWebViewScreenShare(captureAudio = true): Promise<void> {
   if (!room) return;
   try {
-    await room.localParticipant.setScreenShareEnabled(true, { audio: true });
+    await room.localParticipant.setScreenShareEnabled(true, {
+      audio: captureAudio,
+      resolution: ScreenSharePresets.h720fps30,
+      contentHint: "detail",
+      systemAudio: captureAudio ? "include" : "exclude",
+      surfaceSwitching: "include",
+    });
     useVoiceStore.getState().setLocalScreenShareEnabled(true);
+    if (
+      captureAudio &&
+      !room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)
+    ) {
+      toast.warning("The selected source doesn't provide system audio. Sharing video only.");
+    }
   } catch (err) {
     useVoiceStore.getState().setLocalScreenShareEnabled(false);
     throw err;

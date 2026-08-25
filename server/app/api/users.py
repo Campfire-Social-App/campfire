@@ -16,6 +16,7 @@ from app.schemas.attachment import AttachmentRead
 from app.schemas.user import (
     ModerationMessageRead,
     UserAvatarUpdateRequest,
+    UserBannerUpdateRequest,
     UserModerationOverview,
     UserRead,
 )
@@ -23,6 +24,9 @@ from app.services.livekit_service import disconnect_participant
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 logger = logging.getLogger(__name__)
+
+PROFILE_IMAGE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}
+MAX_PROFILE_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 async def _moderation_target(user_id: uuid.UUID, admin: AdminUser, db: DbSession) -> User:
@@ -43,6 +47,31 @@ async def _disconnect_from_voice(user_id: uuid.UUID) -> bool:
         return False
     await disconnect_participant(identity=str(user_id), room=str(voice_state.channel_id))
     return True
+
+
+async def _profile_image(attachment_id: uuid.UUID, user: User, db: DbSession) -> Attachment:
+    attachment = await db.get(Attachment, attachment_id)
+    if attachment is None or attachment.uploaded_by_id != user.id or attachment.message_id is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+    if attachment.content_type not in PROFILE_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Use a supported image",
+        )
+    if attachment.size_bytes > MAX_PROFILE_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="Profile image exceeds 8 MB",
+        )
+    return attachment
+
+
+async def _broadcast_user(user: User) -> UserRead:
+    result = UserRead.model_validate(user)
+    await manager.broadcast(
+        GatewayEvent(op=GatewayEventType.USER_UPDATE, data=result.model_dump(mode="json"))
+    )
+    return result
 
 
 @router.get("", response_model=list[UserRead])
@@ -144,16 +173,19 @@ async def timeout_user(user_id: uuid.UUID, admin: AdminUser, db: DbSession) -> U
 
 @router.put("/@me/avatar", response_model=UserRead)
 async def update_avatar(payload: UserAvatarUpdateRequest, user: CurrentUser, db: DbSession) -> UserRead:
-    attachment = await db.get(Attachment, payload.attachment_id)
-    if attachment is None or attachment.uploaded_by_id != user.id or attachment.message_id is not None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
-    if attachment.content_type not in {"image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"}:
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Use a supported image")
-    if attachment.size_bytes > 5 * 1024 * 1024:
-        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail="Profile image exceeds 5 MB")
+    attachment = await _profile_image(payload.attachment_id, user, db)
     user.avatar_attachment_id = attachment.id
     await db.commit()
     await db.refresh(user)
-    result = UserRead.model_validate(user)
-    await manager.broadcast(GatewayEvent(op=GatewayEventType.USER_UPDATE, data=result.model_dump(mode="json")))
-    return result
+    return await _broadcast_user(user)
+
+
+@router.put("/@me/banner", response_model=UserRead)
+async def update_banner(
+    payload: UserBannerUpdateRequest, user: CurrentUser, db: DbSession
+) -> UserRead:
+    banner = await _profile_image(payload.attachment_id, user, db)
+    user.banner_attachment_id = banner.id
+    await db.commit()
+    await db.refresh(user)
+    return await _broadcast_user(user)

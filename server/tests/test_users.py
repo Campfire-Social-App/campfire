@@ -48,6 +48,73 @@ async def test_user_can_update_profile_photo(
     assert response.json()["avatar_url"] == f"/api/uploads/{attachment.id}"
 
 
+async def test_user_can_update_avatar_and_profile_background_separately(
+    client: AsyncClient, admin_headers: dict[str, str], admin_user, db_session
+) -> None:
+    from app.models.attachment import Attachment
+
+    avatar = Attachment(
+        uploaded_by_id=admin_user.id,
+        filename="avatar.webp",
+        content_type="image/webp",
+        size_bytes=256,
+        storage_path="avatar.webp",
+    )
+    banner = Attachment(
+        uploaded_by_id=admin_user.id,
+        filename="banner.gif",
+        content_type="image/gif",
+        size_bytes=8 * 1024 * 1024,
+        storage_path="banner.gif",
+    )
+    db_session.add_all([avatar, banner])
+    await db_session.commit()
+    await db_session.refresh(avatar)
+    await db_session.refresh(banner)
+
+    avatar_response = await client.put(
+        "/api/users/@me/avatar",
+        json={"attachment_id": str(avatar.id)},
+        headers=admin_headers,
+    )
+    response = await client.put(
+        "/api/users/@me/banner",
+        json={"attachment_id": str(banner.id)},
+        headers=admin_headers,
+    )
+
+    assert avatar_response.status_code == 200, avatar_response.text
+    assert response.status_code == 200, response.text
+    assert response.json()["avatar_url"] == f"/api/uploads/{avatar.id}"
+    assert response.json()["banner_url"] == f"/api/uploads/{banner.id}"
+
+
+async def test_profile_image_larger_than_eight_megabytes_is_rejected(
+    client: AsyncClient, admin_headers: dict[str, str], admin_user, db_session
+) -> None:
+    from app.models.attachment import Attachment
+
+    banner = Attachment(
+        uploaded_by_id=admin_user.id,
+        filename="oversized.gif",
+        content_type="image/gif",
+        size_bytes=8 * 1024 * 1024 + 1,
+        storage_path="oversized.gif",
+    )
+    db_session.add(banner)
+    await db_session.commit()
+    await db_session.refresh(banner)
+
+    response = await client.put(
+        "/api/users/@me/banner",
+        json={"attachment_id": str(banner.id)},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Profile image exceeds 8 MB"
+
+
 async def test_admin_moderation_overview_contains_public_history_but_not_dms(
     client: AsyncClient, admin_headers: dict[str, str], admin_user, db_session
 ) -> None:

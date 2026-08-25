@@ -25,6 +25,14 @@ class User(Base):
         ),
         nullable=True,
     )
+    banner_attachment_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "attachments.id", ondelete="SET NULL", use_alter=True,
+            name="fk_users_banner_attachment_id_attachments",
+        ),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -32,3 +40,7 @@ class User(Base):
     @property
     def avatar_url(self) -> str | None:
         return f"/api/uploads/{self.avatar_attachment_id}" if self.avatar_attachment_id else None
+
+    @property
+    def banner_url(self) -> str | None:
+        return f"/api/uploads/{self.banner_attachment_id}" if self.banner_attachment_id else None

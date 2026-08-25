@@ -106,7 +106,13 @@ async def _build_ready_payload(user: User) -> dict:
         voice_states = await _visible_voice_states(db, user)
 
     return {
-        "user": {"id": str(user.id), "username": user.username, "is_admin": user.is_admin, "avatar_url": user.avatar_url},
+        "user": {
+            "id": str(user.id),
+            "username": user.username,
+            "is_admin": user.is_admin,
+            "avatar_url": user.avatar_url,
+            "banner_url": user.banner_url,
+        },
         "server": {
             "name": settings_row.name if settings_row else "Campfire",
             "icon_url": settings_row.icon_url if settings_row else None,

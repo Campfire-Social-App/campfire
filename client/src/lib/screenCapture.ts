@@ -20,9 +20,9 @@ const MAX_HEIGHT: Record<CaptureQuality, number> = { "720p": 720, "1080p": 1080,
 /** Bitrate ceiling per quality — screen content is mostly static, so these sit
  * below what the same resolution would need for camera video. */
 const MAX_BITRATE: Record<CaptureQuality, number> = {
-  "720p": 1_500_000,
-  "1080p": 3_000_000,
-  native: 5_000_000,
+  "720p": 2_000_000,
+  "1080p": 5_000_000,
+  native: 7_000_000,
 };
 
 /** No native capture outside the desktop app (`npm run dev` in a browser) — the
@@ -46,9 +46,8 @@ const FIRST_FRAME_TIMEOUT_MS = 8000;
  * Starts capturing `sourceId` in Rust and turns the frames into a track.
  *
  * The bridge is a canvas: each JPEG frame is decoded and painted, and the canvas
- * is sampled at `fps` as a `MediaStreamTrack`. Sampling on a timer (rather than
- * pushing a frame per paint) keeps the track alive while the screen is perfectly
- * static — a late subscriber still gets a picture instead of black.
+ * becomes a manually-driven `MediaStreamTrack`. Requesting a frame immediately
+ * before each paint avoids both timer quantisation latency and duplicate frames.
  */
 export async function startNativeCapture(
   sourceId: string,
@@ -62,6 +61,7 @@ export async function startNativeCapture(
 
   let stopped = false;
   let decoding = false;
+  let outputTrack: CanvasCaptureMediaStreamTrack | null = null;
   /** Newest frame that arrived while we were still decoding the previous one —
    * only the latest is worth keeping, the rest are already stale. */
   let queued: ArrayBuffer | null = null;
@@ -79,6 +79,7 @@ export async function startNativeCapture(
         canvas.width = bitmap.width;
         canvas.height = bitmap.height;
       }
+      outputTrack?.requestFrame();
       context.drawImage(bitmap, 0, 0);
       bitmap.close();
       onFirstFrame?.();
@@ -133,7 +134,17 @@ export async function startNativeCapture(
 
   // Sized off the first frame, so the track never starts at the canvas default
   // and then jumps to the real resolution.
-  const track = canvas.captureStream(fps).getVideoTracks()[0];
+  const track = canvas.captureStream(0).getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+  outputTrack = track;
+  // Repaint the first frame now that its track exists. A sparse keepalive does
+  // the same for keyframe requests while the shared desktop is fully static.
+  track.requestFrame();
+  context.drawImage(canvas, 0, 0);
+  const keepAlive = window.setInterval(() => {
+    if (stopped) return;
+    track.requestFrame();
+    context.drawImage(canvas, 0, 0);
+  }, 1000);
   // Tells the encoder to favour sharpness over smoothness — text stays readable.
   track.contentHint = "detail";
 
@@ -141,6 +152,7 @@ export async function startNativeCapture(
     track,
     maxBitrate: MAX_BITRATE[quality],
     stop: async () => {
+      window.clearInterval(keepAlive);
       await stop();
       track.stop();
     },

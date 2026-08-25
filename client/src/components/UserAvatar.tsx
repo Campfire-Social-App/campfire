@@ -50,16 +50,17 @@ function initialsFor(username: string): string {
 
 interface UserAvatarProps {
   username: string;
+  avatarUrl?: string | null;
   size?: "default" | "sm" | "lg";
   status?: "online" | "offline";
   ring?: boolean;
   className?: string;
 }
 
-export function UserAvatar({ username, size = "default", status, ring, className }: UserAvatarProps) {
+export function UserAvatar({ username, avatarUrl: suppliedAvatarUrl, size = "default", status, ring, className }: UserAvatarProps) {
   const knownAvatar = useUsersStore((state) => state.users.find((user) => user.username === username)?.avatar_url);
   const ownAvatar = useAuthStore((state) => state.user?.username === username ? state.user.avatar_url : null);
-  const avatarUrl = knownAvatar ?? ownAvatar;
+  const avatarUrl = suppliedAvatarUrl ?? knownAvatar ?? ownAvatar;
   return (
     <Avatar
       size={size}

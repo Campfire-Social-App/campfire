@@ -234,7 +234,7 @@ fn stream_screen(
 
     let mut last_sent: Option<Instant> = None;
     while !stop.load(Ordering::Relaxed) {
-        let frame = match frames.recv_timeout(RECORDER_TIMEOUT) {
+        let mut frame = match frames.recv_timeout(RECORDER_TIMEOUT) {
             Ok(frame) => frame,
             // Nothing on screen changed; loop back and re-check the stop flag.
             Err(RecvTimeoutError::Timeout) => continue,
@@ -244,6 +244,12 @@ fn stream_screen(
         // requested rate is dropped here, before the cost of encoding it.
         if last_sent.is_some_and(|at| at.elapsed() < interval) {
             continue;
+        }
+        // Encoding and IPC can briefly take longer than a display refresh. A
+        // recorder queue represents old screen state, not valuable video: use
+        // its newest frame so congestion reduces FPS instead of adding delay.
+        for newer in frames.try_iter() {
+            frame = newer;
         }
         let image = RgbaImage::from_raw(frame.width, frame.height, frame.raw)
             .ok_or_else(|| "Capture produced a malformed frame".to_string())?;

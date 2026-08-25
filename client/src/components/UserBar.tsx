@@ -13,12 +13,15 @@ import {
   VolumeX,
   Wifi,
   UserRound,
+  AudioLines,
 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { ProfileDialog } from "@/components/ProfileDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -35,6 +38,7 @@ import {
   setMicrophoneMuted,
   requestScreenShare,
   stopScreenShare,
+  applyNoiseSuppression,
 } from "@/livekit/voice";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -48,6 +52,7 @@ export function UserBar() {
   const localDeafened = useVoiceStore((s) => s.localDeafened);
   const localCameraEnabled = useVoiceStore((s) => s.localCameraEnabled);
   const localScreenShareEnabled = useVoiceStore((s) => s.localScreenShareEnabled);
+  const noiseSuppressionEnabled = useSettingsStore((s) => s.noiseSuppressionEnabled);
   const channelName = useChannelsStore(
     (s) => s.channels.find((c) => c.id === connectedChannelId)?.name,
   );
@@ -85,6 +90,17 @@ export function UserBar() {
       // Cancelling the browser's share picker also rejects with NotAllowedError — not a real error.
       if (err instanceof DOMException && err.name === "NotAllowedError") return;
       toast.error("Couldn't share the screen.");
+    }
+  };
+
+  const handleNoiseSuppression = async (enabled: boolean) => {
+    useSettingsStore.getState().setNoiseSuppressionEnabled(enabled);
+    try {
+      await applyNoiseSuppression(enabled);
+    } catch {
+      // Preserve the preference for the next capture even if this device cannot
+      // change constraints on a microphone that is already running.
+      toast.error("Noise suppression will be applied the next time the microphone starts.");
     }
   };
 
@@ -159,13 +175,17 @@ export function UserBar() {
             inVoice && "border-t border-glass-border",
           )}
         >
-          <UserAvatar username={user.username} size="sm" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {user.is_admin ? "Admin" : "Member"}
-            </p>
-          </div>
+          <UserProfileHoverCard user={user}>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <UserAvatar username={user.username} avatarUrl={user.avatar_url} size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {user.is_admin ? "Admin" : "Member"}
+                </p>
+              </div>
+            </div>
+          </UserProfileHoverCard>
 
           <IconToggle
             active={localMuted}
@@ -199,6 +219,13 @@ export function UserBar() {
             </Tooltip>
             {/* Para cima e alinhado à direita: a barra mora no rodapé da sidebar. */}
             <DropdownMenuContent side="top" align="end" className="w-56">
+              <DropdownMenuCheckboxItem
+                checked={noiseSuppressionEnabled}
+                onCheckedChange={(checked) => void handleNoiseSuppression(checked === true)}
+                onSelect={(event) => event.preventDefault()}
+              >
+                <AudioLines className="size-4" /> Noise suppression
+              </DropdownMenuCheckboxItem>
               <DropdownMenuItem onSelect={() => setProfileOpen(true)}>
                 <UserRound className="size-4" /> Profile
               </DropdownMenuItem>

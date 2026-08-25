@@ -4,6 +4,7 @@ import { CornerUpLeft, Pencil, Reply, Trash2 } from "lucide-react";
 import { AttachmentList } from "@/components/AttachmentList";
 import { LinkPreviewList } from "@/components/LinkPreview";
 import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
+import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/state/auth";
@@ -20,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { messageMentionsUser, splitMentions } from "@/lib/mentions";
 import { splitLinks } from "@/lib/links";
 import { useMessagesStore } from "@/state/messages";
-import { useModerationStore } from "@/state/moderation";
 
 const REACTIONS: ReadonlyArray<{ type: ReactionType; emoji: string; label: string }> = [
   { type: "like", emoji: "👍", label: "Like" },
@@ -105,17 +105,19 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
     >
       <div className="w-9 shrink-0 pt-0.5 text-center">
         {showHeader ? (
-          <UserModerationMenu user={message.author}>
-            <button
-              type="button"
-              disabled={!currentUser?.is_admin}
-              title={currentUser?.is_admin ? `Moderate ${message.author.username}` : undefined}
-              onClick={() => useModerationStore.getState().openUser(message.author)}
-              className="rounded-full disabled:cursor-default"
-            >
-              <UserAvatar username={message.author.username} />
-            </button>
-          </UserModerationMenu>
+          <UserProfileHoverCard user={message.author}>
+            <div className="rounded-full">
+              <UserModerationMenu user={message.author}>
+                <button
+                  type="button"
+                  title={`View ${message.author.username}'s profile`}
+                  className="rounded-full"
+                >
+                  <UserAvatar username={message.author.username} avatarUrl={message.author.avatar_url} />
+                </button>
+              </UserModerationMenu>
+            </div>
+          </UserProfileHoverCard>
         ) : (
           <span className="text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
             {time}
@@ -144,9 +146,11 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
 
         {showHeader && (
           <div className="flex items-baseline gap-2">
-            <span className={cn("text-[15px] font-semibold", usernameColorFor(message.author.username))}>
-              {isOwn ? "You" : message.author.username}
-            </span>
+            <UserProfileHoverCard user={message.author}>
+              <span className={cn("cursor-default text-[15px] font-semibold", usernameColorFor(message.author.username))}>
+                {isOwn ? "You" : message.author.username}
+              </span>
+            </UserProfileHoverCard>
             <span className="text-[11px] text-muted-foreground">{time}</span>
           </div>
         )}

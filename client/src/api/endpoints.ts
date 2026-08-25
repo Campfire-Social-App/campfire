@@ -101,6 +101,12 @@ export const updateMyAvatar = (attachmentId: string) =>
     body: { attachment_id: attachmentId },
   });
 
+export const updateMyBanner = (attachmentId: string) =>
+  apiFetch<User>("/api/users/@me/banner", {
+    method: "PUT",
+    body: { attachment_id: attachmentId },
+  });
+
 export const getServerSettings = () => apiFetch<ServerSettings>("/api/server");
 
 export const createInvite = (maxUses?: number, expiresInHours?: number) =>
