@@ -15,6 +15,13 @@ const _responsiveScreenShare = VideoParameters(
   encoding: VideoEncoding(maxFramerate: 30, maxBitrate: 2000000),
 );
 
+// The Flutter SDK does not expose JavaScript's screenShareH360FPS15 preset.
+// Keep the fallback layer explicit so this stays compatible with 2.11.x.
+const _responsiveScreenShareLow = VideoParameters(
+  dimensions: VideoDimensions(640, 360),
+  encoding: VideoEncoding(maxFramerate: 15, maxBitrate: 500000),
+);
+
 /// The LiveKit half of voice: one room at a time, its events folded into
 /// [voiceProvider]. Port of `livekit/voice.ts`.
 ///
@@ -41,8 +48,6 @@ class VoiceSession {
     final enabled = _ref.read(settingsProvider).noiseSuppressionEnabled;
     return AudioCaptureOptions(
       noiseSuppression: enabled,
-      echoCancellation: true,
-      autoGainControl: true,
       highPassFilter: enabled,
       voiceIsolation: enabled,
       typingNoiseDetection: enabled,
@@ -69,13 +74,12 @@ class VoiceSession {
           params: _responsiveScreenShare,
         ),
         defaultVideoPublishOptions: VideoPublishOptions(
-          simulcast: true,
           screenShareEncoding: VideoEncoding(
             maxFramerate: 30,
             maxBitrate: 2000000,
           ),
           screenShareSimulcastLayers: [
-            VideoParametersPresets.screenShareH360FPS15,
+            _responsiveScreenShareLow,
           ],
           degradationPreference: DegradationPreference.balanced,
         ),
@@ -162,6 +166,10 @@ class VoiceSession {
     final publication = _room?.localParticipant
         ?.getTrackPublicationBySource(TrackSource.microphone);
     if (publication?.track case final LocalAudioTrack track) {
+      // LiveKit 2.11 marks live audio reconfiguration as experimental. It is
+      // still the only API that updates the existing track without a dropout;
+      // capture startup continues to use the stable AudioCaptureOptions path.
+      // ignore: experimental_member_use
       await track.setAudioProcessingOptions(AudioProcessingOptions(
         echoCancellation: true,
         noiseSuppression: enabled,
