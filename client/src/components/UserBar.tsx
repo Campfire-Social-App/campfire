@@ -23,6 +23,10 @@ import {
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -39,7 +43,9 @@ import {
   requestScreenShare,
   stopScreenShare,
   applyNoiseSuppression,
+  applyNoiseGate,
 } from "@/livekit/voice";
+import type { NoiseGateMode } from "@/lib/noiseGate";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -53,6 +59,7 @@ export function UserBar() {
   const localCameraEnabled = useVoiceStore((s) => s.localCameraEnabled);
   const localScreenShareEnabled = useVoiceStore((s) => s.localScreenShareEnabled);
   const noiseSuppressionEnabled = useSettingsStore((s) => s.noiseSuppressionEnabled);
+  const noiseGateMode = useSettingsStore((s) => s.noiseGateMode);
   const channelName = useChannelsStore(
     (s) => s.channels.find((c) => c.id === connectedChannelId)?.name,
   );
@@ -101,6 +108,15 @@ export function UserBar() {
       // Preserve the preference for the next capture even if this device cannot
       // change constraints on a microphone that is already running.
       toast.error("Noise suppression will be applied the next time the microphone starts.");
+    }
+  };
+
+  const handleNoiseGate = async (mode: NoiseGateMode) => {
+    useSettingsStore.getState().setNoiseGateMode(mode);
+    try {
+      await applyNoiseGate(mode);
+    } catch {
+      toast.error("The noise gate will be applied the next time the microphone starts.");
     }
   };
 
@@ -226,6 +242,17 @@ export function UserBar() {
               >
                 <AudioLines className="size-4" /> Noise suppression
               </DropdownMenuCheckboxItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Noise gate</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={noiseGateMode}
+                onValueChange={(value) => void handleNoiseGate(value as NoiseGateMode)}
+              >
+                <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="standard">Standard · balanced</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="strong">Strong · noisy room</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setProfileOpen(true)}>
                 <UserRound className="size-4" /> Profile
               </DropdownMenuItem>

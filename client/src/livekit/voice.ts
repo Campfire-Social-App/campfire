@@ -25,6 +25,7 @@ import { useDmsStore } from "@/state/dms";
 import { useChannelsStore } from "@/state/channels";
 import { useVoiceStore } from "@/state/voice";
 import { useSettingsStore } from "@/state/settings";
+import { NoiseGateProcessor, type NoiseGateMode } from "@/lib/noiseGate";
 import {
   playJoinSound,
   playLeaveSound,
@@ -39,7 +40,10 @@ let room: Room | null = null;
 /** WebRTC's audio processing module runs before LiveKit hands the signal to
  * Opus. Keeping the complete speech preset here makes capture consistent
  * across Chromium/WebView versions instead of relying on SDK defaults. */
-function microphoneCaptureOptions(noiseSuppressionEnabled: boolean): AudioCaptureOptions {
+function microphoneCaptureOptions(
+  noiseSuppressionEnabled: boolean,
+  noiseGateMode: NoiseGateMode = "off",
+): AudioCaptureOptions {
   const supported =
     typeof navigator === "undefined"
       ? undefined
@@ -54,6 +58,9 @@ function microphoneCaptureOptions(noiseSuppressionEnabled: boolean): AudioCaptur
       ? { voiceIsolation: noiseSuppressionEnabled }
       : {}),
     channelCount: 1,
+    ...(noiseGateMode === "off"
+      ? {}
+      : { processor: new NoiseGateProcessor(noiseGateMode) }),
   };
 }
 /** Set while the screen share is coming from our own capture rather than the
@@ -117,6 +124,7 @@ export async function joinVoiceChannel(
     dynacast: true,
     audioCaptureDefaults: microphoneCaptureOptions(
       useSettingsStore.getState().noiseSuppressionEnabled,
+      useSettingsStore.getState().noiseGateMode,
     ),
     publishDefaults: {
       simulcast: true,
@@ -260,8 +268,14 @@ export async function joinVoiceChannel(
     await nextRoom.connect(url, token);
     await nextRoom.localParticipant.setMicrophoneEnabled(
       !localMuted,
-      microphoneCaptureOptions(useSettingsStore.getState().noiseSuppressionEnabled),
+      microphoneCaptureOptions(
+        useSettingsStore.getState().noiseSuppressionEnabled,
+        useSettingsStore.getState().noiseGateMode,
+      ),
     );
+    if (!localMuted) {
+      await applyNoiseGate(useSettingsStore.getState().noiseGateMode).catch(() => {});
+    }
     useVoiceStore.getState().setParticipantMuted(nextRoom.localParticipant.identity, localMuted);
     // Presence decoration must never make an otherwise healthy voice join
     // fail (for example while talking to an older server token without the
@@ -325,8 +339,14 @@ export async function setMicrophoneMuted(
   const wasDeafened = useVoiceStore.getState().localDeafened;
   await room?.localParticipant.setMicrophoneEnabled(
     !muted,
-    microphoneCaptureOptions(useSettingsStore.getState().noiseSuppressionEnabled),
+    microphoneCaptureOptions(
+      useSettingsStore.getState().noiseSuppressionEnabled,
+      useSettingsStore.getState().noiseGateMode,
+    ),
   );
+  if (!muted) {
+    await applyNoiseGate(useSettingsStore.getState().noiseGateMode).catch(() => {});
+  }
   const voiceState = useVoiceStore.getState();
   voiceState.setLocalMuted(muted);
   if (room) voiceState.setParticipantMuted(room.localParticipant.identity, muted);
@@ -360,6 +380,22 @@ export async function applyNoiseSuppression(enabled: boolean): Promise<void> {
     noiseSuppression: options.noiseSuppression,
     voiceIsolation: options.voiceIsolation,
   });
+}
+
+/** Installs or removes the adaptive gate on the already-published microphone.
+ * The next unmute applies the persisted mode when no local track exists yet. */
+export async function applyNoiseGate(mode: NoiseGateMode): Promise<void> {
+  const publication = room?.localParticipant.getTrackPublication(Track.Source.Microphone);
+  const track = publication?.track as LocalAudioTrack | undefined;
+  if (!track) return;
+
+  const current = track.getProcessor();
+  if (mode === "off") {
+    if (current?.name.startsWith("campfire-noise-gate-")) await track.stopProcessor();
+    return;
+  }
+  if (current instanceof NoiseGateProcessor && current.mode === mode) return;
+  await track.setProcessor(new NoiseGateProcessor(mode));
 }
 
 export async function setDeafened(deafened: boolean): Promise<void> {
