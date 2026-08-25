@@ -43,6 +43,7 @@ abstract class VoiceParticipantState with _$VoiceParticipantState {
     /// not deafened, exactly as in the web client.
     @Default(false) bool deafened,
     @Default(false) bool speaking,
+    @Default(false) bool screenSharing,
   }) = _VoiceParticipantState;
 
   factory VoiceParticipantState.fromJson(Map<String, dynamic> json) =>

@@ -31,6 +31,7 @@ class VoiceParticipantState:
     muted: bool = False
     deafened: bool = False
     speaking: bool = False
+    screen_sharing: bool = False
 
 
 class ConnectionManager:

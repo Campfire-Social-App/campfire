@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Header, HTTPException, Request, status
+from livekit import api as livekit_api
 
 from app.db import async_session_maker
 from app.gateway.events import GatewayEvent, GatewayEventType
@@ -68,6 +69,33 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
                     "channel_id": str(channel_id),
                     "muted": muted,
                     "deafened": deafened,
+                    "screen_sharing": False,
+                },
+            ),
+        )
+
+    elif event.event in ("track_published", "track_unpublished"):
+        # Screen availability must travel through the gateway so members who
+        # are not subscribed to this LiveKit room can still see that it is live.
+        if event.track.source != livekit_api.TrackSource.SCREEN_SHARE:
+            return
+        try:
+            user_id = uuid.UUID(event.participant.identity)
+        except ValueError:
+            return
+        participant = manager.voice_state.get(user_id)
+        if participant is None:
+            return
+        participant.screen_sharing = event.event == "track_published"
+        await _dispatch_voice_event(
+            participant.channel_id,
+            GatewayEvent(
+                op=GatewayEventType.VOICE_STATE_UPDATE,
+                data={
+                    "action": "updated",
+                    "user_id": str(user_id),
+                    "channel_id": str(participant.channel_id),
+                    "screen_sharing": participant.screen_sharing,
                 },
             ),
         )

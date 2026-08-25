@@ -103,6 +103,9 @@ _VoiceStateUpdateData _$VoiceStateUpdateDataFromJson(
   userId: json['user_id'] as String?,
   username: json['username'] as String?,
   channelId: json['channel_id'] as String?,
+  muted: json['muted'] as bool?,
+  deafened: json['deafened'] as bool?,
+  screenSharing: json['screen_sharing'] as bool?,
 );
 
 Map<String, dynamic> _$VoiceStateUpdateDataToJson(
@@ -112,11 +115,15 @@ Map<String, dynamic> _$VoiceStateUpdateDataToJson(
   'user_id': instance.userId,
   'username': instance.username,
   'channel_id': instance.channelId,
+  'muted': instance.muted,
+  'deafened': instance.deafened,
+  'screen_sharing': instance.screenSharing,
 };
 
 const _$VoiceStateActionEnumMap = {
   VoiceStateAction.joined: 'joined',
   VoiceStateAction.left: 'left',
+  VoiceStateAction.updated: 'updated',
   VoiceStateAction.roomFinished: 'room_finished',
 };
 

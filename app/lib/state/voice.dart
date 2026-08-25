@@ -119,7 +119,26 @@ class VoiceNotifier extends Notifier<VoiceState> {
               userId: userId,
               username: data.username ?? userId,
               channelId: channelId,
+              muted: data.muted ?? false,
+              deafened: data.deafened ?? false,
+              screenSharing: data.screenSharing ?? false,
             ),
+          ],
+        );
+      case VoiceStateAction.updated:
+        final userId = data.userId;
+        if (userId == null) return;
+        state = state.copyWith(
+          participants: [
+            for (final participant in state.participants)
+              if (participant.userId == userId)
+                participant.copyWith(
+                  muted: data.muted ?? participant.muted,
+                  deafened: data.deafened ?? participant.deafened,
+                  screenSharing: data.screenSharing ?? participant.screenSharing,
+                )
+              else
+                participant,
           ],
         );
       case VoiceStateAction.left:
@@ -162,6 +181,8 @@ class VoiceNotifier extends Notifier<VoiceState> {
         sounds.join();
       case VoiceStateAction.left:
         sounds.leave();
+      case VoiceStateAction.updated:
+        break;
       case VoiceStateAction.roomFinished:
         break;
     }

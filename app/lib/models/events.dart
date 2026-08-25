@@ -138,6 +138,8 @@ enum VoiceStateAction {
   joined,
   @JsonValue('left')
   left,
+  @JsonValue('updated')
+  updated,
   @JsonValue('room_finished')
   roomFinished,
 }
@@ -153,6 +155,9 @@ abstract class VoiceStateUpdateData with _$VoiceStateUpdateData {
 
     /// Null when someone left voice altogether rather than a specific channel.
     String? channelId,
+    bool? muted,
+    bool? deafened,
+    bool? screenSharing,
   }) = _VoiceStateUpdateData;
 
   factory VoiceStateUpdateData.fromJson(Map<String, dynamic> json) =>

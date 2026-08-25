@@ -64,7 +64,8 @@ async def _build_ready_payload(user: User) -> dict:
     # update. Observers are not in the LiveKit room, so reconcile the public
     # roster from LiveKit before sending their initial platform snapshot.
     try:
-        for identity, username, room, muted, deafened in await list_active_participants():
+        active_participants = await list_active_participants()
+        for identity, username, room, muted, deafened, screen_sharing in active_participants:
             try:
                 user_id = uuid.UUID(identity)
                 channel_id = uuid.UUID(room)
@@ -78,12 +79,14 @@ async def _build_ready_payload(user: User) -> dict:
                     username=username,
                     muted=muted,
                     deafened=deafened,
+                    screen_sharing=screen_sharing,
                 )
             else:
                 current.channel_id = channel_id
                 current.username = username
                 current.muted = muted
                 current.deafened = deafened
+                current.screen_sharing = screen_sharing
     except Exception:
         # Keep the webhook-maintained cache available if LiveKit's admin API is
         # temporarily unreachable; platform access must not fail with it.
@@ -137,6 +140,7 @@ async def _build_ready_payload(user: User) -> dict:
                 "muted": s.muted,
                 "deafened": s.deafened,
                 "speaking": s.speaking,
+                "screen_sharing": s.screen_sharing,
             }
             for s in voice_states
         ],

@@ -80,6 +80,8 @@ async def update_own_voice_state(
     participant = await _voice_participant_or_404(user.id)
     participant.muted = payload.muted
     participant.deafened = payload.deafened
+    if payload.screen_sharing is not None:
+        participant.screen_sharing = payload.screen_sharing
     await _dispatch_voice_state(
         db,
         participant.channel_id,
@@ -91,6 +93,7 @@ async def update_own_voice_state(
                 "channel_id": str(participant.channel_id),
                 "muted": payload.muted,
                 "deafened": payload.deafened,
+                "screen_sharing": participant.screen_sharing,
             },
         ),
     )

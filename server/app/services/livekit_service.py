@@ -109,12 +109,12 @@ async def disconnect_participant(*, identity: str, room: str) -> None:
         await client.aclose()
 
 
-async def list_active_participants() -> list[tuple[str, str, str, bool, bool]]:
-    """Return identity, display name, room and persisted voice controls."""
+async def list_active_participants() -> list[tuple[str, str, str, bool, bool, bool]]:
+    """Return identity, display name, room, voice controls and screen status."""
     client = _livekit_api()
     try:
         rooms = await client.room.list_rooms(livekit_api.ListRoomsRequest())
-        active: list[tuple[str, str, str, bool, bool]] = []
+        active: list[tuple[str, str, str, bool, bool, bool]] = []
         for room in rooms.rooms:
             participants = await client.room.list_participants(
                 livekit_api.ListParticipantsRequest(room=room.name)
@@ -143,6 +143,11 @@ async def list_active_participants() -> list[tuple[str, str, str, bool, bool]]:
                         room.name,
                         muted,
                         participant.attributes.get("deafened") == "true",
+                        any(
+                            track.source == livekit_api.TrackSource.SCREEN_SHARE
+                            and not track.muted
+                            for track in participant.tracks
+                        ),
                     )
                 )
         return active

@@ -43,6 +43,7 @@ _VoiceParticipantState _$VoiceParticipantStateFromJson(
   muted: json['muted'] as bool? ?? false,
   deafened: json['deafened'] as bool? ?? false,
   speaking: json['speaking'] as bool? ?? false,
+  screenSharing: json['screen_sharing'] as bool? ?? false,
 );
 
 Map<String, dynamic> _$VoiceParticipantStateToJson(
@@ -54,4 +55,5 @@ Map<String, dynamic> _$VoiceParticipantStateToJson(
   'muted': instance.muted,
   'deafened': instance.deafened,
   'speaking': instance.speaking,
+  'screen_sharing': instance.screenSharing,
 };

@@ -163,15 +163,17 @@ async def test_member_can_publish_own_voice_state_to_the_server_roster(
     try:
         response = await client.patch(
             "/api/voice/state",
-            json={"muted": True, "deafened": True},
+            json={"muted": True, "deafened": True, "screen_sharing": True},
             headers=_headers(member),
         )
         assert response.status_code == 204, response.text
         assert state.muted is True
         assert state.deafened is True
+        assert state.screen_sharing is True
         assert len(dispatched) == 1
         assert dispatched[0].data["muted"] is True
         assert dispatched[0].data["deafened"] is True
+        assert dispatched[0].data["screen_sharing"] is True
     finally:
         manager.voice_state.pop(member.id, None)
 

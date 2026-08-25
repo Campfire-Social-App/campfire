@@ -401,6 +401,33 @@ class _VoiceParticipants extends ConsumerWidget {
                             color: CampfireTokens.destructive,
                           ),
                         ),
+                      if (participant.screenSharing)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF87171),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 3),
+                              const Text(
+                                'LIVE',
+                                style: TextStyle(
+                                  color: Color(0xFFF87171),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
