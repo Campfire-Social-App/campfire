@@ -25,6 +25,15 @@ interface VoiceState {
   /** Camera/screen-share video tracks keyed by participant user id. */
   cameraTracks: Record<string, VideoTrack>;
   screenShareTracks: Record<string, VideoTrack>;
+  /** Publishers currently offering a screen stream, subscribed or not. */
+  availableScreenShares: Record<string, true>;
+  /** Remote screen streams this client explicitly chose to watch. */
+  viewingScreenShares: Record<string, true>;
+  /** Local playback gain per remote participant. 1 is 100%, 2 is 200%. */
+  participantVolumes: Record<string, number>;
+  /** Local playback gain and mute state for remote screen-share audio. */
+  screenShareVolumes: Record<string, number>;
+  mutedScreenShares: Record<string, true>;
 
   setVoiceStates: (states: VoiceParticipantState[]) => void;
   applyVoiceStateUpdate: (data: VoiceStateUpdateData) => void;
@@ -41,6 +50,11 @@ interface VoiceState {
   setSpeaking: (userIds: string[]) => void;
   setCameraTrack: (userId: string, track: VideoTrack | null) => void;
   setScreenShareTrack: (userId: string, track: VideoTrack | null) => void;
+  setScreenShareAvailable: (userId: string, available: boolean) => void;
+  setScreenShareViewing: (userId: string, viewing: boolean) => void;
+  setParticipantVolume: (userId: string, volume: number) => void;
+  setScreenShareVolume: (userId: string, volume: number) => void;
+  setScreenShareMuted: (userId: string, muted: boolean) => void;
   participantsInChannel: (channelId: string) => VoiceParticipantState[];
 }
 
@@ -58,6 +72,11 @@ export const useVoiceStore = create<VoiceState>()(persist((set, get) => ({
   speakingUserIds: {},
   cameraTracks: {},
   screenShareTracks: {},
+  availableScreenShares: {},
+  viewingScreenShares: {},
+  participantVolumes: {},
+  screenShareVolumes: {},
+  mutedScreenShares: {},
 
   setVoiceStates: (states) => set({ states }),
 
@@ -72,6 +91,7 @@ export const useVoiceStore = create<VoiceState>()(persist((set, get) => ({
           muted: data.muted ?? false,
           deafened: data.deafened ?? false,
           speaking: false,
+          screen_sharing: data.screen_sharing ?? false,
         });
         return { states: next };
       }
@@ -89,6 +109,9 @@ export const useVoiceStore = create<VoiceState>()(persist((set, get) => ({
                   ...participant,
                   ...(data.muted !== undefined ? { muted: data.muted } : {}),
                   ...(data.deafened !== undefined ? { deafened: data.deafened } : {}),
+                  ...(data.screen_sharing !== undefined
+                    ? { screen_sharing: data.screen_sharing }
+                    : {}),
                 }
               : participant,
           ),
@@ -107,6 +130,8 @@ export const useVoiceStore = create<VoiceState>()(persist((set, get) => ({
             speakingUserIds: {},
             cameraTracks: {},
             screenShareTracks: {},
+            availableScreenShares: {},
+            viewingScreenShares: {},
             localCameraEnabled: false,
             localScreenShareEnabled: false,
             focusedCallTileKey: null,
@@ -153,6 +178,60 @@ export const useVoiceStore = create<VoiceState>()(persist((set, get) => ({
       return { screenShareTracks: next };
     }),
 
+  setScreenShareAvailable: (userId, available) =>
+    set((state) => {
+      const nextAvailable = { ...state.availableScreenShares };
+      const nextViewing = { ...state.viewingScreenShares };
+      const nextTracks = { ...state.screenShareTracks };
+      if (available) {
+        nextAvailable[userId] = true;
+      } else {
+        delete nextAvailable[userId];
+        delete nextViewing[userId];
+        delete nextTracks[userId];
+      }
+      return {
+        availableScreenShares: nextAvailable,
+        viewingScreenShares: nextViewing,
+        screenShareTracks: nextTracks,
+        ...(!available && state.focusedCallTileKey === `scr:${userId}`
+          ? { focusedCallTileKey: null }
+          : {}),
+      };
+    }),
+
+  setScreenShareViewing: (userId, viewing) =>
+    set((state) => {
+      const next = { ...state.viewingScreenShares };
+      if (viewing) next[userId] = true;
+      else delete next[userId];
+      return { viewingScreenShares: next };
+    }),
+
+  setParticipantVolume: (userId, volume) =>
+    set((state) => ({
+      participantVolumes: {
+        ...state.participantVolumes,
+        [userId]: Math.max(0, Math.min(2, volume)),
+      },
+    })),
+
+  setScreenShareVolume: (userId, volume) =>
+    set((state) => ({
+      screenShareVolumes: {
+        ...state.screenShareVolumes,
+        [userId]: Math.max(0, Math.min(2, volume)),
+      },
+    })),
+
+  setScreenShareMuted: (userId, muted) =>
+    set((state) => {
+      const next = { ...state.mutedScreenShares };
+      if (muted) next[userId] = true;
+      else delete next[userId];
+      return { mutedScreenShares: next };
+    }),
+
   participantsInChannel: (channelId) => get().states.filter((s) => s.channel_id === channelId),
 }), {
   name: "campfire-voice-preferences",
@@ -162,5 +241,8 @@ export const useVoiceStore = create<VoiceState>()(persist((set, get) => ({
       localMuted: state.localMuted,
       localDeafened: state.localDeafened,
       microphoneMutedByDeafen: state.microphoneMutedByDeafen,
+      participantVolumes: state.participantVolumes,
+      screenShareVolumes: state.screenShareVolumes,
+      mutedScreenShares: state.mutedScreenShares,
     }) as VoiceState,
 }));

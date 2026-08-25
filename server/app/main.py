@@ -43,7 +43,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # requiring everyone to leave and rejoin their calls.
     try:
         manager.voice_state.clear()
-        for identity, username, room, muted, deafened in await list_active_participants():
+        active_participants = await list_active_participants()
+        for identity, username, room, muted, deafened, screen_sharing in active_participants:
             try:
                 user_id = uuid.UUID(identity)
                 channel_id = uuid.UUID(room)
@@ -55,6 +56,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 username=username,
                 muted=muted,
                 deafened=deafened,
+                screen_sharing=screen_sharing,
             )
     except Exception:
         logger.warning("Could not restore voice state from LiveKit", exc_info=True)

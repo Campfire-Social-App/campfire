@@ -21,3 +21,4 @@ class MoveVoiceParticipantRequest(BaseModel):
 class UpdateOwnVoiceStateRequest(BaseModel):
     muted: bool
     deafened: bool
+    screen_sharing: bool | None = None

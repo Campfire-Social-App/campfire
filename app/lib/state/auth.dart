@@ -2,6 +2,7 @@ import 'package:campfire/api/api_exception.dart';
 import 'package:campfire/core/secure_store.dart';
 import 'package:campfire/models/user.dart';
 import 'package:campfire/state/api.dart';
+import 'package:campfire/state/settings.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -65,6 +66,10 @@ class AuthNotifier extends Notifier<AuthState> {
   /// Trades the stored refresh token for a fresh access token. The stored user
   /// paints the shell immediately; READY replaces it a moment later.
   Future<void> restoreSession() async {
+    // The API client resolves its base URL from settings on every request.
+    // Auth and settings are created together during boot, so a stored refresh
+    // token must not race the asynchronous server URL read.
+    await ref.read(settingsProvider.notifier).ready;
     final String? refreshToken;
     try {
       refreshToken = await _store.readRefreshToken();

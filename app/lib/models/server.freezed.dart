@@ -561,7 +561,7 @@ mixin _$VoiceParticipantState {
 /// clients set on themselves, so it only becomes known once we are in the
 /// same room. Someone in a channel we are not connected to always reads as
 /// not deafened, exactly as in the web client.
- bool get deafened; bool get speaking;
+ bool get deafened; bool get speaking; bool get screenSharing;
 /// Create a copy of VoiceParticipantState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -574,16 +574,16 @@ $VoiceParticipantStateCopyWith<VoiceParticipantState> get copyWith => _$VoicePar
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is VoiceParticipantState&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.username, username) || other.username == username)&&(identical(other.channelId, channelId) || other.channelId == channelId)&&(identical(other.muted, muted) || other.muted == muted)&&(identical(other.deafened, deafened) || other.deafened == deafened)&&(identical(other.speaking, speaking) || other.speaking == speaking));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is VoiceParticipantState&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.username, username) || other.username == username)&&(identical(other.channelId, channelId) || other.channelId == channelId)&&(identical(other.muted, muted) || other.muted == muted)&&(identical(other.deafened, deafened) || other.deafened == deafened)&&(identical(other.speaking, speaking) || other.speaking == speaking)&&(identical(other.screenSharing, screenSharing) || other.screenSharing == screenSharing));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,userId,username,channelId,muted,deafened,speaking);
+int get hashCode => Object.hash(runtimeType,userId,username,channelId,muted,deafened,speaking,screenSharing);
 
 @override
 String toString() {
-  return 'VoiceParticipantState(userId: $userId, username: $username, channelId: $channelId, muted: $muted, deafened: $deafened, speaking: $speaking)';
+  return 'VoiceParticipantState(userId: $userId, username: $username, channelId: $channelId, muted: $muted, deafened: $deafened, speaking: $speaking, screenSharing: $screenSharing)';
 }
 
 
@@ -594,7 +594,7 @@ abstract mixin class $VoiceParticipantStateCopyWith<$Res>  {
   factory $VoiceParticipantStateCopyWith(VoiceParticipantState value, $Res Function(VoiceParticipantState) _then) = _$VoiceParticipantStateCopyWithImpl;
 @useResult
 $Res call({
- String userId, String username, String channelId, bool muted, bool deafened, bool speaking
+ String userId, String username, String channelId, bool muted, bool deafened, bool speaking, bool screenSharing
 });
 
 
@@ -611,7 +611,7 @@ class _$VoiceParticipantStateCopyWithImpl<$Res>
 
 /// Create a copy of VoiceParticipantState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? userId = null,Object? username = null,Object? channelId = null,Object? muted = null,Object? deafened = null,Object? speaking = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? userId = null,Object? username = null,Object? channelId = null,Object? muted = null,Object? deafened = null,Object? speaking = null,Object? screenSharing = null,}) {
   return _then(_self.copyWith(
 userId: null == userId ? _self.userId : userId // ignore: cast_nullable_to_non_nullable
 as String,username: null == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
@@ -619,6 +619,7 @@ as String,channelId: null == channelId ? _self.channelId : channelId // ignore: 
 as String,muted: null == muted ? _self.muted : muted // ignore: cast_nullable_to_non_nullable
 as bool,deafened: null == deafened ? _self.deafened : deafened // ignore: cast_nullable_to_non_nullable
 as bool,speaking: null == speaking ? _self.speaking : speaking // ignore: cast_nullable_to_non_nullable
+as bool,screenSharing: null == screenSharing ? _self.screenSharing : screenSharing // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }
@@ -704,10 +705,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String userId,  String username,  String channelId,  bool muted,  bool deafened,  bool speaking)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String userId,  String username,  String channelId,  bool muted,  bool deafened,  bool speaking,  bool screenSharing)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _VoiceParticipantState() when $default != null:
-return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.speaking);case _:
+return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.speaking,_that.screenSharing);case _:
   return orElse();
 
 }
@@ -725,10 +726,10 @@ return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.de
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String userId,  String username,  String channelId,  bool muted,  bool deafened,  bool speaking)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String userId,  String username,  String channelId,  bool muted,  bool deafened,  bool speaking,  bool screenSharing)  $default,) {final _that = this;
 switch (_that) {
 case _VoiceParticipantState():
-return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.speaking);case _:
+return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.speaking,_that.screenSharing);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -745,10 +746,10 @@ return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.de
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String userId,  String username,  String channelId,  bool muted,  bool deafened,  bool speaking)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String userId,  String username,  String channelId,  bool muted,  bool deafened,  bool speaking,  bool screenSharing)?  $default,) {final _that = this;
 switch (_that) {
 case _VoiceParticipantState() when $default != null:
-return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.speaking);case _:
+return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.speaking,_that.screenSharing);case _:
   return null;
 
 }
@@ -760,7 +761,7 @@ return $default(_that.userId,_that.username,_that.channelId,_that.muted,_that.de
 @JsonSerializable()
 
 class _VoiceParticipantState implements VoiceParticipantState {
-  const _VoiceParticipantState({required this.userId, required this.username, required this.channelId, this.muted = false, this.deafened = false, this.speaking = false});
+  const _VoiceParticipantState({required this.userId, required this.username, required this.channelId, this.muted = false, this.deafened = false, this.speaking = false, this.screenSharing = false});
   factory _VoiceParticipantState.fromJson(Map<String, dynamic> json) => _$VoiceParticipantStateFromJson(json);
 
 @override final  String userId;
@@ -773,6 +774,7 @@ class _VoiceParticipantState implements VoiceParticipantState {
 /// not deafened, exactly as in the web client.
 @override@JsonKey() final  bool deafened;
 @override@JsonKey() final  bool speaking;
+@override@JsonKey() final  bool screenSharing;
 
 /// Create a copy of VoiceParticipantState
 /// with the given fields replaced by the non-null parameter values.
@@ -787,16 +789,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _VoiceParticipantState&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.username, username) || other.username == username)&&(identical(other.channelId, channelId) || other.channelId == channelId)&&(identical(other.muted, muted) || other.muted == muted)&&(identical(other.deafened, deafened) || other.deafened == deafened)&&(identical(other.speaking, speaking) || other.speaking == speaking));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _VoiceParticipantState&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.username, username) || other.username == username)&&(identical(other.channelId, channelId) || other.channelId == channelId)&&(identical(other.muted, muted) || other.muted == muted)&&(identical(other.deafened, deafened) || other.deafened == deafened)&&(identical(other.speaking, speaking) || other.speaking == speaking)&&(identical(other.screenSharing, screenSharing) || other.screenSharing == screenSharing));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,userId,username,channelId,muted,deafened,speaking);
+int get hashCode => Object.hash(runtimeType,userId,username,channelId,muted,deafened,speaking,screenSharing);
 
 @override
 String toString() {
-  return 'VoiceParticipantState(userId: $userId, username: $username, channelId: $channelId, muted: $muted, deafened: $deafened, speaking: $speaking)';
+  return 'VoiceParticipantState(userId: $userId, username: $username, channelId: $channelId, muted: $muted, deafened: $deafened, speaking: $speaking, screenSharing: $screenSharing)';
 }
 
 
@@ -807,7 +809,7 @@ abstract mixin class _$VoiceParticipantStateCopyWith<$Res> implements $VoicePart
   factory _$VoiceParticipantStateCopyWith(_VoiceParticipantState value, $Res Function(_VoiceParticipantState) _then) = __$VoiceParticipantStateCopyWithImpl;
 @override @useResult
 $Res call({
- String userId, String username, String channelId, bool muted, bool deafened, bool speaking
+ String userId, String username, String channelId, bool muted, bool deafened, bool speaking, bool screenSharing
 });
 
 
@@ -824,7 +826,7 @@ class __$VoiceParticipantStateCopyWithImpl<$Res>
 
 /// Create a copy of VoiceParticipantState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? userId = null,Object? username = null,Object? channelId = null,Object? muted = null,Object? deafened = null,Object? speaking = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? userId = null,Object? username = null,Object? channelId = null,Object? muted = null,Object? deafened = null,Object? speaking = null,Object? screenSharing = null,}) {
   return _then(_VoiceParticipantState(
 userId: null == userId ? _self.userId : userId // ignore: cast_nullable_to_non_nullable
 as String,username: null == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
@@ -832,6 +834,7 @@ as String,channelId: null == channelId ? _self.channelId : channelId // ignore: 
 as String,muted: null == muted ? _self.muted : muted // ignore: cast_nullable_to_non_nullable
 as bool,deafened: null == deafened ? _self.deafened : deafened // ignore: cast_nullable_to_non_nullable
 as bool,speaking: null == speaking ? _self.speaking : speaking // ignore: cast_nullable_to_non_nullable
+as bool,screenSharing: null == screenSharing ? _self.screenSharing : screenSharing // ignore: cast_nullable_to_non_nullable
 as bool,
   ));
 }

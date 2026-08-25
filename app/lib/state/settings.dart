@@ -67,6 +67,10 @@ class SettingsNotifier extends Notifier<SettingsState> {
   /// Normalises before storing, so everything downstream — the API base URL,
   /// the gateway's `ws://` rewrite — can concatenate without thinking.
   Future<void> setServerUrl(String url) async {
+    // A mutation can arrive while the initial keystore read is still pending
+    // (notably on the connect screen and in fast tests). Let hydration finish
+    // first so its stale snapshot can never overwrite this newer value.
+    await _ready;
     final normalized = normalizeServerUrl(url);
     await _store.writeServerUrl(normalized);
     state = SettingsState(
@@ -77,6 +81,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   }
 
   Future<void> clearServerUrl() async {
+    await _ready;
     await _store.clearServerUrl();
     state = SettingsState(
       noiseSuppressionEnabled: state.noiseSuppressionEnabled,
@@ -85,6 +90,7 @@ class SettingsNotifier extends Notifier<SettingsState> {
   }
 
   Future<void> setNoiseSuppressionEnabled({required bool enabled}) async {
+    await _ready;
     await _store.writeNoiseSuppressionEnabled(enabled: enabled);
     state = SettingsState(
       serverUrl: state.serverUrl,

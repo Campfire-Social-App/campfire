@@ -2519,7 +2519,7 @@ mixin _$VoiceStateUpdateData {
 
  VoiceStateAction get action;/// Absent on `room_finished`, which is about the room rather than a person.
  String? get userId; String? get username;/// Null when someone left voice altogether rather than a specific channel.
- String? get channelId;
+ String? get channelId; bool? get muted; bool? get deafened; bool? get screenSharing;
 /// Create a copy of VoiceStateUpdateData
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -2532,16 +2532,16 @@ $VoiceStateUpdateDataCopyWith<VoiceStateUpdateData> get copyWith => _$VoiceState
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is VoiceStateUpdateData&&(identical(other.action, action) || other.action == action)&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.username, username) || other.username == username)&&(identical(other.channelId, channelId) || other.channelId == channelId));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is VoiceStateUpdateData&&(identical(other.action, action) || other.action == action)&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.username, username) || other.username == username)&&(identical(other.channelId, channelId) || other.channelId == channelId)&&(identical(other.muted, muted) || other.muted == muted)&&(identical(other.deafened, deafened) || other.deafened == deafened)&&(identical(other.screenSharing, screenSharing) || other.screenSharing == screenSharing));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,action,userId,username,channelId);
+int get hashCode => Object.hash(runtimeType,action,userId,username,channelId,muted,deafened,screenSharing);
 
 @override
 String toString() {
-  return 'VoiceStateUpdateData(action: $action, userId: $userId, username: $username, channelId: $channelId)';
+  return 'VoiceStateUpdateData(action: $action, userId: $userId, username: $username, channelId: $channelId, muted: $muted, deafened: $deafened, screenSharing: $screenSharing)';
 }
 
 
@@ -2552,7 +2552,7 @@ abstract mixin class $VoiceStateUpdateDataCopyWith<$Res>  {
   factory $VoiceStateUpdateDataCopyWith(VoiceStateUpdateData value, $Res Function(VoiceStateUpdateData) _then) = _$VoiceStateUpdateDataCopyWithImpl;
 @useResult
 $Res call({
- VoiceStateAction action, String? userId, String? username, String? channelId
+ VoiceStateAction action, String? userId, String? username, String? channelId, bool? muted, bool? deafened, bool? screenSharing
 });
 
 
@@ -2569,13 +2569,16 @@ class _$VoiceStateUpdateDataCopyWithImpl<$Res>
 
 /// Create a copy of VoiceStateUpdateData
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? action = null,Object? userId = freezed,Object? username = freezed,Object? channelId = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? action = null,Object? userId = freezed,Object? username = freezed,Object? channelId = freezed,Object? muted = freezed,Object? deafened = freezed,Object? screenSharing = freezed,}) {
   return _then(_self.copyWith(
 action: null == action ? _self.action : action // ignore: cast_nullable_to_non_nullable
 as VoiceStateAction,userId: freezed == userId ? _self.userId : userId // ignore: cast_nullable_to_non_nullable
 as String?,username: freezed == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
 as String?,channelId: freezed == channelId ? _self.channelId : channelId // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,muted: freezed == muted ? _self.muted : muted // ignore: cast_nullable_to_non_nullable
+as bool?,deafened: freezed == deafened ? _self.deafened : deafened // ignore: cast_nullable_to_non_nullable
+as bool?,screenSharing: freezed == screenSharing ? _self.screenSharing : screenSharing // ignore: cast_nullable_to_non_nullable
+as bool?,
   ));
 }
 
@@ -2660,10 +2663,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( VoiceStateAction action,  String? userId,  String? username,  String? channelId)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( VoiceStateAction action,  String? userId,  String? username,  String? channelId,  bool? muted,  bool? deafened,  bool? screenSharing)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _VoiceStateUpdateData() when $default != null:
-return $default(_that.action,_that.userId,_that.username,_that.channelId);case _:
+return $default(_that.action,_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.screenSharing);case _:
   return orElse();
 
 }
@@ -2681,10 +2684,10 @@ return $default(_that.action,_that.userId,_that.username,_that.channelId);case _
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( VoiceStateAction action,  String? userId,  String? username,  String? channelId)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( VoiceStateAction action,  String? userId,  String? username,  String? channelId,  bool? muted,  bool? deafened,  bool? screenSharing)  $default,) {final _that = this;
 switch (_that) {
 case _VoiceStateUpdateData():
-return $default(_that.action,_that.userId,_that.username,_that.channelId);case _:
+return $default(_that.action,_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.screenSharing);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -2701,10 +2704,10 @@ return $default(_that.action,_that.userId,_that.username,_that.channelId);case _
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( VoiceStateAction action,  String? userId,  String? username,  String? channelId)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( VoiceStateAction action,  String? userId,  String? username,  String? channelId,  bool? muted,  bool? deafened,  bool? screenSharing)?  $default,) {final _that = this;
 switch (_that) {
 case _VoiceStateUpdateData() when $default != null:
-return $default(_that.action,_that.userId,_that.username,_that.channelId);case _:
+return $default(_that.action,_that.userId,_that.username,_that.channelId,_that.muted,_that.deafened,_that.screenSharing);case _:
   return null;
 
 }
@@ -2716,7 +2719,7 @@ return $default(_that.action,_that.userId,_that.username,_that.channelId);case _
 @JsonSerializable()
 
 class _VoiceStateUpdateData implements VoiceStateUpdateData {
-  const _VoiceStateUpdateData({required this.action, this.userId, this.username, this.channelId});
+  const _VoiceStateUpdateData({required this.action, this.userId, this.username, this.channelId, this.muted, this.deafened, this.screenSharing});
   factory _VoiceStateUpdateData.fromJson(Map<String, dynamic> json) => _$VoiceStateUpdateDataFromJson(json);
 
 @override final  VoiceStateAction action;
@@ -2725,6 +2728,9 @@ class _VoiceStateUpdateData implements VoiceStateUpdateData {
 @override final  String? username;
 /// Null when someone left voice altogether rather than a specific channel.
 @override final  String? channelId;
+@override final  bool? muted;
+@override final  bool? deafened;
+@override final  bool? screenSharing;
 
 /// Create a copy of VoiceStateUpdateData
 /// with the given fields replaced by the non-null parameter values.
@@ -2739,16 +2745,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _VoiceStateUpdateData&&(identical(other.action, action) || other.action == action)&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.username, username) || other.username == username)&&(identical(other.channelId, channelId) || other.channelId == channelId));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _VoiceStateUpdateData&&(identical(other.action, action) || other.action == action)&&(identical(other.userId, userId) || other.userId == userId)&&(identical(other.username, username) || other.username == username)&&(identical(other.channelId, channelId) || other.channelId == channelId)&&(identical(other.muted, muted) || other.muted == muted)&&(identical(other.deafened, deafened) || other.deafened == deafened)&&(identical(other.screenSharing, screenSharing) || other.screenSharing == screenSharing));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,action,userId,username,channelId);
+int get hashCode => Object.hash(runtimeType,action,userId,username,channelId,muted,deafened,screenSharing);
 
 @override
 String toString() {
-  return 'VoiceStateUpdateData(action: $action, userId: $userId, username: $username, channelId: $channelId)';
+  return 'VoiceStateUpdateData(action: $action, userId: $userId, username: $username, channelId: $channelId, muted: $muted, deafened: $deafened, screenSharing: $screenSharing)';
 }
 
 
@@ -2759,7 +2765,7 @@ abstract mixin class _$VoiceStateUpdateDataCopyWith<$Res> implements $VoiceState
   factory _$VoiceStateUpdateDataCopyWith(_VoiceStateUpdateData value, $Res Function(_VoiceStateUpdateData) _then) = __$VoiceStateUpdateDataCopyWithImpl;
 @override @useResult
 $Res call({
- VoiceStateAction action, String? userId, String? username, String? channelId
+ VoiceStateAction action, String? userId, String? username, String? channelId, bool? muted, bool? deafened, bool? screenSharing
 });
 
 
@@ -2776,13 +2782,16 @@ class __$VoiceStateUpdateDataCopyWithImpl<$Res>
 
 /// Create a copy of VoiceStateUpdateData
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? action = null,Object? userId = freezed,Object? username = freezed,Object? channelId = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? action = null,Object? userId = freezed,Object? username = freezed,Object? channelId = freezed,Object? muted = freezed,Object? deafened = freezed,Object? screenSharing = freezed,}) {
   return _then(_VoiceStateUpdateData(
 action: null == action ? _self.action : action // ignore: cast_nullable_to_non_nullable
 as VoiceStateAction,userId: freezed == userId ? _self.userId : userId // ignore: cast_nullable_to_non_nullable
 as String?,username: freezed == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
 as String?,channelId: freezed == channelId ? _self.channelId : channelId // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,muted: freezed == muted ? _self.muted : muted // ignore: cast_nullable_to_non_nullable
+as bool?,deafened: freezed == deafened ? _self.deafened : deafened // ignore: cast_nullable_to_non_nullable
+as bool?,screenSharing: freezed == screenSharing ? _self.screenSharing : screenSharing // ignore: cast_nullable_to_non_nullable
+as bool?,
   ));
 }
 
