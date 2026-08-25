@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { MicOff, MonitorPlay, VolumeX } from "lucide-react";
+import { Loader2, MicOff, MonitorPlay, VolumeX } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { ScreenShareLiveBadge } from "@/components/ScreenShareLiveBadge";
 import type { VideoTrack } from "@/state/voice";
@@ -15,31 +15,37 @@ export interface CallTile {
   participant: VoiceParticipantState;
   track: VideoTrack | null;
   isScreenSharing: boolean;
+  isWatchingScreenShare: boolean;
 }
 
 export function buildTiles(
   participants: VoiceParticipantState[],
   cameraTracks: Record<string, VideoTrack>,
   screenShareTracks: Record<string, VideoTrack>,
+  availableScreenShares: Record<string, true>,
+  viewingScreenShares: Record<string, true>,
 ): CallTile[] {
   return participants.flatMap((p) => {
+    const isScreenSharing = !!availableScreenShares[p.user_id];
     const tile: CallTile = {
       key: `cam:${p.user_id}`,
       kind: "camera",
       participant: p,
       track: cameraTracks[p.user_id] ?? null,
-      isScreenSharing: !!screenShareTracks[p.user_id],
+      isScreenSharing,
+      isWatchingScreenShare: false,
     };
     const screenTrack = screenShareTracks[p.user_id];
-    if (!screenTrack) return [tile];
+    if (!isScreenSharing) return [tile];
     return [
       tile,
       {
         key: `scr:${p.user_id}`,
         kind: "screen",
         participant: p,
-        track: screenTrack,
+        track: screenTrack ?? null,
         isScreenSharing: true,
+        isWatchingScreenShare: !!viewingScreenShares[p.user_id],
       } satisfies CallTile,
     ];
   });
@@ -52,6 +58,7 @@ export function TileVisual({
   large,
   compact,
   onAspectRatio,
+  onWatchScreenShare,
 }: {
   tile: CallTile;
   isOwn: boolean;
@@ -59,6 +66,7 @@ export function TileVisual({
   large?: boolean;
   compact?: boolean;
   onAspectRatio?: (ratio: number) => void;
+  onWatchScreenShare?: () => void;
 }) {
   const isScreen = tile.kind === "screen";
 
@@ -71,6 +79,32 @@ export function TileVisual({
           mirror={!isScreen && isOwn}
           onAspectRatio={onAspectRatio}
         />
+      ) : isScreen ? (
+        <div className="flex size-full flex-col items-center justify-center gap-2.5 bg-linear-to-br from-muted to-muted/60 text-center">
+          {tile.isWatchingScreenShare ? (
+            <Loader2 className="size-8 animate-spin text-primary" />
+          ) : (
+            <MonitorPlay className="size-9 text-primary" />
+          )}
+          <p className="text-sm font-medium text-foreground">
+            {tile.isWatchingScreenShare ? "Joining stream…" : `${tile.participant.username} is streaming`}
+          </p>
+          {!tile.isWatchingScreenShare && onWatchScreenShare && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onWatchScreenShare();
+              }}
+              className="relative z-30 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+            >
+              Watch stream
+            </button>
+          )}
+          {!tile.isWatchingScreenShare && !onWatchScreenShare && (
+            <span className="text-xs font-semibold text-primary">Watch stream</span>
+          )}
+        </div>
       ) : (
         <div className="flex size-full items-center justify-center bg-linear-to-br from-muted to-muted/60">
           {/* Expanded, camera off: the avatar carries the whole frame, so it's

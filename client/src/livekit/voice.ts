@@ -1,11 +1,13 @@
 import {
   Room,
   RoomEvent,
+  AudioPresets,
   ScreenSharePresets,
   Track,
   type AudioCaptureOptions,
   type LocalTrackPublication,
   type Participant,
+  type RemoteParticipant,
   type RemoteTrack,
   type RemoteTrackPublication,
   type TrackPublication,
@@ -42,7 +44,7 @@ let room: Room | null = null;
  * across Chromium/WebView versions instead of relying on SDK defaults. */
 function microphoneCaptureOptions(
   noiseSuppressionEnabled: boolean,
-  noiseGateMode: NoiseGateMode = "off",
+  enhancedVoiceIsolation = true,
 ): AudioCaptureOptions {
   const supported =
     typeof navigator === "undefined"
@@ -54,15 +56,18 @@ function microphoneCaptureOptions(
     ...(supported?.noiseSuppression !== false
       ? { noiseSuppression: noiseSuppressionEnabled }
       : {}),
-    ...(supported && "voiceIsolation" in supported
+    ...(enhancedVoiceIsolation && supported && "voiceIsolation" in supported
       ? { voiceIsolation: noiseSuppressionEnabled }
       : {}),
     channelCount: 1,
-    ...(noiseGateMode === "off"
-      ? {}
-      : { processor: new NoiseGateProcessor(noiseGateMode) }),
   };
 }
+
+const baselineMicrophoneCaptureOptions: AudioCaptureOptions = {
+  echoCancellation: true,
+  autoGainControl: true,
+  channelCount: 1,
+};
 /** Set while the screen share is coming from our own capture rather than the
  * WebView's — it owns a Rust capture thread that has to be torn down with it. */
 let nativeCapture: NativeCapture | null = null;
@@ -83,6 +88,64 @@ function setVideoTrackForSource(
   }
 }
 
+function applyParticipantPlaybackVolume(
+  participant: RemoteParticipant,
+  source: Track.Source.Microphone | Track.Source.ScreenShareAudio = Track.Source.Microphone,
+): void {
+  const voiceState = useVoiceStore.getState();
+  const volume = voiceState.localDeafened
+    ? 0
+    : source === Track.Source.Microphone
+      ? (voiceState.participantVolumes[participant.identity] ?? 1)
+      : voiceState.mutedScreenShares[participant.identity]
+        ? 0
+        : (voiceState.screenShareVolumes[participant.identity] ?? 1);
+  participant.setVolume(volume, source);
+}
+
+function configureRemoteScreenPublication(
+  publication: RemoteTrackPublication,
+  participant: RemoteParticipant,
+): void {
+  if (publication.source === Track.Source.ScreenShare) {
+    useVoiceStore.getState().setScreenShareAvailable(participant.identity, true);
+  }
+  if (
+    publication.source !== Track.Source.ScreenShare &&
+    publication.source !== Track.Source.ScreenShareAudio
+  ) {
+    return;
+  }
+  const watching = !!useVoiceStore.getState().viewingScreenShares[participant.identity];
+  if (publication.isDesired !== watching) publication.setSubscribed(watching);
+}
+
+function removeAttachedAudio(publication: RemoteTrackPublication): void {
+  const element = audioElements.get(publication.trackSid);
+  if (!element) return;
+  publication.track?.detach(element);
+  element.remove();
+  audioElements.delete(publication.trackSid);
+}
+
+function attachRemoteAudio(
+  track: RemoteTrack,
+  publication: RemoteTrackPublication,
+  participant: RemoteParticipant,
+): void {
+  if (audioElements.has(publication.trackSid)) return;
+  if (
+    publication.source === Track.Source.Microphone ||
+    publication.source === Track.Source.ScreenShareAudio
+  ) {
+    applyParticipantPlaybackVolume(participant, publication.source);
+  }
+  const element = track.attach();
+  element.autoplay = true;
+  element.muted = useVoiceStore.getState().localDeafened;
+  audioElements.set(publication.trackSid, element);
+}
+
 /** Keep the server-side roster accurate for clients that are not subscribed to
  * this LiveKit room. The join webhook and the media connection can complete in
  * either order, so a short retry window covers an initial 404 without making a
@@ -94,9 +157,9 @@ async function syncOwnVoiceState(): Promise<void> {
     if (!room) return;
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
     if (!room) return;
-    const { localMuted, localDeafened } = useVoiceStore.getState();
+    const { localMuted, localDeafened, localScreenShareEnabled } = useVoiceStore.getState();
     try {
-      await updateOwnVoiceState(localMuted, localDeafened);
+      await updateOwnVoiceState(localMuted, localDeafened, localScreenShareEnabled);
       return;
     } catch {
       // The LiveKit participant_joined webhook may still be in flight.
@@ -107,6 +170,49 @@ async function syncOwnVoiceState(): Promise<void> {
 export interface JoinOptions {
   /** Publish the camera as soon as we're in — how a video call starts as one. */
   camera?: boolean;
+}
+
+/** Microphone setup must not decide whether the participant can join a room.
+ * A processor can be unsupported by a WebView and a device can be absent or
+ * denied; in both cases the call remains usable for listening and screen view. */
+async function enableInitialMicrophone(participant: Room["localParticipant"]): Promise<boolean> {
+  const settings = useSettingsStore.getState();
+  try {
+    await participant.setMicrophoneEnabled(
+      true,
+      microphoneCaptureOptions(settings.noiseSuppressionEnabled),
+    );
+  } catch (enhancedError) {
+    console.warn("Could not start enhanced microphone processing; retrying stable WebRTC options.", enhancedError);
+    try {
+      await participant.setMicrophoneEnabled(
+        true,
+        microphoneCaptureOptions(settings.noiseSuppressionEnabled, false),
+      );
+      toast.warning("Voice isolation is unavailable; standard noise suppression is active.");
+    } catch (suppressionError) {
+      console.warn("Could not start noise suppression; retrying the microphone defaults.", suppressionError);
+      try {
+        await participant.setMicrophoneEnabled(true, baselineMicrophoneCaptureOptions);
+        toast.warning("Noise suppression is unavailable on this device; the microphone is active.");
+      } catch (microphoneError) {
+        console.warn("Could not start the microphone; joining muted.", microphoneError);
+        toast.warning("Microphone unavailable. You joined the voice channel muted.");
+        return false;
+      }
+    }
+  }
+
+  // LiveKit 2.21 associates its AudioContext only after getUserMedia returns.
+  // Installing a processor in AudioCaptureOptions makes capture itself fail;
+  // attach the gate to the published track instead and keep it non-fatal.
+  if (settings.noiseGateMode !== "off") {
+    await applyNoiseGate(settings.noiseGateMode).catch((error) => {
+      console.warn("Could not enable the noise gate; microphone remains active.", error);
+      toast.warning("Noise gate unavailable. The microphone remains active.");
+    });
+  }
+  return true;
 }
 
 export async function joinVoiceChannel(
@@ -122,10 +228,13 @@ export async function joinVoiceChannel(
   const nextRoom = new Room({
     adaptiveStream: true,
     dynacast: true,
-    audioCaptureDefaults: microphoneCaptureOptions(
-      useSettingsStore.getState().noiseSuppressionEnabled,
-      useSettingsStore.getState().noiseGateMode,
-    ),
+    // Per-participant gain above 100% requires Web Audio; HTMLMediaElement's
+    // volume property is capped at 1. The LiveKit mixer keeps each remote track
+    // on its own GainNode while preserving a single output device.
+    webAudioMix: true,
+    // Keep room defaults processor-free: LiveKit assigns the AudioContext only
+    // after capture, and processors are installed on the published track.
+    audioCaptureDefaults: baselineMicrophoneCaptureOptions,
     publishDefaults: {
       simulcast: true,
       screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
@@ -165,6 +274,7 @@ export async function joinVoiceChannel(
       }
     })
     .on(RoomEvent.ParticipantConnected, (participant) => {
+      applyParticipantPlaybackVolume(participant);
       const voiceState = useVoiceStore.getState();
       // A participant who joins already muted may not publish/subscribe a mic
       // track at all, so derive the initial indicator from the participant too.
@@ -175,6 +285,7 @@ export async function joinVoiceChannel(
       );
     })
     .on(RoomEvent.TrackPublished, (publication: RemoteTrackPublication, participant) => {
+      configureRemoteScreenPublication(publication, participant);
       if (publication.source === Track.Source.Microphone) {
         useVoiceStore.getState().setParticipantMuted(participant.identity, publication.isMuted);
       }
@@ -182,6 +293,14 @@ export async function joinVoiceChannel(
     .on(
       RoomEvent.TrackSubscribed,
       (track: RemoteTrack, publication: RemoteTrackPublication, participant) => {
+        if (
+          (publication.source === Track.Source.ScreenShare ||
+            publication.source === Track.Source.ScreenShareAudio) &&
+          !useVoiceStore.getState().viewingScreenShares[participant.identity]
+        ) {
+          publication.setSubscribed(false);
+          return;
+        }
         if (track.kind === Track.Kind.Video) {
           if (!publication.isMuted) setVideoTrackForSource(participant, track.source, track as RemoteVideoTrack);
           return;
@@ -189,10 +308,7 @@ export async function joinVoiceChannel(
         if (publication.source === Track.Source.Microphone) {
           useVoiceStore.getState().setParticipantMuted(participant.identity, publication.isMuted);
         }
-        const el = track.attach();
-        el.autoplay = true;
-        el.muted = useVoiceStore.getState().localDeafened;
-        audioElements.set(publication.trackSid, el);
+        attachRemoteAudio(track, publication, participant);
       },
     )
     .on(
@@ -202,25 +318,37 @@ export async function joinVoiceChannel(
           setVideoTrackForSource(participant, track.source, null);
           return;
         }
-        const el = audioElements.get(publication.trackSid);
-        if (el) {
-          el.remove();
-          audioElements.delete(publication.trackSid);
-        }
+        removeAttachedAudio(publication);
       },
     )
+    .on(RoomEvent.TrackUnpublished, (publication: RemoteTrackPublication, participant) => {
+      if (publication.source === Track.Source.ScreenShare) {
+        useVoiceStore.getState().setScreenShareAvailable(participant.identity, false);
+      } else if (publication.source === Track.Source.ScreenShareAudio) {
+        removeAttachedAudio(publication);
+      }
+    })
     .on(RoomEvent.LocalTrackPublished, (publication: LocalTrackPublication, participant) => {
+      if (publication.source === Track.Source.ScreenShare) {
+        const voiceState = useVoiceStore.getState();
+        voiceState.setScreenShareAvailable(participant.identity, true);
+        voiceState.setScreenShareViewing(participant.identity, true);
+      }
       if (publication.track?.kind === Track.Kind.Video) {
         setVideoTrackForSource(participant, publication.source, publication.track as LocalVideoTrack);
       }
     })
     .on(RoomEvent.LocalTrackUnpublished, (publication: LocalTrackPublication, participant) => {
+      if (publication.source === Track.Source.ScreenShare) {
+        useVoiceStore.getState().setScreenShareAvailable(participant.identity, false);
+      }
       if (publication.track?.kind !== Track.Kind.Video) return;
       setVideoTrackForSource(participant, publication.source, null);
       // Catches screen share stopped via the browser's native "Stop sharing" UI,
       // which bypasses our own setScreenShareEnabled(false) call.
       if (publication.source === Track.Source.ScreenShare) {
         useVoiceStore.getState().setLocalScreenShareEnabled(false);
+        void syncOwnVoiceState();
       } else if (publication.source === Track.Source.Camera) {
         useVoiceStore.getState().setLocalCameraEnabled(false);
       }
@@ -266,28 +394,29 @@ export async function joinVoiceChannel(
 
   try {
     await nextRoom.connect(url, token);
-    await nextRoom.localParticipant.setMicrophoneEnabled(
-      !localMuted,
-      microphoneCaptureOptions(
-        useSettingsStore.getState().noiseSuppressionEnabled,
-        useSettingsStore.getState().noiseGateMode,
-      ),
-    );
-    if (!localMuted) {
-      await applyNoiseGate(useSettingsStore.getState().noiseGateMode).catch(() => {});
-    }
-    useVoiceStore.getState().setParticipantMuted(nextRoom.localParticipant.identity, localMuted);
+    const microphoneEnabled = localMuted
+      ? false
+      : await enableInitialMicrophone(nextRoom.localParticipant);
+    const joinedMuted = localMuted || !microphoneEnabled;
+    if (joinedMuted !== localMuted) useVoiceStore.getState().setLocalMuted(joinedMuted);
+    useVoiceStore
+      .getState()
+      .setParticipantMuted(nextRoom.localParticipant.identity, joinedMuted);
     // Presence decoration must never make an otherwise healthy voice join
     // fail (for example while talking to an older server token without the
     // metadata grant).
     await nextRoom.localParticipant
-      .setAttributes({ muted: String(localMuted), deafened: String(localDeafened) })
+      .setAttributes({ muted: String(joinedMuted), deafened: String(localDeafened) })
       .catch(() => {});
     useVoiceStore
       .getState()
       .setParticipantDeafened(nextRoom.localParticipant.identity, localDeafened);
     void syncOwnVoiceState();
     for (const participant of nextRoom.remoteParticipants.values()) {
+      applyParticipantPlaybackVolume(participant);
+      for (const publication of participant.trackPublications.values()) {
+        configureRemoteScreenPublication(publication, participant);
+      }
       const voiceState = useVoiceStore.getState();
       voiceState.setParticipantMuted(participant.identity, !participant.isMicrophoneEnabled);
       voiceState.setParticipantDeafened(
@@ -319,6 +448,64 @@ export async function joinVoiceChannel(
   }
 }
 
+/** Changes only this client's microphone playback gain for a remote user. */
+export function setParticipantVolume(userId: string, volume: number): void {
+  const clamped = Math.max(0, Math.min(2, volume));
+  const voiceState = useVoiceStore.getState();
+  voiceState.setParticipantVolume(userId, clamped);
+  if (!voiceState.localDeafened) {
+    room?.remoteParticipants.get(userId)?.setVolume(clamped, Track.Source.Microphone);
+  }
+}
+
+/** Changes only this client's playback gain for a remote screen share. */
+export function setScreenShareVolume(userId: string, volume: number): void {
+  const clamped = Math.max(0, Math.min(2, volume));
+  const voiceState = useVoiceStore.getState();
+  voiceState.setScreenShareVolume(userId, clamped);
+  if (!voiceState.localDeafened && !voiceState.mutedScreenShares[userId]) {
+    room?.remoteParticipants
+      .get(userId)
+      ?.setVolume(clamped, Track.Source.ScreenShareAudio);
+  }
+}
+
+/** Mutes only the remote screen-share audio for this client. */
+export function setScreenShareMuted(userId: string, muted: boolean): void {
+  const voiceState = useVoiceStore.getState();
+  voiceState.setScreenShareMuted(userId, muted);
+  if (!voiceState.localDeafened) {
+    const volume = muted ? 0 : (voiceState.screenShareVolumes[userId] ?? 1);
+    room?.remoteParticipants
+      .get(userId)
+      ?.setVolume(volume, Track.Source.ScreenShareAudio);
+  }
+}
+
+/** Opts this client into or out of a remote participant's screen video and
+ * screen audio together. Camera and microphone subscriptions are untouched. */
+export function setScreenShareViewing(userId: string, viewing: boolean): void {
+  const voiceState = useVoiceStore.getState();
+  voiceState.setScreenShareViewing(userId, viewing);
+  const participant = room?.remoteParticipants.get(userId);
+  if (!participant) return;
+
+  for (const source of [Track.Source.ScreenShare, Track.Source.ScreenShareAudio] as const) {
+    const publication = participant.getTrackPublication(source);
+    if (!publication) continue;
+    if (publication.isDesired !== viewing) publication.setSubscribed(viewing);
+    if (viewing && publication.track) {
+      if (source === Track.Source.ScreenShare && !publication.isMuted) {
+        voiceState.setScreenShareTrack(userId, publication.track as RemoteVideoTrack);
+      } else if (source === Track.Source.ScreenShareAudio) {
+        attachRemoteAudio(publication.track, publication, participant);
+      }
+    }
+    if (!viewing && source === Track.Source.ScreenShareAudio) removeAttachedAudio(publication);
+  }
+  if (!viewing) voiceState.setScreenShareTrack(userId, null);
+}
+
 export async function leaveVoiceChannel(): Promise<void> {
   if (!room) return;
   const current = room;
@@ -341,7 +528,6 @@ export async function setMicrophoneMuted(
     !muted,
     microphoneCaptureOptions(
       useSettingsStore.getState().noiseSuppressionEnabled,
-      useSettingsStore.getState().noiseGateMode,
     ),
   );
   if (!muted) {
@@ -426,6 +612,10 @@ export async function setDeafened(deafened: boolean): Promise<void> {
   useVoiceStore.getState().setLocalDeafened(deafened);
   for (const el of audioElements.values()) el.muted = deafened;
   if (room) {
+    for (const participant of room.remoteParticipants.values()) {
+      applyParticipantPlaybackVolume(participant, Track.Source.Microphone);
+      applyParticipantPlaybackVolume(participant, Track.Source.ScreenShareAudio);
+    }
     useVoiceStore.getState().setParticipantDeafened(room.localParticipant.identity, deafened);
     await room.localParticipant
       .setAttributes({
@@ -487,6 +677,7 @@ export async function startNativeScreenShare(
 
   nativeCapture = capture;
   useVoiceStore.getState().setLocalScreenShareEnabled(true);
+  void syncOwnVoiceState();
 }
 
 /** What the share button calls: our own picker in the desktop app, the WebView's
@@ -511,18 +702,62 @@ export async function startWebViewScreenShare(captureAudio = true): Promise<void
       contentHint: "detail",
       systemAudio: captureAudio ? "include" : "exclude",
       surfaceSwitching: "include",
+    }, {
+      // Screen audio is continuous program material, not speech. Disabling DTX
+      // prevents voice activity from opening/closing the Opus stream, while a
+      // stereo music preset avoids the narrow-band microphone defaults.
+      audioPreset: AudioPresets.musicHighQualityStereo,
+      forceStereo: true,
+      dtx: false,
+      red: false,
     });
     useVoiceStore.getState().setLocalScreenShareEnabled(true);
-    if (
-      captureAudio &&
-      !room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)
-    ) {
-      toast.warning("The selected source doesn't provide system audio. Sharing video only.");
+    void syncOwnVoiceState();
+    if (captureAudio) {
+      const publication = room.localParticipant.getTrackPublication(
+        Track.Source.ScreenShareAudio,
+      );
+      const screenAudio = publication?.track as LocalAudioTrack | undefined;
+      if (!screenAudio) {
+        toast.warning("The selected source doesn't provide system audio. Sharing video only.");
+      } else {
+        await configureScreenShareAudio(screenAudio);
+      }
     }
   } catch (err) {
     useVoiceStore.getState().setLocalScreenShareEnabled(false);
     throw err;
   }
+}
+
+/** Keeps screen audio independent from voice activity. Browser audio capture
+ * can otherwise inherit microphone processing (AEC/AGC/noise suppression),
+ * which audibly ducks music whenever another participant speaks. */
+async function configureScreenShareAudio(track: LocalAudioTrack): Promise<void> {
+  const mediaTrack = track.mediaStreamTrack;
+  mediaTrack.contentHint = "music";
+
+  const supported = navigator.mediaDevices.getSupportedConstraints?.();
+  const constraints: MediaTrackConstraints = {
+    ...(supported?.autoGainControl !== false ? { autoGainControl: false } : {}),
+    ...(supported?.echoCancellation !== false ? { echoCancellation: false } : {}),
+    ...(supported?.noiseSuppression !== false ? { noiseSuppression: false } : {}),
+  };
+  // Chromium can remove this application's call output from system capture,
+  // preventing a remote voice from entering the shared track and triggering
+  // the platform's echo-control ducking. Unknown optional constraints are
+  // ignored by browsers that do not implement the extension.
+  if (supported && "restrictOwnAudio" in supported) {
+    Object.assign(constraints, { restrictOwnAudio: true });
+  }
+  if (supported && "voiceIsolation" in supported) {
+    Object.assign(constraints, { voiceIsolation: false });
+  }
+
+  await mediaTrack.applyConstraints(constraints).catch(() => {
+    // Capture remains useful on older WebViews even when they reject one of
+    // the optional music-oriented constraints.
+  });
 }
 
 export async function stopScreenShare(): Promise<void> {
@@ -536,6 +771,7 @@ export async function stopScreenShare(): Promise<void> {
     await room?.localParticipant.setScreenShareEnabled(false).catch(() => {});
   }
   useVoiceStore.getState().setLocalScreenShareEnabled(false);
+  void syncOwnVoiceState();
 }
 
 /** Tears down the Rust capture without touching the room — for paths where the

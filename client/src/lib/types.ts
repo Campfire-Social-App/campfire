@@ -139,6 +139,7 @@ export interface VoiceParticipantState {
   muted: boolean;
   deafened?: boolean;
   speaking: boolean;
+  screen_sharing?: boolean;
 }
 
 export type PresenceStatus = "online" | "offline";
@@ -196,6 +197,7 @@ export interface VoiceStateUpdateData {
   channel_id: string | null;
   muted?: boolean;
   deafened?: boolean;
+  screen_sharing?: boolean;
 }
 
 

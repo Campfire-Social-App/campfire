@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LogIn, Maximize2, Minimize2, Theater, Volume2, X } from "lucide-react";
+import { LogIn, LogOut, Maximize2, Minimize2, Theater, Volume2 } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { TileVisual, buildTiles, type CallTile } from "@/components/CallTiles";
+import { ScreenShareAudioMenu } from "@/components/ScreenShareAudioMenu";
 import { useVoiceStore } from "@/state/voice";
 import { usePresenceStore } from "@/state/presence";
 import { useAuthStore } from "@/state/auth";
-import { joinVoiceChannel } from "@/livekit/voice";
+import { joinVoiceChannel, setScreenShareViewing } from "@/livekit/voice";
 import type { Channel } from "@/lib/types";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/types";
@@ -16,11 +17,17 @@ interface VoiceChannelViewProps {
   channel: Channel;
 }
 
+function canOpenTheater(tile: CallTile): boolean {
+  return tile.kind === "screen" || tile.track !== null;
+}
+
 export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
   const participants = useVoiceStore(useShallow((s) => s.participantsInChannel(channel.id)));
   const speakingUserIds = useVoiceStore((s) => s.speakingUserIds);
   const cameraTracks = useVoiceStore((s) => s.cameraTracks);
   const screenShareTracks = useVoiceStore((s) => s.screenShareTracks);
+  const availableScreenShares = useVoiceStore((s) => s.availableScreenShares);
+  const viewingScreenShares = useVoiceStore((s) => s.viewingScreenShares);
   const connectedChannelId = useVoiceStore((s) => s.connectedChannelId);
   const connectionStatus = useVoiceStore((s) => s.connectionStatus);
   const onlineUserIds = usePresenceStore((s) => s.onlineUserIds);
@@ -38,14 +45,28 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
         participants,
         isThisChannelConnected ? cameraTracks : {},
         isThisChannelConnected ? screenShareTracks : {},
+        isThisChannelConnected ? availableScreenShares : {},
+        isThisChannelConnected ? viewingScreenShares : {},
       ),
-    [participants, cameraTracks, screenShareTracks, isThisChannelConnected],
+    [
+      participants,
+      cameraTracks,
+      screenShareTracks,
+      availableScreenShares,
+      viewingScreenShares,
+      isThisChannelConnected,
+    ],
   );
 
-  const focusedTile = tiles.find((t) => t.key === focusedKey) ?? null;
+  const focusedCandidate = tiles.find((t) => t.key === focusedKey) ?? null;
+  const focusedTile = focusedCandidate && canOpenTheater(focusedCandidate)
+    ? focusedCandidate
+    : null;
   useEffect(() => {
-    if (focusedKey && !focusedTile) setFocusedKey(null);
-  }, [focusedKey, focusedTile]);
+    if (focusedKey && (!focusedCandidate || !canOpenTheater(focusedCandidate))) {
+      setFocusedKey(null);
+    }
+  }, [focusedKey, focusedCandidate, setFocusedKey]);
 
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -54,7 +75,23 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
   }, []);
 
   const focusTile = (key: string) => {
-    setFocusedKey(key);
+    const tile = tiles.find((candidate) => candidate.key === key);
+    if (tile && canOpenTheater(tile)) setFocusedKey(key);
+  };
+
+  const watchScreenShare = (userId: string, focus = true) => {
+    setScreenShareViewing(userId, true);
+    if (focus) setFocusedKey(`scr:${userId}`);
+  };
+
+  const closeFocusedTile = () => {
+    if (
+      focusedTile?.kind === "screen" &&
+      focusedTile.participant.user_id !== ownUserId
+    ) {
+      setScreenShareViewing(focusedTile.participant.user_id, false);
+    }
+    setFocusedKey(null);
   };
 
   const toggleFullscreen = async (element: HTMLElement | null = theaterStageRef.current) => {
@@ -96,16 +133,26 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
           </div>
         ) : focusedTile ? (
           <div className="flex min-h-0 w-full flex-1 flex-col gap-3">
-            <div
-              ref={theaterStageRef}
-              className="relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl border border-glass-border bg-black shadow-2xl fullscreen:rounded-none fullscreen:border-0"
+            <ScreenShareAudioMenu
+              userId={focusedTile.participant.user_id}
+              username={focusedTile.participant.username}
+              disabled={
+                focusedTile.kind !== "screen" ||
+                focusedTile.participant.user_id === ownUserId
+              }
             >
+              <div
+                ref={theaterStageRef}
+                className="group/theater relative min-h-0 w-full flex-1 overflow-hidden rounded-2xl border border-glass-border bg-black shadow-2xl fullscreen:rounded-none fullscreen:border-0"
+              >
               <TileVisual
                 tile={focusedTile}
                 isOwn={focusedTile.participant.user_id === ownUserId}
                 online={!!onlineUserIds[focusedTile.participant.user_id]}
                 large
+                onWatchScreenShare={() => watchScreenShare(focusedTile.participant.user_id, false)}
               />
+              {focusedTile.kind === "screen" && (
               <div className="absolute top-3 right-3 flex items-center gap-2">
                 <button
                   type="button"
@@ -116,17 +163,19 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                 >
                   {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setFocusedKey(null)}
-                  aria-label="Back to call grid"
-                  title="Back to call grid"
-                  className="flex size-8 cursor-pointer items-center justify-center rounded-full border border-white/10 bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
-                >
-                  <X className="size-4" />
-                </button>
               </div>
-            </div>
+              )}
+              <button
+                type="button"
+                onClick={closeFocusedTile}
+                aria-label={focusedTile.kind === "screen" ? "Leave stream" : "Back to call grid"}
+                title={focusedTile.kind === "screen" ? "Leave stream" : "Back to call grid"}
+                className="pointer-events-none absolute bottom-4 left-1/2 z-30 flex size-10 -translate-x-1/2 translate-y-3 cursor-pointer items-center justify-center rounded-full border border-white/15 bg-destructive/85 text-white opacity-0 shadow-lg backdrop-blur-sm transition-all duration-200 ease-out group-hover/theater:pointer-events-auto group-hover/theater:translate-y-0 group-hover/theater:opacity-100 hover:scale-105 hover:bg-destructive focus-visible:pointer-events-auto focus-visible:translate-y-0 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                <LogOut className="size-5" />
+              </button>
+              </div>
+            </ScreenShareAudioMenu>
             {tiles.length > 1 && (
               <div className="shrink-0 overflow-x-auto pb-1">
                 <div className="flex w-max min-w-full justify-center gap-2">
@@ -134,12 +183,23 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                     <button
                       key={tile.key}
                       type="button"
-                      onClick={() => focusTile(tile.key)}
+                      disabled={!canOpenTheater(tile)}
+                      onClick={() => {
+                        if (!canOpenTheater(tile)) return;
+                        if (tile.kind === "screen" && !tile.isWatchingScreenShare) {
+                          watchScreenShare(tile.participant.user_id);
+                        } else {
+                          focusTile(tile.key);
+                        }
+                      }}
                       className={cn(
-                        "aspect-video h-28 shrink-0 cursor-pointer overflow-hidden rounded-lg border-2 bg-glass transition-all",
+                        "aspect-video h-28 shrink-0 overflow-hidden rounded-lg border-2 bg-glass transition-all",
+                        canOpenTheater(tile) ? "cursor-pointer" : "cursor-default",
                         tile.key === focusedTile.key
                           ? "border-primary"
-                          : "border-glass-border opacity-70 hover:border-ember-tint-border/60 hover:opacity-100",
+                          : canOpenTheater(tile)
+                            ? "border-glass-border opacity-70 hover:border-ember-tint-border/60 hover:opacity-100"
+                            : "border-glass-border",
                       )}
                     >
                       <TileVisual
@@ -160,10 +220,16 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
             style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
           >
             {tiles.map((tile) => (
-              <div
+              <ScreenShareAudioMenu
                 key={tile.key}
+                userId={tile.participant.user_id}
+                username={tile.participant.username}
+                disabled={tile.kind !== "screen" || tile.participant.user_id === ownUserId}
+              >
+                <div
                 className={cn(
-                  "group relative aspect-video overflow-hidden rounded-xl bg-glass ring-2 ring-glass-border transition-all hover:ring-ember-tint-border/60 fullscreen:size-full fullscreen:aspect-auto fullscreen:rounded-none fullscreen:ring-0",
+                  "group relative aspect-video overflow-hidden rounded-xl bg-glass ring-2 ring-glass-border transition-all fullscreen:size-full fullscreen:aspect-auto fullscreen:rounded-none fullscreen:ring-0",
+                  canOpenTheater(tile) && "hover:ring-ember-tint-border/60",
                   tile.kind === "camera" &&
                     speakingUserIds[tile.participant.user_id] &&
                     "ring-4 ring-primary shadow-[0_0_20px_2px_rgba(255,122,61,0.45)]",
@@ -173,12 +239,28 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                   tile={tile}
                   isOwn={tile.participant.user_id === ownUserId}
                   online={!!onlineUserIds[tile.participant.user_id]}
+                  onWatchScreenShare={() => watchScreenShare(tile.participant.user_id)}
                 />
+                {canOpenTheater(tile) && (
+                  <>
                 <div className="pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10" />
                 <button
                   type="button"
-                  onClick={() => focusTile(tile.key)}
-                  aria-label={tile.kind === "screen" ? "Open theater mode" : `Expand ${tile.participant.username}`}
+                  onClick={() => {
+                    if (!canOpenTheater(tile)) return;
+                    if (tile.kind === "screen" && !tile.isWatchingScreenShare) {
+                      watchScreenShare(tile.participant.user_id);
+                    } else {
+                      focusTile(tile.key);
+                    }
+                  }}
+                  aria-label={
+                    tile.kind === "screen" && !tile.isWatchingScreenShare
+                      ? `Watch ${tile.participant.username}'s stream`
+                      : tile.kind === "screen"
+                        ? "Open theater mode"
+                        : `Expand ${tile.participant.username}`
+                  }
                   className="absolute inset-0 z-10 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]"
                 >
                   <span
@@ -189,14 +271,15 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                   >
                     {tile.kind === "screen" ? (
                       <>
-                      <Theater className="size-3.5" /> Theater mode
+                      <Theater className="size-3.5" />
+                      {tile.isWatchingScreenShare ? "Theater mode" : "Watch stream"}
                       </>
                     ) : (
                       <Maximize2 className="size-3.5" />
                     )}
                   </span>
                 </button>
-                {tile.kind === "screen" && (
+                {tile.kind === "screen" && tile.isWatchingScreenShare && (
                   <button
                     type="button"
                     onClick={(event) => void toggleFullscreen(event.currentTarget.parentElement)}
@@ -211,7 +294,10 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                     )}
                   </button>
                 )}
-              </div>
+                  </>
+                )}
+                </div>
+              </ScreenShareAudioMenu>
             ))}
           </div>
         )}

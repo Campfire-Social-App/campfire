@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { TileVisual, buildTiles, type CallTile } from "@/components/CallTiles";
+import { ScreenShareAudioMenu } from "@/components/ScreenShareAudioMenu";
 import { useAuthStore } from "@/state/auth";
 import { useCallsStore } from "@/state/calls";
 import { usePresenceStore } from "@/state/presence";
@@ -14,6 +15,7 @@ import {
   setMicrophoneMuted,
   requestScreenShare,
   stopScreenShare,
+  setScreenShareViewing,
 } from "@/livekit/voice";
 import { hangUp } from "@/lib/calls";
 import { ApiError, type DMConversation } from "@/lib/types";
@@ -31,6 +33,8 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
   const participants = useVoiceStore(useShallow((s) => s.participantsInChannel(conversation.id)));
   const cameraTracks = useVoiceStore((s) => s.cameraTracks);
   const screenShareTracks = useVoiceStore((s) => s.screenShareTracks);
+  const availableScreenShares = useVoiceStore((s) => s.availableScreenShares);
+  const viewingScreenShares = useVoiceStore((s) => s.viewingScreenShares);
   const connectedChannelId = useVoiceStore((s) => s.connectedChannelId);
   const connectionStatus = useVoiceStore((s) => s.connectionStatus);
   const speakingUserIds = useVoiceStore((s) => s.speakingUserIds);
@@ -48,8 +52,17 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
         participants,
         inThisCall ? cameraTracks : {},
         inThisCall ? screenShareTracks : {},
+        inThisCall ? availableScreenShares : {},
+        inThisCall ? viewingScreenShares : {},
       ),
-    [participants, cameraTracks, screenShareTracks, inThisCall],
+    [
+      participants,
+      cameraTracks,
+      screenShareTracks,
+      availableScreenShares,
+      viewingScreenShares,
+      inThisCall,
+    ],
   );
 
   // Someone is in the room without us: a call we left, or one we declined and
@@ -161,21 +174,30 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
           style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
         >
           {tiles.map((tile) => (
-            <div
+            <ScreenShareAudioMenu
               key={tile.key}
-              className={cn(
-                "relative aspect-video max-h-52 overflow-hidden rounded-xl bg-glass ring-2 ring-glass-border transition-all",
-                tile.kind === "camera" &&
-                  speakingUserIds[tile.participant.user_id] &&
-                  "ring-primary shadow-[0_0_16px_1px_rgba(255,122,61,0.4)]",
-              )}
+              userId={tile.participant.user_id}
+              username={tile.participant.username}
+              disabled={tile.kind !== "screen" || tile.participant.user_id === ownUserId}
             >
-              <TileVisual
-                tile={tile}
-                isOwn={tile.participant.user_id === ownUserId}
-                online={!!onlineUserIds[tile.participant.user_id]}
-              />
-            </div>
+              <div
+                className={cn(
+                  "relative aspect-video max-h-52 overflow-hidden rounded-xl bg-glass ring-2 ring-glass-border transition-all",
+                  tile.kind === "camera" &&
+                    speakingUserIds[tile.participant.user_id] &&
+                    "ring-primary shadow-[0_0_16px_1px_rgba(255,122,61,0.4)]",
+                )}
+              >
+                <TileVisual
+                  tile={tile}
+                  isOwn={tile.participant.user_id === ownUserId}
+                  online={!!onlineUserIds[tile.participant.user_id]}
+                  onWatchScreenShare={() =>
+                    setScreenShareViewing(tile.participant.user_id, true)
+                  }
+                />
+              </div>
+            </ScreenShareAudioMenu>
           ))}
         </div>
       )}

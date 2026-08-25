@@ -49,15 +49,16 @@ export function ChannelSidebar({ serverName }: ChannelSidebarProps) {
 
   const handleSelectVoice = async (channel: Channel) => {
     const { connectedChannelId } = useVoiceStore.getState();
-    // Already connected — this click means "show me the voice screen".
-    // Otherwise, just join and stay on whatever's currently open; switching
-    // to the voice screen is a separate, explicit second click.
+    // Entering voice always opens its participant stage. If already connected,
+    // this is only navigation; otherwise select it after the join succeeds so
+    // a failed connection does not leave the user on a misleading call screen.
     if (connectedChannelId === channel.id) {
       selectChannel(channel.id);
       return;
     }
     try {
       await joinVoiceChannel(channel.id);
+      selectChannel(channel.id);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to join the voice channel.");
     }
@@ -240,7 +241,7 @@ function ChannelRow({
 function VoiceParticipants({ channelId }: { channelId: string }) {
   const participants = useVoiceStore(useShallow((s) => s.participantsInChannel(channelId)));
   const speakingUserIds = useVoiceStore((s) => s.speakingUserIds);
-  const screenShareTracks = useVoiceStore((s) => s.screenShareTracks);
+  const availableScreenShares = useVoiceStore((s) => s.availableScreenShares);
   const onlineUserIds = usePresenceStore((s) => s.onlineUserIds);
   const isAdmin = useAuthStore((s) => s.user?.is_admin ?? false);
   const usersById = useUsersStore((s) => s.byId);
@@ -278,7 +279,7 @@ function VoiceParticipants({ channelId }: { channelId: string }) {
               ring={!!speakingUserIds[p.user_id]}
             />
             <span className="min-w-0 truncate text-sm text-muted-foreground">{p.username}</span>
-            {(screenShareTracks[p.user_id] || p.muted || p.deafened) && (
+            {(p.screen_sharing || availableScreenShares[p.user_id] || p.muted || p.deafened) && (
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
                 {p.muted && (
                   <MicOff aria-label="Microphone muted" className="size-3.5 text-destructive" />
@@ -286,14 +287,20 @@ function VoiceParticipants({ channelId }: { channelId: string }) {
                 {p.deafened && (
                   <VolumeX aria-label="Audio deafened" className="size-3.5 text-destructive" />
                 )}
-                {screenShareTracks[p.user_id] && <ScreenShareLiveBadge />}
+                {(p.screen_sharing || availableScreenShares[p.user_id]) && (
+                  <ScreenShareLiveBadge />
+                )}
               </div>
             )}
           </button>
         );
 
         return (
-          <UserModerationMenu key={p.user_id} user={user}>
+          <UserModerationMenu
+            key={p.user_id}
+            user={user}
+            voiceParticipant={{ userId: p.user_id, username: p.username }}
+          >
             {user ? <UserProfileHoverCard user={user}>{row}</UserProfileHoverCard> : row}
           </UserModerationMenu>
         );

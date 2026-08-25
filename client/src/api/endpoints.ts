@@ -125,10 +125,14 @@ export const getVoiceToken = (channelId: string, muted: boolean, deafened: boole
     body: { muted, deafened },
   });
 
-export const updateOwnVoiceState = (muted: boolean, deafened: boolean) =>
+export const updateOwnVoiceState = (
+  muted: boolean,
+  deafened: boolean,
+  screenSharing: boolean,
+) =>
   apiFetch<void>("/api/voice/state", {
     method: "PATCH",
-    body: { muted, deafened },
+    body: { muted, deafened, screen_sharing: screenSharing },
   });
 
 export const moveVoiceParticipant = (userId: string, channelId: string) =>
