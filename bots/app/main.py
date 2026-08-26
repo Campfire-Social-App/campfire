@@ -55,6 +55,7 @@ def build_registry() -> tuple[Registry, list[CampfireClient]]:
             gateway=GatewayConnection(url=settings.campfire_gateway_url, client=client),
             ffmpeg_path=settings.ffmpeg_path,
             livekit_url_override=settings.livekit_url_override,
+            bitrate=settings.music_bitrate,
         )
     )
     return registry, [client]

@@ -35,10 +35,12 @@ class YtDlpBot:
         gateway: GatewayConnection,
         ffmpeg_path: str,
         livekit_url_override: str = "",
+        bitrate: int = 128_000,
     ) -> None:
         self._client = client
         self._gateway = gateway
         self._ffmpeg_path = ffmpeg_path
+        self._bitrate = bitrate
         self._livekit_url_override = livekit_url_override
         # One player per voice channel: two groups in two calls are two
         # independent queues, the way any music bot behaves.
@@ -90,6 +92,7 @@ class YtDlpBot:
                     voice_channel_id=voice_channel_id,
                     ffmpeg_path=self._ffmpeg_path,
                     on_event=lambda text: self._say(voice_channel_id, text),
+                    bitrate=self._bitrate,
                 )
                 self._players[voice_channel_id] = player
             self._feedback_channels[voice_channel_id] = text_channel_id

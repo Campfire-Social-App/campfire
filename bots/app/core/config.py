@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # ws://livekit:7880.
     livekit_url_override: str = ""
 
+    # Opus bitrate for the published music track, in bits per second. The
+    # default is LiveKit's own "music high quality stereo" figure; it is what
+    # makes the SFU negotiate a stereo stream instead of the mono speech preset
+    # a microphone track gets by default. Turn it down on a thin uplink — the
+    # SFU sends one stream per listener.
+    music_bitrate: int = 128_000
+
     # Where ffmpeg is; overridable so a dev box can run this outside Docker.
     ffmpeg_path: str = "ffmpeg"
 

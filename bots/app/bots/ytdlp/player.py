@@ -122,9 +122,11 @@ class Player:
         voice_channel_id: str,
         ffmpeg_path: str,
         on_event,
+        bitrate: int = 128_000,
     ) -> None:
         self.voice_channel_id = voice_channel_id
         self._ffmpeg_path = ffmpeg_path
+        self._bitrate = bitrate
         # Called with a line of feedback to post in the text channel. Async.
         self._on_event = on_event
 
@@ -150,18 +152,27 @@ class Player:
         await room.connect(url, token, options=rtc.RoomOptions(auto_subscribe=False))
         source = rtc.AudioSource(SAMPLE_RATE, NUM_CHANNELS)
         track = rtc.LocalAudioTrack.create_audio_track("music", source)
-        await room.local_participant.publish_track(
-            track,
-            rtc.TrackPublishOptions(
-                # Published as a microphone so it lands in the same slot every
-                # client already renders — including the per-participant volume
-                # slider, which is exactly the control you want on a music bot.
-                source=rtc.TrackSource.SOURCE_MICROPHONE,
-                # DTX cuts transmission during silence, which for music turns
-                # quiet passages into dropouts.
-                dtx=False,
-            ),
+        options = rtc.TrackPublishOptions(
+            # Published as a microphone so it lands in the same slot every
+            # client already renders — including the per-participant volume
+            # slider, which is exactly the control you want on a music bot.
+            source=rtc.TrackSource.SOURCE_MICROPHONE,
+            # DTX cuts transmission during silence, which for music turns quiet
+            # passages into dropouts.
+            dtx=False,
         )
+        # A microphone source otherwise gets LiveKit's speech-tuned default,
+        # which is not what you want to push music through. Measuring the
+        # received stream showed this does not change the audio *bandwidth*
+        # (that is already fullband either way) and does not get a stereo
+        # stream out of this SDK version — the track is negotiated mono
+        # regardless. What it buys is headroom for the quantisation noise that
+        # dense material provokes. Zero leaves LiveKit's default alone.
+        # Assigning into the submessage avoids importing AudioEncoding, which
+        # this SDK version does not re-export.
+        if self._bitrate > 0:
+            options.audio_encoding.max_bitrate = self._bitrate
+        await room.local_participant.publish_track(track, options)
         self._room = room
         self._source = source
         logger.info("Joined voice channel %s", self.voice_channel_id)
@@ -234,13 +245,18 @@ class Player:
 
     async def _start(self, track: Track) -> None:
         assert self._source is not None
+        # A CDN URL can drop mid-track; without these ffmpeg would just end the
+        # stream and the track would stop halfway through. They belong to the
+        # HTTP protocol, though, so passing them for any other kind of input
+        # makes ffmpeg exit with a bare "Option not found".
+        reconnect = (
+            ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
+            if track.stream_url.startswith(("http://", "https://"))
+            else []
+        )
         process = await asyncio.create_subprocess_exec(
             self._ffmpeg_path,
-            # A CDN URL can drop mid-track; without this ffmpeg would just end
-            # the stream and the track would stop halfway through.
-            "-reconnect", "1",
-            "-reconnect_streamed", "1",
-            "-reconnect_delay_max", "5",
+            *reconnect,
             "-i", track.stream_url,
             "-vn",
             "-f", "s16le",

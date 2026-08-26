@@ -19,8 +19,16 @@ class _DeadProcess:
     returncode = 0
 
 
-def track(title: str) -> Track:
-    return Track(
+class _TestTrack(Track):
+    def _replace_url(self, url: str) -> Track:
+        return Track(
+            title=self.title, stream_url=url, page_url=self.page_url,
+            duration=self.duration, requested_by=self.requested_by,
+        )
+
+
+def track(title: str) -> "_TestTrack":
+    return _TestTrack(
         title=title,
         stream_url=f"https://cdn.test/{title}",
         page_url=f"https://test/{title}",
@@ -156,3 +164,40 @@ async def test_two_commands_at_once_do_not_interleave(player) -> None:
 
     assert {first[0].title, second[0].title} == {"um", "dois"}
     assert player.current.title == "tres"
+
+
+async def test_reconnect_options_only_go_to_http_inputs(monkeypatch) -> None:
+    """ffmpeg's -reconnect belongs to the HTTP protocol. Passing it for any
+    other input makes it exit with a bare "Option not found", which tells
+    whoever reads the log nothing at all."""
+    calls: list[list[str]] = []
+
+    class _Process:
+        returncode = None
+        stdout = None
+        stderr = None
+
+        def kill(self) -> None:
+            return None
+
+    async def fake_exec(*args, **kwargs):
+        calls.append(list(args))
+        return _Process()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(asyncio, "create_task", lambda coro, **kw: coro.close())
+
+    player = Player(voice_channel_id="voice", ffmpeg_path="ffmpeg", on_event=_noop)
+    player._source = object()
+
+    await player._start(track("remoto")._replace_url("https://cdn.test/audio"))
+    assert "-reconnect" in calls[-1]
+
+    await player._start(track("local")._replace_url("/tmp/faixa.wav"))
+    assert "-reconnect" not in calls[-1]
+    # The input itself still gets through either way.
+    assert calls[-1][calls[-1].index("-i") + 1] == "/tmp/faixa.wav"
+
+
+async def _noop(_text: str) -> None:
+    return None
