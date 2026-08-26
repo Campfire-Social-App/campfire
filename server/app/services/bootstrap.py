@@ -20,3 +20,26 @@ async def ensure_admin(db: AsyncSession, username: str, password: str) -> User:
     await db.commit()
     await db.refresh(user)
     return user
+
+
+async def ensure_bot(db: AsyncSession, username: str, password: str) -> User:
+    """Create the account the bots service signs in as, or flag an existing one.
+
+    The password is only ever set on creation: rotating it is an operator action
+    against the DB, not something a redeploy should do silently to an account
+    the bots service may be holding a session for.
+    """
+    existing = (await db.execute(select(User).where(User.username == username))).scalar_one_or_none()
+    if existing is not None:
+        if not existing.is_bot:
+            existing.is_bot = True
+            db.add(existing)
+            await db.commit()
+            await db.refresh(existing)
+        return existing
+
+    user = User(username=username, password_hash=hash_password(password), is_bot=True)
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user

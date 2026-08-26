@@ -11,6 +11,11 @@ server/.pytest_cache/
 server/.ruff_cache/
 server/*.egg-info/
 server/uploads/
+bots/.venv/
+bots/**/__pycache__/
+bots/.pytest_cache/
+bots/.ruff_cache/
+bots/*.egg-info/
 
 # Node / Tauri (client also has its own nested .gitignore)
 client/node_modules/

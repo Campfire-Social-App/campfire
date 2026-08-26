@@ -15,7 +15,10 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$User {
 
- String get id; String get username; bool get isAdmin;/// Server-relative path to the profile photo (`/api/uploads/...`), or null
+ String get id; String get username; bool get isAdmin;/// An account driven by the bots service rather than by a person. It comes
+/// online like anyone else — the badge is what tells the two apart. The
+/// default covers older servers, whose payloads simply omit the field.
+ bool get isBot;/// Server-relative path to the profile photo (`/api/uploads/...`), or null
 /// for the initials fallback. Both REST and the READY frame carry it, so
 /// unlike [createdAt] this one is never absent for a reason — it is just
 /// optional. Render it through `ApiClient.resolveAssetUrl`.
@@ -36,16 +39,16 @@ $UserCopyWith<User> get copyWith => _$UserCopyWithImpl<User>(this as User, _$ide
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is User&&(identical(other.id, id) || other.id == id)&&(identical(other.username, username) || other.username == username)&&(identical(other.isAdmin, isAdmin) || other.isAdmin == isAdmin)&&(identical(other.avatarUrl, avatarUrl) || other.avatarUrl == avatarUrl)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is User&&(identical(other.id, id) || other.id == id)&&(identical(other.username, username) || other.username == username)&&(identical(other.isAdmin, isAdmin) || other.isAdmin == isAdmin)&&(identical(other.isBot, isBot) || other.isBot == isBot)&&(identical(other.avatarUrl, avatarUrl) || other.avatarUrl == avatarUrl)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,username,isAdmin,avatarUrl,createdAt);
+int get hashCode => Object.hash(runtimeType,id,username,isAdmin,isBot,avatarUrl,createdAt);
 
 @override
 String toString() {
-  return 'User(id: $id, username: $username, isAdmin: $isAdmin, avatarUrl: $avatarUrl, createdAt: $createdAt)';
+  return 'User(id: $id, username: $username, isAdmin: $isAdmin, isBot: $isBot, avatarUrl: $avatarUrl, createdAt: $createdAt)';
 }
 
 
@@ -56,7 +59,7 @@ abstract mixin class $UserCopyWith<$Res>  {
   factory $UserCopyWith(User value, $Res Function(User) _then) = _$UserCopyWithImpl;
 @useResult
 $Res call({
- String id, String username, bool isAdmin, String? avatarUrl, DateTime? createdAt
+ String id, String username, bool isAdmin, bool isBot, String? avatarUrl, DateTime? createdAt
 });
 
 
@@ -73,11 +76,12 @@ class _$UserCopyWithImpl<$Res>
 
 /// Create a copy of User
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? username = null,Object? isAdmin = null,Object? avatarUrl = freezed,Object? createdAt = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? username = null,Object? isAdmin = null,Object? isBot = null,Object? avatarUrl = freezed,Object? createdAt = freezed,}) {
   return _then(_self.copyWith(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,username: null == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
 as String,isAdmin: null == isAdmin ? _self.isAdmin : isAdmin // ignore: cast_nullable_to_non_nullable
+as bool,isBot: null == isBot ? _self.isBot : isBot // ignore: cast_nullable_to_non_nullable
 as bool,avatarUrl: freezed == avatarUrl ? _self.avatarUrl : avatarUrl // ignore: cast_nullable_to_non_nullable
 as String?,createdAt: freezed == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,
@@ -165,10 +169,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String username,  bool isAdmin,  String? avatarUrl,  DateTime? createdAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String username,  bool isAdmin,  bool isBot,  String? avatarUrl,  DateTime? createdAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _User() when $default != null:
-return $default(_that.id,_that.username,_that.isAdmin,_that.avatarUrl,_that.createdAt);case _:
+return $default(_that.id,_that.username,_that.isAdmin,_that.isBot,_that.avatarUrl,_that.createdAt);case _:
   return orElse();
 
 }
@@ -186,10 +190,10 @@ return $default(_that.id,_that.username,_that.isAdmin,_that.avatarUrl,_that.crea
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String username,  bool isAdmin,  String? avatarUrl,  DateTime? createdAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String username,  bool isAdmin,  bool isBot,  String? avatarUrl,  DateTime? createdAt)  $default,) {final _that = this;
 switch (_that) {
 case _User():
-return $default(_that.id,_that.username,_that.isAdmin,_that.avatarUrl,_that.createdAt);case _:
+return $default(_that.id,_that.username,_that.isAdmin,_that.isBot,_that.avatarUrl,_that.createdAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -206,10 +210,10 @@ return $default(_that.id,_that.username,_that.isAdmin,_that.avatarUrl,_that.crea
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String username,  bool isAdmin,  String? avatarUrl,  DateTime? createdAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String username,  bool isAdmin,  bool isBot,  String? avatarUrl,  DateTime? createdAt)?  $default,) {final _that = this;
 switch (_that) {
 case _User() when $default != null:
-return $default(_that.id,_that.username,_that.isAdmin,_that.avatarUrl,_that.createdAt);case _:
+return $default(_that.id,_that.username,_that.isAdmin,_that.isBot,_that.avatarUrl,_that.createdAt);case _:
   return null;
 
 }
@@ -221,12 +225,16 @@ return $default(_that.id,_that.username,_that.isAdmin,_that.avatarUrl,_that.crea
 @JsonSerializable()
 
 class _User implements User {
-  const _User({required this.id, required this.username, required this.isAdmin, this.avatarUrl, this.createdAt});
+  const _User({required this.id, required this.username, required this.isAdmin, this.isBot = false, this.avatarUrl, this.createdAt});
   factory _User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
 
 @override final  String id;
 @override final  String username;
 @override final  bool isAdmin;
+/// An account driven by the bots service rather than by a person. It comes
+/// online like anyone else — the badge is what tells the two apart. The
+/// default covers older servers, whose payloads simply omit the field.
+@override@JsonKey() final  bool isBot;
 /// Server-relative path to the profile photo (`/api/uploads/...`), or null
 /// for the initials fallback. Both REST and the READY frame carry it, so
 /// unlike [createdAt] this one is never absent for a reason — it is just
@@ -251,16 +259,16 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is _User&&(identical(other.id, id) || other.id == id)&&(identical(other.username, username) || other.username == username)&&(identical(other.isAdmin, isAdmin) || other.isAdmin == isAdmin)&&(identical(other.avatarUrl, avatarUrl) || other.avatarUrl == avatarUrl)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is _User&&(identical(other.id, id) || other.id == id)&&(identical(other.username, username) || other.username == username)&&(identical(other.isAdmin, isAdmin) || other.isAdmin == isAdmin)&&(identical(other.isBot, isBot) || other.isBot == isBot)&&(identical(other.avatarUrl, avatarUrl) || other.avatarUrl == avatarUrl)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
-int get hashCode => Object.hash(runtimeType,id,username,isAdmin,avatarUrl,createdAt);
+int get hashCode => Object.hash(runtimeType,id,username,isAdmin,isBot,avatarUrl,createdAt);
 
 @override
 String toString() {
-  return 'User(id: $id, username: $username, isAdmin: $isAdmin, avatarUrl: $avatarUrl, createdAt: $createdAt)';
+  return 'User(id: $id, username: $username, isAdmin: $isAdmin, isBot: $isBot, avatarUrl: $avatarUrl, createdAt: $createdAt)';
 }
 
 
@@ -271,7 +279,7 @@ abstract mixin class _$UserCopyWith<$Res> implements $UserCopyWith<$Res> {
   factory _$UserCopyWith(_User value, $Res Function(_User) _then) = __$UserCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String username, bool isAdmin, String? avatarUrl, DateTime? createdAt
+ String id, String username, bool isAdmin, bool isBot, String? avatarUrl, DateTime? createdAt
 });
 
 
@@ -288,11 +296,12 @@ class __$UserCopyWithImpl<$Res>
 
 /// Create a copy of User
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? username = null,Object? isAdmin = null,Object? avatarUrl = freezed,Object? createdAt = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? username = null,Object? isAdmin = null,Object? isBot = null,Object? avatarUrl = freezed,Object? createdAt = freezed,}) {
   return _then(_User(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,username: null == username ? _self.username : username // ignore: cast_nullable_to_non_nullable
 as String,isAdmin: null == isAdmin ? _self.isAdmin : isAdmin // ignore: cast_nullable_to_non_nullable
+as bool,isBot: null == isBot ? _self.isBot : isBot // ignore: cast_nullable_to_non_nullable
 as bool,avatarUrl: freezed == avatarUrl ? _self.avatarUrl : avatarUrl // ignore: cast_nullable_to_non_nullable
 as String?,createdAt: freezed == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,

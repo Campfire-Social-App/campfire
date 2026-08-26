@@ -2,6 +2,9 @@ export interface User {
   id: string;
   username: string;
   is_admin: boolean;
+  /** A bot account, driven by the bots service rather than by a person. It is
+   * online like anyone else; the badge is what tells the two apart. */
+  is_bot?: boolean;
   is_banned?: boolean;
   timed_out_until?: string | null;
   avatar_url: string | null;
@@ -126,6 +129,18 @@ export interface ServerSettings {
   max_upload_bytes: number;
 }
 
+/** One slash command the server's bots answer to, as offered in the composer's
+ * `/` menu. The list comes from GET /api/commands and is empty on a deployment
+ * with no bots service. */
+export interface SlashCommand {
+  name: string;
+  description: string;
+  /** Argument hint shown next to the name, e.g. "<url ou busca>". */
+  usage: string;
+  /** The bot enforces this; the client only uses it to explain the requirement. */
+  requires_voice: boolean;
+}
+
 export interface VoiceTokenResponse {
   token: string;
   url: string;
@@ -170,6 +185,7 @@ export interface ReadyEventData {
     id: string;
     username: string;
     is_admin: boolean;
+    is_bot?: boolean;
     avatar_url: string | null;
     banner_url: string | null;
   };

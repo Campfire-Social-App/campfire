@@ -41,6 +41,10 @@ services:
       LIVEKIT_API_URL: http://127.0.0.1:7880
       LIVEKIT_API_KEY: devkey
       LIVEKIT_API_SECRET: 324a9697e5bbde9de2844644ac03966ceab4bf67
+      BOTS_URL: http://127.0.0.1:8100
+      BOTS_SHARED_SECRET: campfire-local-bots-secret
+      BOT_USERNAME: ytdlp
+      BOT_PASSWORD: ytdlp-local-dev
     # Compartilhar a rede torna a API administrativa do LiveKit e o webhook
     # mutuamente alcancaveis sem depender do firewall entre bridge e host.
     network_mode: host
@@ -58,6 +62,22 @@ services:
     network_mode: host
     volumes:
       - ./livekit/livekit.dev.yaml:/etc/livekit.yaml:ro
+
+  bots:
+    build: ../bots
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      CAMPFIRE_API_URL: http://127.0.0.1:8000
+      CAMPFIRE_GATEWAY_URL: ws://127.0.0.1:8000/gateway
+      BOT_USERNAME: ytdlp
+      BOT_PASSWORD: ytdlp-local-dev
+      BOTS_SHARED_SECRET: campfire-local-bots-secret
+    # Rede do host pelo mesmo motivo do server e do livekit aqui: o SFU anuncia
+    # um endereco de host, e a conexao WebRTC do bot precisa chegar nele do
+    # mesmo jeito que a de um cliente.
+    network_mode: host
 
   adminer:
     image: adminer:latest

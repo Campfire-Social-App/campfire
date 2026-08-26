@@ -10,6 +10,7 @@ import 'package:campfire/state/messages.dart';
 import 'package:campfire/theme/icons.dart';
 import 'package:campfire/theme/tokens.dart';
 import 'package:campfire/widgets/attachment_list.dart';
+import 'package:campfire/widgets/bot_badge.dart';
 import 'package:campfire/widgets/mention_text.dart';
 import 'package:campfire/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
@@ -130,6 +131,10 @@ class _MessageItemState extends ConsumerState<MessageItem> {
                               ),
                             ),
                           ),
+                          if (_message.author.isBot) ...[
+                            const SizedBox(width: 6),
+                            const BotBadge(),
+                          ],
                           const SizedBox(width: 8),
                           Text(
                             time,

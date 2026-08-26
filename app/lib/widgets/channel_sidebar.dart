@@ -11,6 +11,7 @@ import 'package:campfire/state/voice.dart';
 import 'package:campfire/theme/icons.dart';
 import 'package:campfire/theme/night_sky.dart';
 import 'package:campfire/theme/tokens.dart';
+import 'package:campfire/widgets/bot_badge.dart';
 import 'package:campfire/widgets/create_channel_sheet.dart';
 import 'package:campfire/widgets/invite_sheet.dart';
 import 'package:campfire/widgets/server_rail.dart';
@@ -386,6 +387,11 @@ class _VoiceParticipants extends ConsumerWidget {
                               ),
                         ),
                       ),
+                      if (ref.watch(userByIdProvider(participant.userId))?.isBot ?? false)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: BotBadge(),
+                        ),
                       if (participant.muted)
                         const Icon(
                           CampfireIcons.micOff,

@@ -2,6 +2,7 @@ import { format } from "date-fns";
 import { CalendarDays, MessageCircle, ShieldCheck } from "lucide-react";
 import { resolveAssetUrl } from "@/api/client";
 import { UserAvatar } from "@/components/UserAvatar";
+import { BotBadge } from "@/components/BotBadge";
 import {
   Popover,
   PopoverContent,
@@ -47,12 +48,14 @@ export function UserProfileHoverCard({
             <h3 className="min-w-0 truncate font-heading text-base font-semibold text-foreground">
               {user.username}
             </h3>
+            {user.is_bot && <BotBadge className="shrink-0" />}
             {user.is_admin && (
               <ShieldCheck aria-label="Administrator" className="size-4 shrink-0 text-primary" />
             )}
           </div>
           <p className="mt-0.5 text-xs font-medium text-muted-foreground">
-            {isOnline ? "Online" : "Offline"} · {user.is_admin ? "Administrator" : "Member"}
+            {isOnline ? "Online" : "Offline"} ·{" "}
+            {user.is_bot ? "Bot" : user.is_admin ? "Administrator" : "Member"}
           </p>
           <div className="mt-3 flex items-center gap-2 border-t border-glass-border pt-2.5 text-xs text-muted-foreground">
             <CalendarDays className="size-3.5" />

@@ -10,6 +10,11 @@ abstract class User with _$User {
     required String username,
     required bool isAdmin,
 
+    /// An account driven by the bots service rather than by a person. It comes
+    /// online like anyone else — the badge is what tells the two apart. The
+    /// default covers older servers, whose payloads simply omit the field.
+    @Default(false) bool isBot,
+
     /// Server-relative path to the profile photo (`/api/uploads/...`), or null
     /// for the initials fallback. Both REST and the READY frame carry it, so
     /// unlike [createdAt] this one is never absent for a reason — it is just

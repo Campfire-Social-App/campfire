@@ -52,10 +52,41 @@ services:
       # quem gere o primeiro convite. Só cria o usuário se ainda não existir.
       FIRST_ADMIN_USERNAME: ${FIRST_ADMIN_USERNAME:-}
       FIRST_ADMIN_PASSWORD: ${FIRST_ADMIN_PASSWORD:-}
+      # Os slash commands passam por aqui antes de chegar no serviço de bots:
+      # assim a autenticação fica num lugar só — o bot nunca vê o JWT, e quem
+      # diz em que call o autor do comando está é este processo, não o cliente.
+      BOTS_URL: http://bots:8100
+      BOTS_SHARED_SECRET: ${BOTS_SHARED_SECRET:-}
+      # As mesmas credenciais que o serviço de bots usa para logar. A conta é
+      # criada aqui no boot, senão um servidor novo não teria em que logar.
+      BOT_USERNAME: ${BOT_USERNAME:-ytdlp}
+      BOT_PASSWORD: ${BOT_PASSWORD:-}
     volumes:
       - campfire_uploads:/data/uploads
     command: >
       sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  bots:
+    build: ../bots
+    restart: unless-stopped
+    depends_on:
+      - server
+    # Sem `ports` de propósito: só quem está na rede do compose alcança este
+    # serviço, e o Caddy não tem rota para ele.
+    environment:
+      CAMPFIRE_API_URL: http://server:8000
+      CAMPFIRE_GATEWAY_URL: ws://server:8000/gateway
+      # Sem estes dois o serviço sobe inerte e avisa no log, em vez de derrubar
+      # o deploy inteiro: um serviço novo e opcional não pode impedir a
+      # publicação do chat e da voz por causa de um .env desatualizado.
+      # Preencha no .env e rode infra/deploy.sh de novo para ligar o bot.
+      BOT_USERNAME: ${BOT_USERNAME:-ytdlp}
+      BOT_PASSWORD: ${BOT_PASSWORD:-}
+      BOTS_SHARED_SECRET: ${BOTS_SHARED_SECRET:-}
+      # Vazio = usa a URL que /api/voice/.../token devolve, o mesmo endereço
+      # público dos clients. Só aponte para ws://livekit:7880 se a VPS não
+      # rotear o próprio IP público de volta para dentro (sem hairpin NAT).
+      LIVEKIT_URL_OVERRIDE: ${BOT_LIVEKIT_URL:-}
 
   caddy:
     image: caddy:2-alpine

@@ -10,6 +10,7 @@ import type {
   MessageReaction,
   ReactionType,
   ServerSettings,
+  SlashCommand,
   User,
   UserModerationOverview,
   VoiceTokenResponse,
@@ -105,6 +106,19 @@ export const updateMyBanner = (attachmentId: string) =>
   apiFetch<User>("/api/users/@me/banner", {
     method: "PUT",
     body: { attachment_id: attachmentId },
+  });
+
+/** What the composer offers after a `/`. Empty when the deployment has no bots
+ * service, or when it is down — never an error, so the composer is unaffected. */
+export const listCommands = () => apiFetch<SlashCommand[]>("/api/commands");
+
+/** Hands a slash command to the bots service. Who ran it and which call they're
+ * in are filled in by the server, not here. Results that take a while arrive as
+ * a message from the bot in the channel. */
+export const runCommand = (channelId: string, name: string, args: string) =>
+  apiFetch<void>("/api/commands", {
+    method: "POST",
+    body: { channel_id: channelId, name, args },
   });
 
 export const getServerSettings = () => apiFetch<ServerSettings>("/api/server");

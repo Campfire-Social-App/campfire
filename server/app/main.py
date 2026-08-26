@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     auth,
     channels,
+    commands,
     dms,
     invites,
     messages,
@@ -23,7 +24,7 @@ from app.core.config import get_settings
 from app.db import async_session_maker
 from app.gateway.manager import VoiceParticipantState, manager
 from app.gateway.router import router as gateway_router
-from app.services.bootstrap import ensure_admin
+from app.services.bootstrap import ensure_admin, ensure_bot
 from app.services.livekit_service import list_active_participants
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if settings.first_admin_username and settings.first_admin_password:
         async with async_session_maker() as db:
             await ensure_admin(db, settings.first_admin_username, settings.first_admin_password)
+
+    # Without this the bots service has no account to sign in as on a freshly
+    # provisioned server, and every slash command would answer 401.
+    if settings.bot_username and settings.bot_password:
+        async with async_session_maker() as db:
+            await ensure_bot(db, settings.bot_username, settings.bot_password)
 
     # Voice presence is ephemeral, but LiveKit may outlive an API restart. Rebuild
     # the in-memory index so moderation and channel rosters keep working without
@@ -91,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(server.router)
     app.include_router(users.router)
     app.include_router(channels.router)
+    app.include_router(commands.router)
     app.include_router(messages.router)
     app.include_router(dms.router)
     app.include_router(uploads.router)

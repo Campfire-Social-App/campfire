@@ -14,6 +14,7 @@ import { useChannelsStore } from "@/state/channels";
 import { useDmsStore } from "@/state/dms";
 import { useServerStore } from "@/state/server";
 import { useUsersStore } from "@/state/users";
+import { useCommandsStore } from "@/state/commands";
 import { gatewayClient } from "@/ws/gateway";
 import { initNotifications } from "@/lib/notifications";
 import { useModerationStore } from "@/state/moderation";
@@ -26,6 +27,7 @@ export function ServerShell() {
   const activeDmId = useDmsStore((s) => s.activeDmId);
   const conversations = useDmsStore((s) => s.conversations);
   const fetchUsers = useUsersStore((s) => s.fetch);
+  const fetchCommands = useCommandsStore((s) => s.fetch);
   const serverName = useServerStore((s) => s.name);
   const moderationUser = useModerationStore((s) => s.selectedUser);
   const setModerationOpen = useCallback((open: boolean) => {
@@ -39,6 +41,9 @@ export function ServerShell() {
     void initNotifications();
     gatewayClient.connect();
     void fetchUsers();
+    // What the composer offers after a "/". Static for the session, and empty
+    // on a deployment with no bots service.
+    void fetchCommands();
     return () => gatewayClient.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

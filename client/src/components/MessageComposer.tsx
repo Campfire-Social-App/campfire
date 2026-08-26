@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
-import { AtSign, File, Hash, Paperclip, Reply, Send, X } from "lucide-react";
+import { AtSign, File, Hash, Paperclip, Reply, Send, Slash, X } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
-import { sendMessage, uploadAttachment } from "@/api/endpoints";
+import { runCommand, sendMessage, uploadAttachment } from "@/api/endpoints";
 import { gatewayClient } from "@/ws/gateway";
 import { useUsersStore } from "@/state/users";
+import { useCommandsStore } from "@/state/commands";
 import { useAuthStore } from "@/state/auth";
 import { useChannelsStore } from "@/state/channels";
 import { useServerStore } from "@/state/server";
@@ -19,6 +20,12 @@ import {
   type MentionCandidate,
   type MentionQuery,
 } from "@/lib/mentions";
+import {
+  activeCommandQuery,
+  commandCandidates,
+  parseCommand,
+  type CommandQuery,
+} from "@/lib/commands";
 
 const TYPING_THROTTLE_MS = 3000;
 
@@ -53,6 +60,8 @@ export function MessageComposer({
   const [dragActive, setDragActive] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [commandQuery, setCommandQuery] = useState<CommandQuery | null>(null);
+  const [commandIndex, setCommandIndex] = useState(0);
   const lastTypingSentAt = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -61,8 +70,12 @@ export function MessageComposer({
   const currentUserId = useAuthStore((s) => s.user?.id);
   const channels = useChannelsStore((s) => s.channels);
   const maxUploadBytes = useServerStore((s) => s.maxUploadBytes);
+  const commands = useCommandsStore((s) => s.commands);
   const mentionCandidatesList = mentionQuery
     ? mentionCandidates(mentionQuery.trigger, mentionQuery.query, users, channels, currentUserId)
+    : [];
+  const commandCandidatesList = commandQuery
+    ? commandCandidates(commandQuery.query, commands)
     : [];
 
   const notifyTyping = () => {
@@ -107,6 +120,21 @@ export function MessageComposer({
     const next = activeMentionQuery(value, cursor);
     setMentionQuery(next);
     setMentionIndex(0);
+    // The two menus are mutually exclusive: a command only ever starts the
+    // line, a mention never does.
+    setCommandQuery(commands.length > 0 ? activeCommandQuery(value, cursor) : null);
+    setCommandIndex(0);
+  };
+
+  const selectCommand = (name: string) => {
+    if (!textareaRef.current) return;
+    const nextContent = `/${name} `;
+    setContent(nextContent);
+    setCommandQuery(null);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextContent.length, nextContent.length);
+    });
   };
 
   const selectMention = (candidate: MentionCandidate) => {
@@ -133,6 +161,27 @@ export function MessageComposer({
       toast.error("Still uploading — one moment.");
       return;
     }
+
+    // A recognised command is handed to the bot instead of being posted: the
+    // way Discord does it, what you typed never shows up in the channel. Text
+    // that merely opens with a slash is still an ordinary message.
+    const parsed = parseCommand(trimmed, commands);
+    if (parsed && pendingAttachments.length === 0) {
+      setSending(true);
+      try {
+        await runCommand(channelId, parsed.command.name, parsed.args);
+        setContent("");
+        setCommandQuery(null);
+        onCancelReply?.();
+        onSent?.();
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : "Failed to run that command.");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     setSending(true);
     try {
       await sendMessage(
@@ -144,6 +193,7 @@ export function MessageComposer({
       setContent("");
       setPendingAttachments([]);
       setMentionQuery(null);
+      setCommandQuery(null);
       onCancelReply?.();
       onSent?.();
     } catch (err) {
@@ -167,6 +217,37 @@ export function MessageComposer({
         if (e.dataTransfer.files.length > 0) void handleFiles(e.dataTransfer.files);
       }}
     >
+      {commandQuery && commandCandidatesList.length > 0 && (
+        <div className="absolute inset-x-4 bottom-full mb-1.5 overflow-hidden rounded-lg border border-glass-border bg-popover shadow-md">
+          {commandCandidatesList.map((command, i) => (
+            <button
+              key={command.name}
+              onMouseDown={(e) => {
+                // Fires before the textarea's blur — keeps focus in the field.
+                e.preventDefault();
+                selectCommand(command.name);
+              }}
+              onMouseEnter={() => setCommandIndex(i)}
+              className={cn(
+                "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm",
+                i === commandIndex && "bg-ember-tint/50",
+              )}
+            >
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-glass text-muted-foreground">
+                <Slash className="size-3.5" />
+              </span>
+              <span className="shrink-0 font-medium text-foreground">/{command.name}</span>
+              {command.usage && (
+                <span className="shrink-0 text-xs text-muted-foreground">{command.usage}</span>
+              )}
+              <span className="ml-auto truncate pl-3 text-xs text-muted-foreground">
+                {command.description}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {mentionQuery && mentionCandidatesList.length > 0 && (
         <div className="absolute inset-x-4 bottom-full mb-1.5 overflow-hidden rounded-lg border border-glass-border bg-popover shadow-md">
           {mentionCandidatesList.map((candidate, i) => (
@@ -313,6 +394,33 @@ export function MessageComposer({
               notifyTyping();
             }}
             onKeyDown={(e) => {
+              if (commandQuery && commandCandidatesList.length > 0) {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setCommandIndex((i) => (i + 1) % commandCandidatesList.length);
+                  return;
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setCommandIndex(
+                    (i) => (i - 1 + commandCandidatesList.length) % commandCandidatesList.length,
+                  );
+                  return;
+                }
+                // Enter picks the highlighted command rather than sending it —
+                // most of them still want an argument typed after the name.
+                if (e.key === "Enter" || e.key === "Tab") {
+                  e.preventDefault();
+                  selectCommand(commandCandidatesList[commandIndex].name);
+                  return;
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  setCommandQuery(null);
+                  return;
+                }
+              }
+
               if (mentionQuery && mentionCandidatesList.length > 0) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();

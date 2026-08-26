@@ -5,6 +5,7 @@ import 'package:campfire/state/dms.dart';
 import 'package:campfire/state/users.dart';
 import 'package:campfire/theme/night_sky.dart';
 import 'package:campfire/theme/tokens.dart';
+import 'package:campfire/widgets/bot_badge.dart';
 import 'package:campfire/widgets/user_avatar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -101,8 +102,9 @@ class _Group extends ConsumerWidget {
     };
 
     Future<void> startDm(User user) async {
-      // Tapping yourself is a no-op rather than an error — the server rejects it.
-      if (user.id == currentUserId) return;
+      // Tapping yourself is a no-op rather than an error — the server rejects
+      // it. A bot has nobody on the other end to read a DM, so it is the same.
+      if (user.id == currentUserId || user.isBot) return;
       try {
         await ref.read(activeDmIdProvider.notifier).openWithUser(user.id);
         onOpenDm?.call();
@@ -162,6 +164,7 @@ class _Group extends ConsumerWidget {
                                 ),
                           ),
                         ),
+                        if (user.isBot) const BotBadge(),
                         if (user.isAdmin)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

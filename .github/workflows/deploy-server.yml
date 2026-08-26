@@ -1,7 +1,8 @@
 name: Deploy server
 
-# A esteira do backend: todo push no master que toque em server/ ou infra/ roda
-# a suíte contra um Postgres de verdade e, só se ela passar, atualiza a VPS.
+# A esteira do backend: todo push no master que toque em server/, bots/ ou
+# infra/ roda a suíte contra um Postgres de verdade e, só se ela passar,
+# atualiza a VPS.
 # O deploy em si acontece na máquina — o runner apenas dispara infra/deploy.sh
 # por SSH, passando o commit exato que foi testado.
 on:
@@ -9,6 +10,7 @@ on:
     branches: [master]
     paths:
       - "server/**"
+      - "bots/**"
       - "infra/**"
       - ".github/workflows/deploy-server.yml"
   workflow_dispatch:
@@ -62,6 +64,21 @@ jobs:
       # conftest.py cria o campfire_test sozinho a partir do banco de manutenção.
       - name: Pytest
         working-directory: server
+        run: poetry run pytest -q
+
+      # O serviço de bots sobe no mesmo deploy, então passa pelo mesmo portão.
+      # A suíte dele não toca em banco nem em rede: os bots são exercitados
+      # contra um cliente e um player falsos.
+      - name: Install dependencies (bots)
+        working-directory: bots
+        run: poetry install --no-interaction --no-ansi
+
+      - name: Ruff (bots)
+        working-directory: bots
+        run: poetry run ruff check .
+
+      - name: Pytest (bots)
+        working-directory: bots
         run: poetry run pytest -q
 
   deploy:
