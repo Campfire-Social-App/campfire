@@ -87,6 +87,39 @@ o deploy do chat e da voz falhar por causa de um `.env` desatualizado.
 `ws://livekit:7880`) se a VPS não rotear o próprio IP público de volta para
 dentro.
 
+## Quando o YouTube pede login
+
+O YouTube decide **por IP de origem** se acredita que quem chama é gente. Um
+endereço de datacenter cai no `Sign in to confirm you're not a bot` muito mais
+facilmente que um residencial — o que significa que o mesmo build resolve sem
+reclamar na sua máquina e falha na VPS, e que o problema não é reproduzível
+onde ele não acontece.
+
+Duas saídas, em ordem de custo:
+
+**1. Trocar o player client.** `YTDLP_PLAYER_CLIENTS` recebe uma lista separada
+por vírgula. Numa varredura feita de um IP limpo, só três resolvem sozinhos:
+
+| client | resolve | precisa de PO token |
+| :-- | :-- | :-- |
+| `visionos` | sim | **não** |
+| `android_vr` | sim | sim |
+| `android` | sim | sim |
+
+Comece por `visionos`, que é o único que junta as duas coisas. Os demais
+(`tv`, `web`, `web_embedded`, `mweb`, `ios`…) falharam já na resolução, então
+não adianta tentá-los às cegas. Isso muda com o tempo: se nenhum funcionar,
+vale repetir a varredura antes de partir para os cookies.
+
+**2. Cookies.** `YTDLP_COOKIES_FILE` aponta para um arquivo em formato
+Netscape. Em produção ele vai em `infra/bots-secrets/`, montado em `/run/bots`.
+É a saída confiável, ao custo de amarrar uma conta Google ao bot — **use uma
+descartável, nunca a sua**.
+
+Se nem isso bastar, o passo seguinte é um provedor de PO token
+(`bgutil-ytdlp-pot-provider`), que é mais um serviço no compose. Não está aqui
+porque é bastante peso para um problema que os dois de cima costumam resolver.
+
 ## Adicionando outro bot
 
 1. Uma pasta em `app/bots/<nome>/` com uma classe que satisfaça o `Bot` de

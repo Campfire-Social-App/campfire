@@ -201,3 +201,57 @@ async def test_reconnect_options_only_go_to_http_inputs(monkeypatch) -> None:
 
 async def _noop(_text: str) -> None:
     return None
+
+
+async def test_player_clients_and_cookies_reach_yt_dlp() -> None:
+    """These exist for one reason: YouTube's "confirm you're not a bot" check is
+    decided per source IP, so a VPS trips it while the same build resolves fine
+    from a home connection. The knobs have to actually arrive."""
+    from app.bots.ytdlp.player import ydl_options
+
+    plain = ydl_options()
+    assert "extractor_args" not in plain, "empty means yt-dlp's own default order"
+    assert "cookiefile" not in plain
+
+    tuned = ydl_options(player_clients="tv, web_embedded ", cookies_file="/run/cookies.txt")
+    assert tuned["extractor_args"] == {"youtube": {"player_client": ["tv", "web_embedded"]}}
+    assert tuned["cookiefile"] == "/run/cookies.txt"
+    # The rest of the options are untouched.
+    assert tuned["format"] == plain["format"]
+    assert tuned["default_search"] == "ytsearch1"
+
+
+async def test_the_bot_check_is_reported_in_words_a_person_can_act_on(monkeypatch) -> None:
+    """yt-dlp's own text is three lines of flags and a wiki link — noise to
+    whoever typed /play, and it hides who can actually fix it."""
+    from app.bots.ytdlp import player as player_module
+
+    def _blocked(*args, **kwargs):
+        raise RuntimeError(
+            "ERROR: [youtube] abc: Sign in to confirm you're not a bot. "
+            "Use --cookies-from-browser or --cookies for the authentication."
+        )
+
+    monkeypatch.setattr(player_module, "_resolve_blocking", _blocked)
+
+    with pytest.raises(player_module.TrackUnavailable) as raised:
+        await player_module.resolve("uma faixa", "alice")
+
+    message = str(raised.value)
+    assert "bloqueio por IP" in message
+    assert "YTDLP_PLAYER_CLIENTS" in message
+    # No raw flags leaking into the channel.
+    assert "--cookies-from-browser" not in message
+
+
+async def test_other_failures_keep_their_own_message(monkeypatch) -> None:
+    from app.bots.ytdlp import player as player_module
+
+    def _gone(*args, **kwargs):
+        raise RuntimeError("ERROR: [youtube] xyz: Video unavailable")
+
+    monkeypatch.setattr(player_module, "_resolve_blocking", _gone)
+
+    with pytest.raises(player_module.TrackUnavailable) as raised:
+        await player_module.resolve("uma faixa", "alice")
+    assert "Video unavailable" in str(raised.value)

@@ -139,7 +139,7 @@ def resolved(monkeypatch):
     """Whatever `resolve` should hand back — a Track, or an exception to raise."""
     box: dict = {"track": make_track()}
 
-    async def _resolve(query: str, requested_by: str) -> Track:
+    async def _resolve(query: str, requested_by: str, **_options: str) -> Track:
         if isinstance(box["track"], Exception):
             raise box["track"]
         return box["track"]

@@ -2,6 +2,7 @@
 .env
 .local/
 infra/livekit/livekit.generated.yaml
+infra/bots-secrets/
 
 # Python
 server/.venv/

@@ -87,6 +87,15 @@ services:
       # público dos clients. Só aponte para ws://livekit:7880 se a VPS não
       # rotear o próprio IP público de volta para dentro (sem hairpin NAT).
       LIVEKIT_URL_OVERRIDE: ${BOT_LIVEKIT_URL:-}
+      # O YouTube decide por IP de origem se acredita que quem chama é gente, e
+      # endereço de datacenter cai no "Sign in to confirm you're not a bot"
+      # muito mais fácil que um IP residencial. Estes dois são as saídas.
+      YTDLP_PLAYER_CLIENTS: ${YTDLP_PLAYER_CLIENTS:-}
+      YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
+    volumes:
+      # Onde pôr o cookies.txt, se for preciso. O diretório é criado vazio se
+      # não existir, então o serviço sobe igual sem ele.
+      - ./bots-secrets:/run/bots:ro
 
   caddy:
     image: caddy:2-alpine
