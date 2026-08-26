@@ -52,6 +52,18 @@ class Settings(BaseSettings):
     livekit_api_key: str = "devkey"
     livekit_api_secret: str = "324a9697e5bbde9de2844644ac03966ceab4bf67"
 
+    # Bots service (bots/). Internal address only — it is never published by
+    # Caddy, and slash commands reach it through /api/commands so that auth
+    # stays in one place. Unset means "this deployment has no bots": the
+    # command list comes back empty and invoking one answers 503.
+    bots_url: str | None = None
+    # Proves to the bots service that a command really came from this server
+    # rather than from something else that found its way onto the network.
+    bots_shared_secret: str = ""
+    # Account the bots service signs in as, created on boot like the first admin.
+    bot_username: str | None = None
+    bot_password: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

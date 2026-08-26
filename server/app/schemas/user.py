@@ -12,6 +12,7 @@ class UserRead(BaseModel):
     id: uuid.UUID
     username: str
     is_admin: bool
+    is_bot: bool = False
     is_banned: bool = False
     timed_out_until: datetime | None = None
     avatar_url: str | None = None

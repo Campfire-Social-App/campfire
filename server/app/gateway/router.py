@@ -113,6 +113,7 @@ async def _build_ready_payload(user: User) -> dict:
             "id": str(user.id),
             "username": user.username,
             "is_admin": user.is_admin,
+            "is_bot": user.is_bot,
             "avatar_url": user.avatar_url,
             "banner_url": user.banner_url,
         },

@@ -1,12 +1,15 @@
 import 'dart:async';
 
 import 'package:campfire/api/api_exception.dart';
+import 'package:campfire/core/commands.dart';
 import 'package:campfire/core/files.dart';
 import 'package:campfire/core/mentions.dart';
 import 'package:campfire/models/attachment.dart';
+import 'package:campfire/models/command.dart';
 import 'package:campfire/models/message.dart';
 import 'package:campfire/state/api.dart';
 import 'package:campfire/state/channels.dart';
+import 'package:campfire/state/commands.dart';
 import 'package:campfire/state/gateway.dart';
 import 'package:campfire/state/messages.dart';
 import 'package:campfire/state/server.dart';
@@ -69,6 +72,7 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
   final _uploads = <_PendingUpload>[];
 
   MentionQuery? _mention;
+  CommandQuery? _command;
   DateTime _lastTypingSentAt = DateTime.fromMillisecondsSinceEpoch(0);
   bool _sending = false;
 
@@ -89,13 +93,32 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
       !_sending && (_controller.text.trim().isNotEmpty || _attachments.isNotEmpty);
 
   void _onChanged() {
+    final cursor = _controller.selection.baseOffset.clamp(0, _controller.text.length);
     setState(() {
-      _mention = activeMentionQuery(
-        _controller.text,
-        _controller.selection.baseOffset.clamp(0, _controller.text.length),
-      );
+      _mention = activeMentionQuery(_controller.text, cursor);
+      // The two menus are mutually exclusive: a command only ever starts the
+      // line, a mention never does.
+      _command = _commands.isEmpty ? null : activeCommandQuery(_controller.text, cursor);
     });
     _notifyTyping();
+  }
+
+  List<SlashCommand> get _commands => ref.read(commandsProvider).value ?? const [];
+
+  List<SlashCommand> get _commandCandidates {
+    final query = _command;
+    if (query == null) return const [];
+    return commandCandidates(query.query, _commands);
+  }
+
+  void _insertCommand(SlashCommand command) {
+    final text = '/${command.name} ';
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    setState(() => _command = null);
+    _focus.requestFocus();
   }
 
   void _notifyTyping() {
@@ -214,6 +237,15 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
       return;
     }
 
+    // A recognised command is handed to the bot instead of being posted: the
+    // way Discord does it, what was typed never shows up in the channel. Text
+    // that merely opens with a slash is still an ordinary message.
+    final parsed = parseCommand(trimmed, _commands);
+    if (parsed != null && _attachments.isEmpty) {
+      await _runCommand(parsed);
+      return;
+    }
+
     final replyingTo = widget.replyingTo;
     setState(() => _sending = true);
     try {
@@ -235,12 +267,36 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
       setState(() {
         _attachments.clear();
         _mention = null;
+        _command = null;
       });
       widget.onCancelReply?.call();
       widget.onSent?.call();
     } on ApiException catch (error) {
       // The row stays in the list marked as failed, so nothing typed is lost —
       // this is only the immediate feedback.
+      _toast(error.message);
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _runCommand(ParsedCommand parsed) async {
+    setState(() => _sending = true);
+    try {
+      await ref.read(apiProvider).runCommand(
+            widget.channelId,
+            parsed.command.name,
+            parsed.args,
+          );
+      if (!mounted) return;
+      _controller.clear();
+      setState(() => _command = null);
+      widget.onCancelReply?.call();
+      widget.onSent?.call();
+    } on ApiException catch (error) {
+      // Whatever the bot could decide on the spot — not in a call, missing
+      // argument — comes back here. Anything slower arrives as a message from
+      // the bot in the channel instead.
       _toast(error.message);
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -255,6 +311,7 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
   @override
   Widget build(BuildContext context) {
     final candidates = _candidates;
+    final commandCandidates = _commandCandidates;
 
     // The shell draws edge to edge so the ember glow reaches the bottom of the
     // screen, which puts the gesture bar over anything not inset here. With the
@@ -267,6 +324,11 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (_command != null && commandCandidates.isNotEmpty)
+              _CommandList(
+                commands: commandCandidates,
+                onSelected: _insertCommand,
+              ),
             if (_mention != null && candidates.isNotEmpty)
               _MentionList(
                 candidates: candidates,
@@ -475,6 +537,80 @@ class _MentionList extends StatelessWidget {
                                   ? CampfireTokens.foreground
                                   : usernameColorFor(candidate.label),
                             ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The `/` menu. Same shell as [_MentionList] — a command row just carries a
+/// usage hint and a description instead of an avatar.
+class _CommandList extends StatelessWidget {
+  const _CommandList({required this.commands, required this.onSelected});
+
+  final List<SlashCommand> commands;
+  final void Function(SlashCommand) onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: CampfireTokens.popover,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: CampfireTokens.glassBorder),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListView(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        children: [
+          for (final command in commands)
+            InkWell(
+              onTap: () => onSelected(command),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    const _GlyphBubble(icon: CampfireIcons.command),
+                    const SizedBox(width: 8),
+                    Text(
+                      '/${command.name}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: CampfireTokens.foreground,
+                      ),
+                    ),
+                    if (command.usage.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        command.usage,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontSize: 11,
+                          color: CampfireTokens.mutedForeground,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        command.description,
+                        textAlign: TextAlign.right,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          fontSize: 11,
+                          color: CampfireTokens.mutedForeground,
+                        ),
                       ),
                     ),
                   ],

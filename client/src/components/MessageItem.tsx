@@ -5,6 +5,7 @@ import { AttachmentList } from "@/components/AttachmentList";
 import { LinkPreviewList } from "@/components/LinkPreview";
 import { UserAvatar, usernameColorFor } from "@/components/UserAvatar";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
+import { BotBadge } from "@/components/BotBadge";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthStore } from "@/state/auth";
@@ -151,6 +152,7 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
                 {isOwn ? "You" : message.author.username}
               </span>
             </UserProfileHoverCard>
+            {message.author.is_bot && <BotBadge className="self-center" />}
             <span className="text-[11px] text-muted-foreground">{time}</span>
           </div>
         )}

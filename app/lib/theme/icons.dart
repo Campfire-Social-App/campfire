@@ -11,6 +11,7 @@ abstract final class CampfireIcons {
   static const IconData textChannel = LucideIcons.hash;
   static const IconData voiceChannel = LucideIcons.volume2;
   static const IconData mention = LucideIcons.atSign;
+  static const IconData command = LucideIcons.slash;
   static const IconData search = LucideIcons.search;
   static const IconData settings = LucideIcons.settings;
   static const IconData signIn = LucideIcons.logIn;
@@ -86,7 +87,7 @@ abstract final class CampfireIcons {
   /// Used by the test that guards against a Lucide upgrade silently dropping
   /// one of these code points.
   static const List<IconData> all = [
-    brand, textChannel, voiceChannel, mention, search, settings, signIn, invite,
+    brand, textChannel, voiceChannel, mention, command, search, settings, signIn, invite,
     connection, send, attach, reply, quoted, edit, delete, copy, download, more,
     add, remove, close, confirm, file, fileText, fileAudio, fileVideo,
     fileArchive, micOn, micOff, deafenOff, cameraOn, cameraOff, screenShareOn,

@@ -25,24 +25,9 @@ from app.schemas.message import (
 )
 from app.schemas.user import UserRead
 from app.services import dm_service
+from app.services.channel_access import readable_channel_or_404
 
 router = APIRouter(tags=["messages"])
-
-
-async def _get_readable_channel_or_404(
-    channel_id: uuid.UUID, user: CurrentUser, db: DbSession
-) -> Channel:
-    """Resolves a channel the user may read and post in: any text channel, or a
-    DM they're a participant of. Non-participants get 404 rather than 403 — a DM
-    they aren't in shouldn't be distinguishable from one that doesn't exist."""
-    channel = await db.get(Channel, channel_id)
-    if channel is None or channel.type == ChannelType.VOICE:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Text channel not found")
-    if channel.type == ChannelType.DM and not await dm_service.is_participant(
-        db, channel.id, user.id
-    ):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Text channel not found")
-    return channel
 
 
 async def _dispatch(channel: Channel, event: GatewayEvent, db: DbSession) -> None:
@@ -131,7 +116,7 @@ async def list_messages(
     before: uuid.UUID | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
 ) -> MessagePage:
-    await _get_readable_channel_or_404(channel_id, user, db)
+    await readable_channel_or_404(channel_id, user, db)
 
     query = select(Message).where(Message.channel_id == channel_id)
     if before is not None:
@@ -159,7 +144,7 @@ async def create_message(
     channel_id: uuid.UUID, payload: MessageCreateRequest, user: CurrentUser, db: DbSession
 ) -> MessageRead:
     require_not_timed_out(user)
-    channel = await _get_readable_channel_or_404(channel_id, user, db)
+    channel = await readable_channel_or_404(channel_id, user, db)
 
     reply_to_id: uuid.UUID | None = None
     if payload.reply_to_id is not None:
@@ -230,7 +215,7 @@ async def _get_own_message_or_404(
     message = await db.get(Message, message_id)
     if message is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
-    channel = await _get_readable_channel_or_404(message.channel_id, user, db)
+    channel = await readable_channel_or_404(message.channel_id, user, db)
     # Admins moderate the server's channels, but a DM isn't theirs to moderate —
     # inside one, only the author can touch their own message.
     may_moderate = user.is_admin and channel.type != ChannelType.DM
@@ -286,7 +271,7 @@ async def _get_reactable_message_or_404(
     message = await db.get(Message, message_id)
     if message is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
-    channel = await _get_readable_channel_or_404(message.channel_id, user, db)
+    channel = await readable_channel_or_404(message.channel_id, user, db)
     return message, channel
 
 

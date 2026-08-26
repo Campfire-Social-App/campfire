@@ -15,12 +15,15 @@ Sem multi-tenancy, sem depender de infraestrutura de terceiros para o núcleo do
 | Cliente (desktop) | Tauri + React + TypeScript |
 | Cliente (mobile) | Flutter + Dart (em construção) |
 | Servidor (core) | Python + FastAPI |
+| Bots | Python + FastAPI + yt-dlp + ffmpeg (serviço separado) |
 | Voz/vídeo (SFU) | LiveKit (self-hosted, serviço separado) |
 | Banco de dados | PostgreSQL |
 | Reverse proxy / TLS | Caddy |
 | Orquestração | Docker Compose |
 
 O FastAPI cuida de autenticação, canais, mensagens e sinalização (WebSocket gateway); o LiveKit cuida exclusivamente da mídia em tempo real (WebRTC). Os clientes falam com os dois.
+
+O serviço de `bots/` é um terceiro processo que se comporta como mais um cliente: loga com conta própria, fica online pelo gateway e publica áudio no LiveKit. Os clients nunca falam com ele — um `/play` vai para `POST /api/commands` no core, que valida quem pediu e repassa.
 
 O cliente Flutter em `app/` é um segundo consumidor da mesma API, com a mesma cara e as mesmas funções — nada no servidor muda por causa dele. Plano de obra em [PLANO_FLUTTER.md](PLANO_FLUTTER.md).
 
@@ -36,6 +39,7 @@ O cliente Flutter em `app/` é um segundo consumidor da mesma API, com a mesma c
 - [x] Canais de voz via LiveKit (entrar/sair, mute, indicador de fala)
 - [x] Mensagens diretas 1:1 (conversas privadas, com não-lidas, na barra da esquerda)
 - [x] Chamadas de voz/vídeo dentro da DM (toque, aceitar/recusar, câmera e tela)
+- [x] Bots com slash commands — o `yt-dlp` toca música no seu canal de voz
 - [ ] Empacotamento do cliente + guia de deploy em VPS
 
 Vídeo de câmera, compartilhamento de tela e modo live ficam para uma fase posterior — a infraestrutura de voz (LiveKit) já suporta os três nativamente, então essa fase é majoritariamente trabalho de cliente.
@@ -63,6 +67,7 @@ Itens que a arquitetura já comporta, mas que não entram na v1:
 ```
 campfire/
   server/     # API FastAPI (auth, canais, mensagens, gateway, tokens LiveKit)
+  bots/       # Serviço FastAPI dos bots (o primeiro é o yt-dlp, música na call)
   client/     # App desktop Tauri
   app/        # App mobile Flutter (Android/iOS; desktop de brinde)
   infra/      # docker-compose, config do LiveKit, Caddyfile
@@ -89,6 +94,11 @@ poetry run alembic upgrade head
 poetry run python -m app.cli create-admin --username admin --password <senha>
 poetry run uvicorn app.main:app --reload
 
+# Serviço de bots (opcional; sem ele o menu de "/" simplesmente não aparece)
+cd bots
+poetry install
+poetry run uvicorn app.main:app --port 8100
+
 # Cliente desktop
 cd client
 npm install
@@ -99,6 +109,9 @@ cd app
 flutter pub get
 flutter run
 ```
+
+O `bots/` tem README próprio — como um bot é registrado e o que o `yt-dlp`
+precisa (ffmpeg) — em [bots/README.md](bots/README.md).
 
 O `app/` tem instruções próprias — código gerado, geração dos tokens de tema a
 partir do CSS do cliente React — em [app/README.md](app/README.md).
@@ -111,9 +124,21 @@ Notas de arquitetura em [PLANO.md](PLANO.md#8-notas-de-deploy-em-produção): Do
 
 ### Esteira
 
-Push no `master` que toque em `server/` ou `infra/` dispara o workflow [Deploy server](.github/workflows/deploy-server.yml): a suíte roda contra um Postgres real e, só se passar, o runner entra na VPS por SSH, deixa o repositório no commit testado e executa [`infra/deploy.sh`](infra/deploy.sh), que reconstrói a imagem, sobe o compose e espera `https://$DOMAIN/health` responder antes de dar o deploy por bom.
+Push no `master` que toque em `server/`, `bots/` ou `infra/` dispara o workflow [Deploy server](.github/workflows/deploy-server.yml): a suíte roda contra um Postgres real e, só se passar, o runner entra na VPS por SSH, deixa o repositório no commit testado e executa [`infra/deploy.sh`](infra/deploy.sh), que reconstrói a imagem, sobe o compose e espera `https://$DOMAIN/health` responder antes de dar o deploy por bom.
 
 Secrets usados pelo workflow: `DEPLOY_SSH_KEY` (chave privada), `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS` (saída do `ssh-keyscan`, para o runner não confiar em qualquer host no IP).
+
+Numa VPS que já existe, `BOT_PASSWORD` e `BOTS_SHARED_SECRET` são novos no
+`infra/.env` — sem eles o deploy passa normalmente, só que sem bot (o serviço
+sobe inerte e o menu de `/` não aparece). Para ligar o bot, acrescente as duas
+linhas e rode `infra/deploy.sh` de novo:
+
+```bash
+cat >> /opt/campfire/infra/.env <<EOF
+BOT_PASSWORD=$(openssl rand -hex 16)
+BOTS_SHARED_SECRET=$(openssl rand -hex 24)
+EOF
+```
 
 ### Bootstrap da máquina (uma vez)
 
@@ -135,6 +160,8 @@ POSTGRES_DB=campfire
 JWT_SECRET=$(openssl rand -hex 32)
 LIVEKIT_API_KEY=$(openssl rand -hex 12)
 LIVEKIT_API_SECRET=$(openssl rand -hex 32)
+BOT_PASSWORD=$(openssl rand -hex 16)
+BOTS_SHARED_SECRET=$(openssl rand -hex 24)
 DOMAIN=seudominio.com
 LIVEKIT_DOMAIN=livekit.seudominio.com
 FIRST_ADMIN_USERNAME=admin

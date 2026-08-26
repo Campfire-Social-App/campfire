@@ -17,6 +17,7 @@ import { CreateChannelDialog } from "@/components/CreateChannelDialog";
 import { InviteDialog } from "@/components/InviteDialog";
 import { UserAvatar } from "@/components/UserAvatar";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
+import { BotBadge } from "@/components/BotBadge";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { UserBar } from "@/components/UserBar";
 import { ScreenShareLiveBadge } from "@/components/ScreenShareLiveBadge";
@@ -279,6 +280,7 @@ function VoiceParticipants({ channelId }: { channelId: string }) {
               ring={!!speakingUserIds[p.user_id]}
             />
             <span className="min-w-0 truncate text-sm text-muted-foreground">{p.username}</span>
+            {user?.is_bot && <BotBadge className="shrink-0" />}
             {(p.screen_sharing || availableScreenShares[p.user_id] || p.muted || p.deafened) && (
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
                 {p.muted && (

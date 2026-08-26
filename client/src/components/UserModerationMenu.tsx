@@ -44,7 +44,9 @@ export function UserModerationMenu({
     state.states.find((participant) => participant.user_id === user?.id),
   );
   const canAdjustVolume = !!voiceParticipant && targetId !== currentUser?.id;
-  const canModerate = isAdmin && !!user;
+  // A bot is not somebody to ban or time out — but it does publish audio, so
+  // the volume slider stays.
+  const canModerate = isAdmin && !!user && !user.is_bot;
   if (!canModerate && !canAdjustVolume) return <>{children}</>;
 
   const mute = async () => {

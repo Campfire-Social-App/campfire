@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { UserAvatar } from "@/components/UserAvatar";
+import { BotBadge } from "@/components/BotBadge";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
 import { useAuthStore } from "@/state/auth";
@@ -43,7 +44,8 @@ function MemberGroup({
 
   const startDm = async (user: User) => {
     // Clicking yourself is a no-op rather than an error — the server rejects it.
-    if (user.id === currentUserId) return;
+    // A bot has nobody on the other end to read a DM, so it is the same no-op.
+    if (user.id === currentUserId || user.is_bot) return;
     try {
       await openWithUser(user.id);
     } catch (err) {
@@ -62,7 +64,9 @@ function MemberGroup({
           <UserModerationMenu key={user.id} user={user}>
             <UserProfileHoverCard
               user={user}
-              onMessage={user.id === currentUserId ? undefined : () => void startDm(user)}
+              onMessage={
+                user.id === currentUserId || user.is_bot ? undefined : () => void startDm(user)
+              }
             >
               <button
                 type="button"
@@ -73,6 +77,7 @@ function MemberGroup({
               >
                 <UserAvatar username={user.username} avatarUrl={user.avatar_url} size="sm" status={status} />
                 <span className="truncate text-sm text-foreground">{user.username}</span>
+                {user.is_bot && <BotBadge className="ml-auto" />}
                 {user.is_admin && (
                   <span className="ml-auto text-[10px] font-semibold tracking-wide text-primary uppercase">
                     Admin

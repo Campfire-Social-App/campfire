@@ -1,6 +1,7 @@
 import 'package:campfire/api/client.dart';
 import 'package:campfire/models/attachment.dart';
 import 'package:campfire/models/channel.dart';
+import 'package:campfire/models/command.dart';
 import 'package:campfire/models/dm.dart';
 import 'package:campfire/models/invite.dart';
 import 'package:campfire/models/message.dart';
@@ -192,6 +193,25 @@ class CampfireApi {
   Future<List<User>> listUsers() => client.request(
         '/api/users',
         decode: (json) => _listOf(json, User.fromJson),
+      );
+
+  // ---------------------------------------------------------------- commands
+
+  /// What the composer offers after a `/`. Empty when the deployment has no
+  /// bots service, or when it is down — never an error, so the composer is
+  /// unaffected either way.
+  Future<List<SlashCommand>> listCommands() => client.request(
+        '/api/commands',
+        decode: (json) => _listOf(json, SlashCommand.fromJson),
+      );
+
+  /// Hands a slash command to the bots service. Who ran it and which call they
+  /// are in are filled in by the server, not here. Results that take a while
+  /// arrive as a message from the bot in the channel.
+  Future<void> runCommand(String channelId, String name, String args) => client.request<void>(
+        '/api/commands',
+        method: 'POST',
+        body: {'channel_id': channelId, 'name': name, 'args': args},
       );
 
   // ------------------------------------------------------------------ server
