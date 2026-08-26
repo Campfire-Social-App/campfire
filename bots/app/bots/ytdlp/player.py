@@ -33,6 +33,22 @@ _YDL_OPTIONS = {
     "extract_flat": False,
 }
 
+# What YouTube answers when it does not believe the caller is a person. It is
+# decided per source IP, so it shows up on a VPS while the same build resolves
+# fine from a home connection — which makes it impossible to reproduce where it
+# does not happen, and worth naming precisely where it does.
+_BOT_CHECK = "sign in to confirm"
+
+
+def ydl_options(*, player_clients: str = "", cookies_file: str = "") -> dict:
+    options = dict(_YDL_OPTIONS)
+    clients = [c.strip() for c in player_clients.split(",") if c.strip()]
+    if clients:
+        options["extractor_args"] = {"youtube": {"player_client": clients}}
+    if cookies_file:
+        options["cookiefile"] = cookies_file
+    return options
+
 
 def _playing_event() -> asyncio.Event:
     """A playback starts unpaused."""
@@ -60,8 +76,8 @@ class Track:
         return f"{self.title} ({minutes}:{seconds:02d})"
 
 
-def _resolve_blocking(query: str, requested_by: str) -> Track:
-    with YoutubeDL(_YDL_OPTIONS) as ydl:
+def _resolve_blocking(query: str, requested_by: str, options: dict) -> Track:
+    with YoutubeDL(options) as ydl:
         info = ydl.extract_info(query, download=False)
 
     if info is None:
@@ -90,14 +106,26 @@ def _resolve_blocking(query: str, requested_by: str) -> Track:
     )
 
 
-async def resolve(query: str, requested_by: str) -> Track:
+async def resolve(
+    query: str, requested_by: str, *, player_clients: str = "", cookies_file: str = ""
+) -> Track:
     """yt-dlp is synchronous and does network I/O, so it runs off the loop."""
+    options = ydl_options(player_clients=player_clients, cookies_file=cookies_file)
     try:
-        return await asyncio.to_thread(_resolve_blocking, query, requested_by)
+        return await asyncio.to_thread(_resolve_blocking, query, requested_by, options)
     except TrackUnavailable:
         raise
     except Exception as exc:
-        raise TrackUnavailable(str(exc).splitlines()[0][:200] or "falhou ao resolver") from exc
+        message = str(exc).splitlines()[0] if str(exc) else ""
+        if _BOT_CHECK in message.lower():
+            # The raw yt-dlp text is three lines of flags and a wiki link, which
+            # is noise to whoever typed /play. Say what it is and who can fix it.
+            raise TrackUnavailable(
+                "o YouTube está pedindo login para este servidor (bloqueio por IP). "
+                "Quem administra precisa configurar YTDLP_PLAYER_CLIENTS ou "
+                "YTDLP_COOKIES_FILE"
+            ) from exc
+        raise TrackUnavailable(message[:200] or "falhou ao resolver") from exc
 
 
 @dataclass

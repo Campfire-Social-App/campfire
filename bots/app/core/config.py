@@ -34,6 +34,19 @@ class Settings(BaseSettings):
     # SFU sends one stream per listener.
     music_bitrate: int = 128_000
 
+    # Comma-separated yt-dlp YouTube player clients, tried in order. Empty
+    # leaves yt-dlp's own default, which is the best-tested path. Worth setting
+    # when YouTube answers "Sign in to confirm you're not a bot" — that check
+    # is applied per source IP, and a datacenter address trips it far more
+    # readily than a home one. Clients that need no PO token for the media URL
+    # itself: tv, tv_downgraded, web_embedded, visionos.
+    ytdlp_player_clients: str = ""
+
+    # Path to a Netscape-format cookies file, mounted into the container. The
+    # dependable answer to the same block, at the cost of tying a Google
+    # account to the bot — use a throwaway, never a personal one.
+    ytdlp_cookies_file: str = ""
+
     # Where ffmpeg is; overridable so a dev box can run this outside Docker.
     ffmpeg_path: str = "ffmpeg"
 

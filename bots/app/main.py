@@ -56,6 +56,8 @@ def build_registry() -> tuple[Registry, list[CampfireClient]]:
             ffmpeg_path=settings.ffmpeg_path,
             livekit_url_override=settings.livekit_url_override,
             bitrate=settings.music_bitrate,
+            player_clients=settings.ytdlp_player_clients,
+            cookies_file=settings.ytdlp_cookies_file,
         )
     )
     return registry, [client]

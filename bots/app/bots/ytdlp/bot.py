@@ -36,11 +36,15 @@ class YtDlpBot:
         ffmpeg_path: str,
         livekit_url_override: str = "",
         bitrate: int = 128_000,
+        player_clients: str = "",
+        cookies_file: str = "",
     ) -> None:
         self._client = client
         self._gateway = gateway
         self._ffmpeg_path = ffmpeg_path
         self._bitrate = bitrate
+        self._player_clients = player_clients
+        self._cookies_file = cookies_file
         self._livekit_url_override = livekit_url_override
         # One player per voice channel: two groups in two calls are two
         # independent queues, the way any music bot behaves.
@@ -142,7 +146,12 @@ class YtDlpBot:
 
     async def _play(self, player: Player, query: str, context: CommandContext) -> None:
         try:
-            track = await resolve(query, context.username)
+            track = await resolve(
+                query,
+                context.username,
+                player_clients=self._player_clients,
+                cookies_file=self._cookies_file,
+            )
         except TrackUnavailable as exc:
             await self._say(player.voice_channel_id, f"⚠️ Não consegui achar `{query}`: {exc}")
             await self._leave_if_idle(player)
