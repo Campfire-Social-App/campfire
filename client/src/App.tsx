@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TitleBar } from "@/components/TitleBar";
+import { AppUpdater } from "@/components/AppUpdater";
 import { useHydration } from "@/lib/useHydration";
 import { useAuthStore } from "@/state/auth";
 import { useSettingsStore } from "@/state/settings";
@@ -58,6 +59,7 @@ function App() {
         <div className="min-h-0 flex-1">{content}</div>
       </div>
       <Toaster theme="dark" position="bottom-right" />
+      <AppUpdater />
     </TooltipProvider>
   );
 }

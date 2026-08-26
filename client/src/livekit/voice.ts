@@ -44,6 +44,7 @@ let room: Room | null = null;
  * across Chromium/WebView versions instead of relying on SDK defaults. */
 function microphoneCaptureOptions(
   noiseSuppressionEnabled: boolean,
+  noiseGateMode: NoiseGateMode,
   enhancedVoiceIsolation = true,
 ): AudioCaptureOptions {
   const supported =
@@ -52,7 +53,10 @@ function microphoneCaptureOptions(
       : navigator.mediaDevices?.getSupportedConstraints?.();
   return {
     echoCancellation: true,
-    autoGainControl: true,
+    // AGC raises distant voices during pauses. Strong gate mode deliberately
+    // keeps the physical distance between a close mic and a TV/background
+    // speaker, allowing its calibrated threshold to reject the latter.
+    autoGainControl: noiseGateMode !== "strong",
     ...(supported?.noiseSuppression !== false
       ? { noiseSuppression: noiseSuppressionEnabled }
       : {}),
@@ -180,14 +184,18 @@ async function enableInitialMicrophone(participant: Room["localParticipant"]): P
   try {
     await participant.setMicrophoneEnabled(
       true,
-      microphoneCaptureOptions(settings.noiseSuppressionEnabled),
+      microphoneCaptureOptions(settings.noiseSuppressionEnabled, settings.noiseGateMode),
     );
   } catch (enhancedError) {
     console.warn("Could not start enhanced microphone processing; retrying stable WebRTC options.", enhancedError);
     try {
       await participant.setMicrophoneEnabled(
         true,
-        microphoneCaptureOptions(settings.noiseSuppressionEnabled, false),
+        microphoneCaptureOptions(
+          settings.noiseSuppressionEnabled,
+          settings.noiseGateMode,
+          false,
+        ),
       );
       toast.warning("Voice isolation is unavailable; standard noise suppression is active.");
     } catch (suppressionError) {
@@ -528,6 +536,7 @@ export async function setMicrophoneMuted(
     !muted,
     microphoneCaptureOptions(
       useSettingsStore.getState().noiseSuppressionEnabled,
+      useSettingsStore.getState().noiseGateMode,
     ),
   );
   if (!muted) {
@@ -559,7 +568,10 @@ export async function applyNoiseSuppression(enabled: boolean): Promise<void> {
   const publication = room?.localParticipant.getTrackPublication(Track.Source.Microphone);
   const track = publication?.track as LocalAudioTrack | undefined;
   if (!track) return;
-  const options = microphoneCaptureOptions(enabled);
+  const options = microphoneCaptureOptions(
+    enabled,
+    useSettingsStore.getState().noiseGateMode,
+  );
   await track.applyConstraints({
     echoCancellation: options.echoCancellation,
     autoGainControl: options.autoGainControl,
@@ -574,6 +586,13 @@ export async function applyNoiseGate(mode: NoiseGateMode): Promise<void> {
   const publication = room?.localParticipant.getTrackPublication(Track.Source.Microphone);
   const track = publication?.track as LocalAudioTrack | undefined;
   if (!track) return;
+
+  // Apply the matching capture gain policy immediately when switching modes.
+  // This remains best-effort because some audio drivers expose AGC as a fixed
+  // constraint even though WebRTC reports the property as supported.
+  await track
+    .applyConstraints({ autoGainControl: mode !== "strong" })
+    .catch((error) => console.warn("Could not update microphone gain control.", error));
 
   const current = track.getProcessor();
   if (mode === "off") {

@@ -115,6 +115,30 @@ Push no `master` que toque em `server/` ou `infra/` dispara o workflow [Deploy s
 
 Secrets usados pelo workflow: `DEPLOY_SSH_KEY` (chave privada), `DEPLOY_HOST`, `DEPLOY_PORT`, `DEPLOY_USER`, `DEPLOY_KNOWN_HOSTS` (saída do `ssh-keyscan`, para o runner não confiar em qualquer host no IP).
 
+### Atualizações do cliente Windows
+
+O cliente Tauri consulta automaticamente a release estável mais recente e
+oferece baixar, validar, instalar e reiniciar o aplicativo. Para habilitar a
+assinatura no GitHub Actions, cadastre o conteúdo da chave privada como o secret
+`TAURI_SIGNING_PRIVATE_KEY`. A chave gerada localmente fica em
+`.local/tauri/campfire-updater.key` e é ignorada pelo Git; guarde também uma
+cópia segura fora desta máquina, pois releases futuras precisam usar a mesma
+chave.
+
+Uma nova versão é publicada por tag SemVer:
+
+```bash
+git tag client-v0.2.0
+git push origin client-v0.2.0
+```
+
+O workflow sincroniza a versão do pacote com a tag, cria os instaladores e
+assinaturas e publica o `latest.json`. Execuções manuais continuam gerando o
+build de desenvolvimento em uma release rascunho e não são oferecidas pelo
+atualizador. Usuários de builds anteriores a esta implementação precisam
+instalar uma vez o primeiro build compatível; depois disso, as próximas versões
+são atualizadas dentro do aplicativo.
+
 ### Bootstrap da máquina (uma vez)
 
 A esteira atualiza um servidor que já existe; ela não cria um do zero. Numa VPS nova:

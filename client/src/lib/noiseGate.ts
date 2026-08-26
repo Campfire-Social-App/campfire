@@ -10,6 +10,10 @@ interface NoiseGatePreset {
   openDb: number;
   closeDb: number;
   noiseMarginDb: number;
+  calibrationMs: number;
+  immediateOpenDb: number;
+  highpassHz: number;
+  lowpassHz: number;
   holdMs: number;
   attackSeconds: number;
   releaseSeconds: number;
@@ -20,15 +24,25 @@ const PRESETS: Record<Exclude<NoiseGateMode, "off">, NoiseGatePreset> = {
     openDb: -48,
     closeDb: -54,
     noiseMarginDb: 10,
+    calibrationMs: 0,
+    immediateOpenDb: -24,
+    highpassHz: 80,
+    lowpassHz: 9000,
     holdMs: 180,
     attackSeconds: 0.004,
     releaseSeconds: 0.12,
   },
   strong: {
-    openDb: -40,
-    closeDb: -48,
-    noiseMarginDb: 16,
-    holdMs: 120,
+    // With AGC disabled (see voice.ts), a close microphone normally clears
+    // this threshold while a TV or another speaker across the room does not.
+    openDb: -34,
+    closeDb: -42,
+    noiseMarginDb: 12,
+    calibrationMs: 350,
+    immediateOpenDb: -25,
+    highpassHz: 120,
+    lowpassHz: 7500,
+    holdMs: 140,
     attackSeconds: 0.003,
     releaseSeconds: 0.08,
   },
@@ -50,6 +64,8 @@ export class NoiseGateProcessor
   processedTrack?: MediaStreamTrack;
 
   private source?: MediaStreamAudioSourceNode;
+  private highpass?: BiquadFilterNode;
+  private lowpass?: BiquadFilterNode;
   private analyser?: AnalyserNode;
   private delay?: DelayNode;
   private gain?: GainNode;
@@ -57,6 +73,7 @@ export class NoiseGateProcessor
   private timer?: number;
   private samples?: Float32Array<ArrayBuffer>;
   private noiseFloorDb = -70;
+  private calibrationUntil = 0;
   private open = false;
   private lastVoiceAt = 0;
 
@@ -81,11 +98,19 @@ export class NoiseGateProcessor
   private setup({ audioContext, track }: AudioProcessorOptions): void {
     const preset = PRESETS[this.mode];
     const source = audioContext.createMediaStreamSource(new MediaStream([track]));
+    const highpass = audioContext.createBiquadFilter();
+    const lowpass = audioContext.createBiquadFilter();
     const analyser = audioContext.createAnalyser();
     const delay = audioContext.createDelay(0.05);
     const gain = audioContext.createGain();
     const destination = audioContext.createMediaStreamDestination();
 
+    highpass.type = "highpass";
+    highpass.frequency.value = preset.highpassHz;
+    highpass.Q.value = 0.7;
+    lowpass.type = "lowpass";
+    lowpass.frequency.value = preset.lowpassHz;
+    lowpass.Q.value = 0.7;
     analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.15;
     // The detector checks one render quantum before the delayed signal reaches
@@ -93,12 +118,16 @@ export class NoiseGateProcessor
     delay.delayTime.value = 0.012;
     gain.gain.value = 0;
 
-    source.connect(analyser);
+    source.connect(highpass);
+    highpass.connect(lowpass);
+    lowpass.connect(analyser);
     analyser.connect(delay);
     delay.connect(gain);
     gain.connect(destination);
 
     this.source = source;
+    this.highpass = highpass;
+    this.lowpass = lowpass;
     this.analyser = analyser;
     this.delay = delay;
     this.gain = gain;
@@ -106,6 +135,7 @@ export class NoiseGateProcessor
     this.processedTrack = destination.stream.getAudioTracks()[0];
     this.samples = new Float32Array(analyser.fftSize);
     this.noiseFloorDb = -70;
+    this.calibrationUntil = performance.now() + preset.calibrationMs;
     this.open = false;
     this.lastVoiceAt = performance.now();
 
@@ -121,6 +151,26 @@ export class NoiseGateProcessor
     const rms = Math.sqrt(energy / this.samples.length);
     const levelDb = 20 * Math.log10(Math.max(rms, 1e-7));
     const now = performance.now();
+
+    // Strong mode first samples the room with the output closed. Without this,
+    // a television already playing when capture starts immediately opens the
+    // gate and is then mistaken for foreground speech indefinitely.
+    if (now < this.calibrationUntil) {
+      // Do not sacrifice the first word: a close voice is considerably louder
+      // than the background levels this calibration is intended to learn.
+      if (levelDb >= preset.immediateOpenDb) {
+        this.calibrationUntil = 0;
+        this.open = true;
+        this.lastVoiceAt = now;
+        this.setGain(audioContext, 1, preset.attackSeconds);
+        return;
+      }
+      this.noiseFloorDb =
+        this.noiseFloorDb === -70
+          ? levelDb
+          : this.noiseFloorDb * 0.85 + levelDb * 0.15;
+      return;
+    }
 
     if (!this.open) {
       // Learn slowly only from levels that still resemble background noise.
@@ -164,11 +214,15 @@ export class NoiseGateProcessor
     if (this.timer !== undefined) window.clearInterval(this.timer);
     if (stopTrack) this.processedTrack?.stop();
     this.source?.disconnect();
+    this.highpass?.disconnect();
+    this.lowpass?.disconnect();
     this.analyser?.disconnect();
     this.delay?.disconnect();
     this.gain?.disconnect();
     this.destination?.disconnect();
     this.source = undefined;
+    this.highpass = undefined;
+    this.lowpass = undefined;
     this.analyser = undefined;
     this.delay = undefined;
     this.gain = undefined;

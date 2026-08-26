@@ -3,7 +3,8 @@ name: Build Windows client
 # Manual runs (workflow_dispatch) build the app and publish it to a rolling
 # "campfire-dev" draft pre-release, so the latest installer is always one
 # click away without creating a new release each time. Pushing a `client-v*`
-# tag instead creates a proper versioned draft release. Either way the
+# tag instead creates a published, versioned release used by the in-app
+# updater. Either way the
 # .msi/.exe is also attached as a downloadable workflow artifact.
 on:
   workflow_dispatch:
@@ -47,21 +48,43 @@ jobs:
             echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "name=Campfire __VERSION__" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "draft=false" >> "$GITHUB_OUTPUT"
           else
             echo "tag=campfire-dev" >> "$GITHUB_OUTPUT"
             echo "name=Campfire (dev build)" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Synchronize version from tag
+        if: startsWith(github.ref, 'refs/tags/client-v')
+        working-directory: client
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#client-v}" --no-git-tag-version
+
+      - name: Require updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$TAURI_SIGNING_PRIVATE_KEY" ]]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY must be configured in repository secrets."
+            exit 1
           fi
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         with:
           projectPath: client
           uploadWorkflowArtifacts: true
           tagName: ${{ steps.release.outputs.tag }}
           releaseName: ${{ steps.release.outputs.name }}
           releaseBody: "Build automático via GitHub Actions."
-          releaseDraft: true
+          releaseDraft: ${{ steps.release.outputs.draft }}
           prerelease: ${{ steps.release.outputs.prerelease }}
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          updaterJsonPreferNsis: true

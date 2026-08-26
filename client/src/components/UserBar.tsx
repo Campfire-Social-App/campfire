@@ -5,6 +5,7 @@ import {
   MicOff,
   PhoneOff,
   Repeat,
+  RefreshCw,
   ScreenShare,
   ScreenShareOff,
   Settings,
@@ -15,6 +16,8 @@ import {
   UserRound,
   AudioLines,
 } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
+import { checkForAppUpdate } from "@/components/AppUpdater";
 import { UserAvatar } from "@/components/UserAvatar";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { ProfileDialog } from "@/components/ProfileDialog";
@@ -250,9 +253,16 @@ export function UserBar() {
               >
                 <DropdownMenuRadioItem value="off">Off</DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="standard">Standard · balanced</DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="strong">Strong · noisy room</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="strong">
+                  Strong · TV / background voices
+                </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
+              {isTauri() && (
+                <DropdownMenuItem onSelect={() => void checkForAppUpdate(true)}>
+                  <RefreshCw className="size-4" /> Check for updates
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onSelect={() => setProfileOpen(true)}>
                 <UserRound className="size-4" /> Profile
               </DropdownMenuItem>
