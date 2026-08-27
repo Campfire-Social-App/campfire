@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # itself: tv, tv_downgraded, web_embedded, visionos.
     ytdlp_player_clients: str = ""
 
+    # HTTP proxy for everything that talks to YouTube. It has to be HTTP rather
+    # than SOCKS, and it has to apply to *both* halves: the media URL yt-dlp
+    # gets back is signed with the IP that asked for it (`ip` is inside the
+    # URL's `sparams`), so if ffmpeg then fetches it from a different address
+    # the CDN answers 403. Empty means direct, which is today's behaviour.
+    ytdlp_proxy: str = ""
+
     # Where the bgutil PO token provider answers, e.g. http://bgutil:4416.
     # YouTube increasingly wants a proof-of-origin token, and this is the way to
     # supply one without tying a Google account to the bot. Empty disables it.

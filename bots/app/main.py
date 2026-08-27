@@ -59,6 +59,7 @@ def build_registry() -> tuple[Registry, list[CampfireClient]]:
             player_clients=settings.ytdlp_player_clients,
             cookies_file=settings.ytdlp_cookies_file,
             pot_base_url=settings.ytdlp_pot_base_url,
+            proxy=settings.ytdlp_proxy,
         )
     )
     return registry, [client]

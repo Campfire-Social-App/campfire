@@ -41,9 +41,15 @@ _BOT_CHECK = "sign in to confirm"
 
 
 def ydl_options(
-    *, player_clients: str = "", cookies_file: str = "", pot_base_url: str = ""
+    *,
+    player_clients: str = "",
+    cookies_file: str = "",
+    pot_base_url: str = "",
+    proxy: str = "",
 ) -> dict:
     options = dict(_YDL_OPTIONS)
+    if proxy:
+        options["proxy"] = proxy
     extractor_args: dict[str, dict[str, list[str]]] = {}
 
     clients = [c.strip() for c in player_clients.split(",") if c.strip()]
@@ -126,10 +132,14 @@ async def resolve(
     player_clients: str = "",
     cookies_file: str = "",
     pot_base_url: str = "",
+    proxy: str = "",
 ) -> Track:
     """yt-dlp is synchronous and does network I/O, so it runs off the loop."""
     options = ydl_options(
-        player_clients=player_clients, cookies_file=cookies_file, pot_base_url=pot_base_url
+        player_clients=player_clients,
+        cookies_file=cookies_file,
+        pot_base_url=pot_base_url,
+        proxy=proxy,
     )
     try:
         return await asyncio.to_thread(_resolve_blocking, query, requested_by, options)
@@ -171,10 +181,12 @@ class Player:
         ffmpeg_path: str,
         on_event,
         bitrate: int = 128_000,
+        proxy: str = "",
     ) -> None:
         self.voice_channel_id = voice_channel_id
         self._ffmpeg_path = ffmpeg_path
         self._bitrate = bitrate
+        self._proxy = proxy
         # Called with a line of feedback to post in the text channel. Async.
         self._on_event = on_event
 
@@ -297,13 +309,19 @@ class Player:
         # stream and the track would stop halfway through. They belong to the
         # HTTP protocol, though, so passing them for any other kind of input
         # makes ffmpeg exit with a bare "Option not found".
+        over_http = track.stream_url.startswith(("http://", "https://"))
         reconnect = (
             ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-            if track.stream_url.startswith(("http://", "https://"))
+            if over_http
             else []
         )
+        # The same egress yt-dlp used, or the CDN rejects the signature. ffmpeg
+        # speaks HTTP CONNECT only — a SOCKS proxy would work for yt-dlp and
+        # then fail right here, which is why the setting is documented as HTTP.
+        proxy = ["-http_proxy", self._proxy] if (over_http and self._proxy) else []
         process = await asyncio.create_subprocess_exec(
             self._ffmpeg_path,
+            *proxy,
             *reconnect,
             "-i", track.stream_url,
             "-vn",

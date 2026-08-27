@@ -77,6 +77,7 @@ services:
       # Vazio por padrao: daqui o YouTube costuma resolver sem PO token. Ponha
       # http://127.0.0.1:4416 para exercitar o mesmo caminho da producao.
       YTDLP_POT_BASE_URL: ${YTDLP_POT_BASE_URL:-}
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
     # Rede do host pelo mesmo motivo do server e do livekit aqui: o SFU anuncia
     # um endereco de host, e a conexao WebRTC do bot precisa chegar nele do
     # mesmo jeito que a de um cliente.

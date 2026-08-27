@@ -129,8 +129,34 @@ arquivo, justamente para que trocar o `cookies.txt` valha no próximo `/play`
 sem deploy nem restart; um bind mount de arquivo único deixaria o container
 preso ao inode antigo.
 
-Esgotadas as três, o que resta é sair por um IP com boa reputação — proxy ou
-outra hospedagem. O bloqueio é do endereço, não do código.
+**4. Sair por outro IP.** O bloqueio é do endereço, não do código, então a
+saída mais direta é não usar o endereço bloqueado. Em produção isso **já está
+ligado**: o compose sobe o Cloudflare WARP e manda o yt-dlp e o ffmpeg por ele.
+
+Esses valores são versionados em `infra/docker-compose.yml`, não lidos do
+`.env` da máquina. É deliberado: enquanto vinham do `.env`, cada tentativa
+abandonada ficava para trás na VPS e vencia silenciosamente o que o
+repositório dizia. Mudar de ideia sobre eles é um commit — revisável e
+reversível. O `.env` continua sendo só dos segredos.
+
+O `infra/deploy.sh` avisa quando encontra no `.env` chaves que nada mais lê,
+para o resíduo não se acumular invisível.
+
+Dois detalhes que essa montagem existe para resolver, e que não são óbvios:
+
+- **A URL de mídia é assinada com o IP de quem a pediu.** O parâmetro `ip` da
+  URL do googlevideo está dentro de `sparams`, a lista de parâmetros cobertos
+  pela assinatura. Quem resolve e quem baixa são processos diferentes aqui — o
+  yt-dlp e o ffmpeg — então **os dois** têm que sair pelo mesmo endereço, ou o
+  CDN devolve 403 depois de a resolução ter parecido funcionar.
+- **O ffmpeg não fala SOCKS.** Ele só tem `-http_proxy` (HTTP CONNECT). O WARP
+  oferece SOCKS5, daí o `warp-http` no meio traduzindo. Configurar um
+  `socks5://` em `YTDLP_PROXY` resolveria o vídeo e falharia no download.
+
+Uma tentação a evitar: pôr o container do bots em `network_mode: service:warp`,
+que resolveria tudo de uma vez. Isso mandaria a mídia do LiveKit pela Cloudflare
+também, trocando um problema de YouTube por latência na voz. O proxy é escopado
+ao yt-dlp e ao ffmpeg de propósito.
 
 ## Adicionando outro bot
 

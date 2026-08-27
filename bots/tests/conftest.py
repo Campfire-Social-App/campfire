@@ -52,10 +52,17 @@ class FakePlayer:
     instances: ClassVar[list["FakePlayer"]] = []
 
     def __init__(
-        self, *, voice_channel_id: str, ffmpeg_path: str, on_event, bitrate: int = 0
+        self,
+        *,
+        voice_channel_id: str,
+        ffmpeg_path: str,
+        on_event,
+        bitrate: int = 0,
+        proxy: str = "",
     ) -> None:
         self.voice_channel_id = voice_channel_id
         self.bitrate = bitrate
+        self.proxy = proxy
         self._on_event = on_event
         self.queue: list[Track] = []
         self.current: Track | None = None
