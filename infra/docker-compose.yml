@@ -95,6 +95,12 @@ services:
       # O provedor de PO token abaixo. Vazio desliga; preenchido, é a saída que
       # não exige conta nenhuma do Google.
       YTDLP_POT_BASE_URL: ${YTDLP_POT_BASE_URL:-}
+      # Proxy HTTP por onde sai TUDO que fala com o YouTube. Tem que ser HTTP
+      # (o ffmpeg não fala SOCKS) e tem que valer para os dois lados: a URL de
+      # mídia é assinada com o IP de quem a pediu, então resolver por um
+      # endereço e baixar por outro dá 403. Com os serviços warp/warp-http
+      # ligados, o valor é http://warp-http:8888.
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
     volumes:
       # Onde pôr o cookies.txt, se for preciso. O diretório é criado vazio se
       # não existir, então o serviço sobe igual sem ele.
@@ -106,6 +112,36 @@ services:
   bgutil:
     image: brainicism/bgutil-ytdlp-pot-provider:1.3.2
     restart: unless-stopped
+
+  # Saída pela Cloudflare, para quando o YouTube bloqueia o IP da VPS. Os dois
+  # serviços abaixo só sobem com COMPOSE_PROFILES=warp no .env — sem isso o
+  # deploy segue exatamente como antes.
+  warp:
+    image: caomingjun/warp
+    restart: unless-stopped
+    profiles: ["warp"]
+    cap_add:
+      - NET_ADMIN
+      - MKNOD
+      - AUDIT_WRITE
+    devices:
+      - /dev/net/tun
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 0
+      net.ipv4.conf.all.src_valid_mark: 1
+    volumes:
+      - campfire_warp:/var/lib/cloudflare-warp
+
+  # O WARP oferece SOCKS5; o ffmpeg só sabe HTTP CONNECT. Esta ponte traduz,
+  # para que yt-dlp e ffmpeg saiam pelo mesmo endereço.
+  warp-http:
+    image: vimagick/tinyproxy
+    restart: unless-stopped
+    profiles: ["warp"]
+    depends_on:
+      - warp
+    volumes:
+      - ./warp/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
 
   caddy:
     image: caddy:2-alpine
@@ -126,6 +162,7 @@ services:
       - campfire_caddy_config:/config
 
 volumes:
+  campfire_warp:
   campfire_postgres:
   campfire_uploads:
   campfire_caddy_data:

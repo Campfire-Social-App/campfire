@@ -217,7 +217,10 @@ async def test_player_clients_and_cookies_reach_yt_dlp() -> None:
         player_clients="tv, web_embedded ",
         cookies_file="/run/cookies.txt",
         pot_base_url="http://bgutil:4416",
+        proxy="http://warp:8080",
     )
+    assert tuned["proxy"] == "http://warp:8080"
+    assert "proxy" not in plain
     assert tuned["extractor_args"]["youtube"] == {"player_client": ["tv", "web_embedded"]}
     assert tuned["cookiefile"] == "/run/cookies.txt"
     # The key is derived from the plugin's provider class (BgUtilHTTPPTP ->
@@ -288,3 +291,70 @@ async def test_the_pot_key_matches_what_the_installed_plugin_registers() -> None
     }
     assert registered, "o plugin de PO token não está instalado"
     assert key in registered, f"{key} não está entre {sorted(registered)}"
+
+
+async def test_ffmpeg_uses_the_same_proxy_as_yt_dlp(monkeypatch) -> None:
+    """The media URL yt-dlp gets back is signed with the IP that asked for it —
+    `ip` sits inside the URL's own `sparams`. So if ffmpeg fetched it from a
+    different address the CDN would answer 403, and proxying only half of this
+    would look like it worked right up until playback."""
+    calls: list[list[str]] = []
+
+    class _Process:
+        returncode = None
+        stdout = None
+        stderr = None
+
+        def kill(self) -> None:
+            return None
+
+    async def fake_exec(*args, **kwargs):
+        calls.append(list(args))
+        return _Process()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(asyncio, "create_task", lambda coro, **kw: coro.close())
+
+    player = Player(
+        voice_channel_id="voice",
+        ffmpeg_path="ffmpeg",
+        on_event=_noop,
+        proxy="http://warp:8080",
+    )
+    player._source = object()
+
+    await player._start(track("remoto")._replace_url("https://cdn.test/audio"))
+    args = calls[-1]
+    assert "-http_proxy" in args
+    assert args[args.index("-http_proxy") + 1] == "http://warp:8080"
+    # Before -i, or ffmpeg treats it as an output option and ignores it.
+    assert args.index("-http_proxy") < args.index("-i")
+
+    # A local file has no proxy to go through, and ffmpeg would reject the
+    # option for that protocol the same way it rejects -reconnect.
+    await player._start(track("local")._replace_url("/tmp/faixa.wav"))
+    assert "-http_proxy" not in calls[-1]
+
+
+async def test_no_proxy_configured_leaves_ffmpeg_untouched(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    class _Process:
+        returncode = None
+        stdout = None
+        stderr = None
+
+        def kill(self) -> None:
+            return None
+
+    async def fake_exec(*args, **kwargs):
+        calls.append(list(args))
+        return _Process()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    monkeypatch.setattr(asyncio, "create_task", lambda coro, **kw: coro.close())
+
+    player = Player(voice_channel_id="voice", ffmpeg_path="ffmpeg", on_event=_noop)
+    player._source = object()
+    await player._start(track("remoto")._replace_url("https://cdn.test/audio"))
+    assert "-http_proxy" not in calls[-1]
