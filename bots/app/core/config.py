@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # itself: tv, tv_downgraded, web_embedded, visionos.
     ytdlp_player_clients: str = ""
 
+    # Where the bgutil PO token provider answers, e.g. http://bgutil:4416.
+    # YouTube increasingly wants a proof-of-origin token, and this is the way to
+    # supply one without tying a Google account to the bot. Empty disables it.
+    ytdlp_pot_base_url: str = ""
+
     # Path to a Netscape-format cookies file, mounted into the container. The
     # dependable answer to the same block, at the cost of tying a Google
     # account to the bot — use a throwaway, never a personal one.
