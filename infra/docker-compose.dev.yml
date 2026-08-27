@@ -74,10 +74,19 @@ services:
       BOT_USERNAME: ytdlp
       BOT_PASSWORD: ytdlp-local-dev
       BOTS_SHARED_SECRET: campfire-local-bots-secret
+      # Vazio por padrao: daqui o YouTube costuma resolver sem PO token. Ponha
+      # http://127.0.0.1:4416 para exercitar o mesmo caminho da producao.
+      YTDLP_POT_BASE_URL: ${YTDLP_POT_BASE_URL:-}
     # Rede do host pelo mesmo motivo do server e do livekit aqui: o SFU anuncia
     # um endereco de host, e a conexao WebRTC do bot precisa chegar nele do
     # mesmo jeito que a de um cliente.
     network_mode: host
+
+  bgutil:
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.2
+    restart: unless-stopped
+    ports:
+      - "4416:4416"
 
   adminer:
     image: adminer:latest

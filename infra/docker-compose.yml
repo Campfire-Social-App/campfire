@@ -92,10 +92,20 @@ services:
       # muito mais fácil que um IP residencial. Estes dois são as saídas.
       YTDLP_PLAYER_CLIENTS: ${YTDLP_PLAYER_CLIENTS:-}
       YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
+      # O provedor de PO token abaixo. Vazio desliga; preenchido, é a saída que
+      # não exige conta nenhuma do Google.
+      YTDLP_POT_BASE_URL: ${YTDLP_POT_BASE_URL:-}
     volumes:
       # Onde pôr o cookies.txt, se for preciso. O diretório é criado vazio se
       # não existir, então o serviço sobe igual sem ele.
       - ./bots-secrets:/run/bots:ro
+
+  # Gera os proof-of-origin tokens que o YouTube pede. Não publica porta: só o
+  # serviço de bots o alcança. Fica de pé mesmo sem YTDLP_POT_BASE_URL — quem
+  # decide usá-lo é o bots, e sem a variável ele é só um container ocioso.
+  bgutil:
+    image: brainicism/bgutil-ytdlp-pot-provider:1.3.2
+    restart: unless-stopped
 
   caddy:
     image: caddy:2-alpine

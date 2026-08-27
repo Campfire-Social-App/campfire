@@ -16,6 +16,10 @@ dependencies = [
     # room, which the token-minting package cannot do.
     "livekit>=1.0.0,<2.0.0",
     "yt-dlp>=2025.1.1",
+    # Registra o provider de PO token do yt-dlp, que fala com o serviço bgutil
+    # do compose. Sem dependências próprias, e inerte enquanto
+    # YTDLP_POT_BASE_URL estiver vazio.
+    "bgutil-ytdlp-pot-provider>=1.3.2,<2.0.0",
 ]
 
 [tool.poetry]

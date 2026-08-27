@@ -213,9 +213,19 @@ async def test_player_clients_and_cookies_reach_yt_dlp() -> None:
     assert "extractor_args" not in plain, "empty means yt-dlp's own default order"
     assert "cookiefile" not in plain
 
-    tuned = ydl_options(player_clients="tv, web_embedded ", cookies_file="/run/cookies.txt")
-    assert tuned["extractor_args"] == {"youtube": {"player_client": ["tv", "web_embedded"]}}
+    tuned = ydl_options(
+        player_clients="tv, web_embedded ",
+        cookies_file="/run/cookies.txt",
+        pot_base_url="http://bgutil:4416",
+    )
+    assert tuned["extractor_args"]["youtube"] == {"player_client": ["tv", "web_embedded"]}
     assert tuned["cookiefile"] == "/run/cookies.txt"
+    # The key is derived from the plugin's provider class (BgUtilHTTPPTP ->
+    # PROVIDER_KEY BgUtilHTTP). Getting it wrong fails *silently* — yt-dlp just
+    # never consults the provider — so it is pinned here.
+    assert tuned["extractor_args"]["youtubepot-bgutilhttp"] == {
+        "base_url": ["http://bgutil:4416"]
+    }
     # The rest of the options are untouched.
     assert tuned["format"] == plain["format"]
     assert tuned["default_search"] == "ytsearch1"
@@ -255,3 +265,26 @@ async def test_other_failures_keep_their_own_message(monkeypatch) -> None:
     with pytest.raises(player_module.TrackUnavailable) as raised:
         await player_module.resolve("uma faixa", "alice")
     assert "Video unavailable" in str(raised.value)
+
+
+async def test_the_pot_key_matches_what_the_installed_plugin_registers() -> None:
+    """A typo here would cost nothing at import time and everything at runtime:
+    yt-dlp looks the provider's settings up by this exact name, and an unknown
+    key is ignored rather than reported."""
+    from yt_dlp import YoutubeDL
+    from yt_dlp.extractor.youtube.pot._registry import _pot_providers
+
+    from app.bots.ytdlp.player import ydl_options
+
+    # The registry fills in when yt-dlp loads its plugins, which construction
+    # triggers — reading it cold gives an empty dict.
+    YoutubeDL({"quiet": True, "no_warnings": True}).close()
+
+    key = next(iter(ydl_options(pot_base_url="http://x:4416")["extractor_args"]))
+    registered = {
+        f"youtubepot-{cls.PROVIDER_KEY.lower()}"
+        for cls in _pot_providers.value.values()
+        if hasattr(cls, "PROVIDER_KEY")
+    }
+    assert registered, "o plugin de PO token não está instalado"
+    assert key in registered, f"{key} não está entre {sorted(registered)}"

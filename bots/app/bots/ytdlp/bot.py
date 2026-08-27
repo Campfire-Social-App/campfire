@@ -38,6 +38,7 @@ class YtDlpBot:
         bitrate: int = 128_000,
         player_clients: str = "",
         cookies_file: str = "",
+        pot_base_url: str = "",
     ) -> None:
         self._client = client
         self._gateway = gateway
@@ -45,6 +46,7 @@ class YtDlpBot:
         self._bitrate = bitrate
         self._player_clients = player_clients
         self._cookies_file = cookies_file
+        self._pot_base_url = pot_base_url
         self._livekit_url_override = livekit_url_override
         # One player per voice channel: two groups in two calls are two
         # independent queues, the way any music bot behaves.
@@ -151,6 +153,7 @@ class YtDlpBot:
                 context.username,
                 player_clients=self._player_clients,
                 cookies_file=self._cookies_file,
+                pot_base_url=self._pot_base_url,
             )
         except TrackUnavailable as exc:
             await self._say(player.voice_channel_id, f"⚠️ Não consegui achar `{query}`: {exc}")

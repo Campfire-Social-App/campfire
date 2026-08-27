@@ -40,11 +40,24 @@ _YDL_OPTIONS = {
 _BOT_CHECK = "sign in to confirm"
 
 
-def ydl_options(*, player_clients: str = "", cookies_file: str = "") -> dict:
+def ydl_options(
+    *, player_clients: str = "", cookies_file: str = "", pot_base_url: str = ""
+) -> dict:
     options = dict(_YDL_OPTIONS)
+    extractor_args: dict[str, dict[str, list[str]]] = {}
+
     clients = [c.strip() for c in player_clients.split(",") if c.strip()]
     if clients:
-        options["extractor_args"] = {"youtube": {"player_client": clients}}
+        extractor_args["youtube"] = {"player_client": clients}
+    if pot_base_url:
+        # Key is derived from the plugin's provider class (BgUtilHTTPPTP ->
+        # PROVIDER_KEY BgUtilHTTP), which is what yt-dlp looks the settings up
+        # under. Getting it wrong fails silently: the provider is simply never
+        # consulted.
+        extractor_args["youtubepot-bgutilhttp"] = {"base_url": [pot_base_url]}
+
+    if extractor_args:
+        options["extractor_args"] = extractor_args
     if cookies_file:
         options["cookiefile"] = cookies_file
     return options
@@ -107,10 +120,17 @@ def _resolve_blocking(query: str, requested_by: str, options: dict) -> Track:
 
 
 async def resolve(
-    query: str, requested_by: str, *, player_clients: str = "", cookies_file: str = ""
+    query: str,
+    requested_by: str,
+    *,
+    player_clients: str = "",
+    cookies_file: str = "",
+    pot_base_url: str = "",
 ) -> Track:
     """yt-dlp is synchronous and does network I/O, so it runs off the loop."""
-    options = ydl_options(player_clients=player_clients, cookies_file=cookies_file)
+    options = ydl_options(
+        player_clients=player_clients, cookies_file=cookies_file, pot_base_url=pot_base_url
+    )
     try:
         return await asyncio.to_thread(_resolve_blocking, query, requested_by, options)
     except TrackUnavailable:
@@ -122,8 +142,8 @@ async def resolve(
             # is noise to whoever typed /play. Say what it is and who can fix it.
             raise TrackUnavailable(
                 "o YouTube está pedindo login para este servidor (bloqueio por IP). "
-                "Quem administra precisa configurar YTDLP_PLAYER_CLIENTS ou "
-                "YTDLP_COOKIES_FILE"
+                "Quem administra precisa configurar YTDLP_POT_BASE_URL, "
+                "YTDLP_PLAYER_CLIENTS ou YTDLP_COOKIES_FILE"
             ) from exc
         raise TrackUnavailable(message[:200] or "falhou ao resolver") from exc
 

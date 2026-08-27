@@ -111,14 +111,26 @@ Comece por `visionos`, que é o único que junta as duas coisas. Os demais
 não adianta tentá-los às cegas. Isso muda com o tempo: se nenhum funcionar,
 vale repetir a varredura antes de partir para os cookies.
 
-**2. Cookies.** `YTDLP_COOKIES_FILE` aponta para um arquivo em formato
-Netscape. Em produção ele vai em `infra/bots-secrets/`, montado em `/run/bots`.
-É a saída confiável, ao custo de amarrar uma conta Google ao bot — **use uma
-descartável, nunca a sua**.
+**2. PO token.** O YouTube cada vez mais quer um *proof-of-origin token*, e o
+compose já sobe o serviço que os gera (`bgutil`, sem porta publicada). Ligue
+com:
 
-Se nem isso bastar, o passo seguinte é um provedor de PO token
-(`bgutil-ytdlp-pot-provider`), que é mais um serviço no compose. Não está aqui
-porque é bastante peso para um problema que os dois de cima costumam resolver.
+    YTDLP_POT_BASE_URL=http://bgutil:4416
+
+**Esta é a saída a preferir**: não exige conta nenhuma do Google, nada expira e
+não há arquivo para renovar. O plugin correspondente já vem instalado na imagem
+e fica inerte enquanto a variável estiver vazia.
+
+**3. Cookies.** `YTDLP_COOKIES_FILE` aponta para um arquivo em formato
+Netscape, que em produção vai em `infra/bots-secrets/` (montado em `/run/bots`).
+Só depois de esgotar as duas de cima, porque amarra uma conta Google ao bot —
+**use uma descartável, nunca a sua**. O diretório é montado inteiro, e não o
+arquivo, justamente para que trocar o `cookies.txt` valha no próximo `/play`
+sem deploy nem restart; um bind mount de arquivo único deixaria o container
+preso ao inode antigo.
+
+Esgotadas as três, o que resta é sair por um IP com boa reputação — proxy ou
+outra hospedagem. O bloqueio é do endereço, não do código.
 
 ## Adicionando outro bot
 
