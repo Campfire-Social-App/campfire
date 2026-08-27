@@ -130,14 +130,17 @@ sem deploy nem restart; um bind mount de arquivo único deixaria o container
 preso ao inode antigo.
 
 **4. Sair por outro IP.** O bloqueio é do endereço, não do código, então a
-saída mais direta é não usar o endereço bloqueado. O compose traz isso pronto,
-via Cloudflare WARP — no `infra/.env`:
+saída mais direta é não usar o endereço bloqueado. Em produção isso **já está
+ligado**: o compose sobe o Cloudflare WARP e manda o yt-dlp e o ffmpeg por ele.
 
-    COMPOSE_PROFILES=warp
-    YTDLP_PROXY=http://warp-http:8888
+Esses valores são versionados em `infra/docker-compose.yml`, não lidos do
+`.env` da máquina. É deliberado: enquanto vinham do `.env`, cada tentativa
+abandonada ficava para trás na VPS e vencia silenciosamente o que o
+repositório dizia. Mudar de ideia sobre eles é um commit — revisável e
+reversível. O `.env` continua sendo só dos segredos.
 
-Sem `COMPOSE_PROFILES=warp` os dois serviços nem sobem, e o deploy é o de
-sempre.
+O `infra/deploy.sh` avisa quando encontra no `.env` chaves que nada mais lê,
+para o resíduo não se acumular invisível.
 
 Dois detalhes que essa montagem existe para resolver, e que não são óbvios:
 

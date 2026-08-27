@@ -40,6 +40,21 @@ envsubst '$LIVEKIT_API_KEY $LIVEKIT_API_SECRET $LIVEKIT_DOMAIN' \
   > "$REPO_DIR/infra/livekit/livekit.generated.yaml"
 chmod 600 "$REPO_DIR/infra/livekit/livekit.generated.yaml"
 
+# Chaves que sobraram no .env e que nada no compose lê mais. Elas não fazem
+# nada, mas guardam a memória de tentativas abandonadas — e uma delas voltar a
+# ser lida um dia seria uma surpresa desagradável. Só avisa; a lista sai da
+# comparação com o que o compose de fato interpola, então continua certa
+# sozinha conforme o compose muda.
+log "Conferindo o .env"
+lidas="$(grep -oE '\$\{[A-Z_][A-Z0-9_]*' "$COMPOSE_FILE" | cut -c3- | sort -u)"
+declaradas="$(grep -oE '^[A-Z_][A-Z0-9_]*=' "$ENV_FILE" | tr -d '=' | sort -u)"
+# COMPOSE_* são consumidas pelo próprio docker compose, não interpoladas.
+orfas="$(comm -13 <(echo "$lidas") <(echo "$declaradas") | grep -v '^COMPOSE_' || true)"
+if [ -n "$orfas" ]; then
+  echo "AVISO: estas linhas do $ENV_FILE não são lidas por nada e podem ser removidas:"
+  echo "$orfas" | sed 's/^/  - /'
+fi
+
 # --build porque a imagem do server é construída na própria VPS: sem isso o
 # compose reaproveitaria a imagem antiga e o deploy não mudaria nada.
 log "Subindo os containers"

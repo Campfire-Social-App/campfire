@@ -87,20 +87,28 @@ services:
       # público dos clients. Só aponte para ws://livekit:7880 se a VPS não
       # rotear o próprio IP público de volta para dentro (sem hairpin NAT).
       LIVEKIT_URL_OVERRIDE: ${BOT_LIVEKIT_URL:-}
-      # O YouTube decide por IP de origem se acredita que quem chama é gente, e
-      # endereço de datacenter cai no "Sign in to confirm you're not a bot"
-      # muito mais fácil que um IP residencial. Estes dois são as saídas.
-      YTDLP_PLAYER_CLIENTS: ${YTDLP_PLAYER_CLIENTS:-}
-      YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
-      # O provedor de PO token abaixo. Vazio desliga; preenchido, é a saída que
-      # não exige conta nenhuma do Google.
-      YTDLP_POT_BASE_URL: ${YTDLP_POT_BASE_URL:-}
-      # Proxy HTTP por onde sai TUDO que fala com o YouTube. Tem que ser HTTP
-      # (o ffmpeg não fala SOCKS) e tem que valer para os dois lados: a URL de
-      # mídia é assinada com o IP de quem a pediu, então resolver por um
-      # endereço e baixar por outro dá 403. Com os serviços warp/warp-http
-      # ligados, o valor é http://warp-http:8888.
-      YTDLP_PROXY: ${YTDLP_PROXY:-}
+      # --- Ajuste do YouTube: valores fixos, não lidos do .env ---
+      #
+      # Estes quatro são versionados de propósito. Não são segredo, e enquanto
+      # vinham do .env da máquina cada tentativa abandonada ficava para trás
+      # ali (um YTDLP_PLAYER_CLIENTS=android_vr esquecido, por exemplo) e
+      # vencia silenciosamente o que o repositório dizia. Mudar de ideia sobre
+      # eles agora é um commit, que é o que se quer poder revisar e reverter.
+      #
+      # Saída pela Cloudflare: o IP da VPS está bloqueado pelo YouTube, e este
+      # proxy vale para o yt-dlp e para o ffmpeg — a URL de mídia é assinada
+      # com o IP de quem a pediu, então resolver por um endereço e baixar por
+      # outro dá 403. Tem que ser HTTP; o ffmpeg não fala SOCKS.
+      YTDLP_PROXY: http://warp-http:8888
+      # Proof-of-origin token. Não custa nada estando o bgutil de pé, e cobre o
+      # caso de o IP limpo ainda assim ser questionado.
+      YTDLP_POT_BASE_URL: http://bgutil:4416
+      # Vazio = ordem padrão do yt-dlp, que saindo por um IP limpo costuma ser
+      # melhor do que forçar um client só.
+      YTDLP_PLAYER_CLIENTS: ""
+      # Cookies são o último recurso e amarram uma conta Google ao bot. Se for
+      # preciso, o arquivo vai em infra/bots-secrets/ e o caminho entra aqui.
+      YTDLP_COOKIES_FILE: ""
     volumes:
       # Onde pôr o cookies.txt, se for preciso. O diretório é criado vazio se
       # não existir, então o serviço sobe igual sem ele.
@@ -113,13 +121,14 @@ services:
     image: brainicism/bgutil-ytdlp-pot-provider:1.3.2
     restart: unless-stopped
 
-  # Saída pela Cloudflare, para quando o YouTube bloqueia o IP da VPS. Os dois
-  # serviços abaixo só sobem com COMPOSE_PROFILES=warp no .env — sem isso o
-  # deploy segue exatamente como antes.
+  # Saída pela Cloudflare, porque o YouTube bloqueia o IP desta VPS. Sobe
+  # sempre: quem decide isso é o repositório, não o .env da máquina — foi por
+  # depender do .env que a configuração anterior derivou.
+  #
+  # Para desligar, é um commit removendo este serviço e YTDLP_PROXY acima.
   warp:
     image: caomingjun/warp
     restart: unless-stopped
-    profiles: ["warp"]
     cap_add:
       - NET_ADMIN
       - MKNOD
@@ -137,7 +146,6 @@ services:
   warp-http:
     image: vimagick/tinyproxy
     restart: unless-stopped
-    profiles: ["warp"]
     depends_on:
       - warp
     volumes:
