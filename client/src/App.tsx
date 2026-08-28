@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TitleBar } from "@/components/TitleBar";
 import { useHydration } from "@/lib/useHydration";
+import { initUpdater } from "@/lib/updater";
 import { useAuthStore } from "@/state/auth";
 import { useSettingsStore } from "@/state/settings";
 import { ServerConnectScreen } from "@/screens/ServerConnectScreen";
@@ -39,6 +40,10 @@ function App() {
       void restoreSession();
     }
   }, [hydrated, authStatus, restoreSession]);
+
+  // Outside the auth gate on purpose: a client too old to talk to the server
+  // still has to be able to update itself.
+  useEffect(() => initUpdater(), []);
 
   let content: React.ReactNode;
   if (!hydrated || authStatus === "idle" || authStatus === "restoring") {

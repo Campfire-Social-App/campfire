@@ -26,7 +26,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,5 +35,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Campfire-Social-App/campfire/releases/download/client-latest/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRFQ0Q1NUUyNDhDQjAzNzgKUldSNEE4dEk0bFhOVHVNOVVkZE81N25UWThCWnpqWXN3Q0VRdFVkUkZWZXJ0VDlDckN0a0lqVEQK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

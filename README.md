@@ -189,6 +189,65 @@ Portas que precisam estar abertas: 443/TCP+UDP e 80/TCP (Caddy e o desafio do AC
 
 ---
 
+## Distribuição do cliente (Windows)
+
+O cliente se atualiza sozinho. O [updater do Tauri](https://tauri.app/plugin/updater/)
+checa por versão nova na abertura e a cada 6 horas — a janela fecha para a
+bandeja, então uma sessão dura dias e checar só no boot perderia quase toda
+release. Quando há uma, um toast oferece atualizar; aceitando, o instalador
+NSIS roda em modo `passive` (barra de progresso, sem cliques) e o app reabre já
+atualizado.
+
+Duas trilhas no [Build Windows client](.github/workflows/build-windows.yml):
+
+| Trilha | O que produz | Alimenta o auto-update? |
+| :--- | :--- | :--- |
+| Run manual (`workflow_dispatch`) | Draft pre-release rolante `campfire-dev` | Não |
+| Tag `client-v*` | Release versionada, publicada | Sim |
+
+Build de dev não vira update automático de propósito — é o link de teste
+manual. O que o cliente instalado consulta é o `latest.json` da tag fixa
+`client-latest`, que o workflow reescreve a cada release versionada. Essa tag
+existe porque o GitHub só tem uma "latest release" por repositório, e este repo
+também corta releases `app-v*` do cliente Flutter, que roubariam esse endereço.
+
+### Cortar uma release
+
+A versão declarada precisa bater com a tag, nos três arquivos — o updater
+compara exatamente esse número, e o workflow falha na cara se algum divergir:
+
+```bash
+# client/src-tauri/tauri.conf.json, client/package.json, client/src-tauri/Cargo.toml
+git commit -am "chore(client): v0.2.0"
+git tag client-v0.2.0 && git push origin master client-v0.2.0
+```
+
+### Secrets do workflow
+
+`TAURI_SIGNING_PRIVATE_KEY` e `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (vazia, se a
+chave foi gerada sem senha). É a chave minisign que assina os artefatos de
+update; a pública correspondente está fixada no `tauri.conf.json`, e o cliente
+recusa qualquer pacote que não bata com ela. **Perder a privada significa não
+conseguir mais atualizar ninguém** — quem já instalou passa a precisar
+reinstalar na mão. Guarde uma cópia fora da máquina.
+
+Gerar uma nova, se for o caso:
+
+```bash
+cd client && npx tauri signer generate -w ../.local/campfire-updater.key
+```
+
+O bundle é só NSIS (`.exe`); o MSI saiu porque o updater no MSI reabre o UAC a
+cada atualização. Quem instalou um MSI antigo precisa instalar o `.exe` uma vez
+— daí em diante é automático.
+
+A assinatura Authenticode é um problema separado e continua em aberto: sem
+certificado, o SmartScreen avisa na primeira instalação. Ele não bloqueia o
+auto-update, e como só aparece uma vez, o auto-update na prática reduz a
+exposição a esse aviso.
+
+---
+
 ## Licença
 
 A definir.
