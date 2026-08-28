@@ -1,10 +1,19 @@
 name: Build Windows client
 
-# Manual runs (workflow_dispatch) build the app and publish it to a rolling
-# "campfire-dev" draft pre-release, so the latest installer is always one
-# click away without creating a new release each time. Pushing a `client-v*`
-# tag instead creates a proper versioned draft release. Either way the
-# .msi/.exe is also attached as a downloadable workflow artifact.
+# Duas trilhas, de propósito:
+#
+# - `workflow_dispatch` publica na pre-release rolante "campfire-dev", que
+#   continua sendo draft. É o link de teste manual, e **não** alimenta o
+#   auto-update — build de dev empurrado para a máquina de todo mundo é
+#   exatamente como se quebra o cliente de um usuário.
+# - Uma tag `client-v*` corta a release versionada de verdade (publicada, não
+#   draft) e republica o `latest.json` na tag fixa `client-latest`, que é o
+#   endpoint que o updater consulta.
+#
+# O `latest.json` mora numa tag própria em vez de sair por
+# `releases/latest/download/...` porque o GitHub só tem uma "latest release"
+# por repositório — e este repo também corta releases `app-v*` do cliente
+# Flutter, que roubariam esse endereço.
 on:
   workflow_dispatch:
   push:
@@ -47,21 +56,72 @@ jobs:
             echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "name=Campfire __VERSION__" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "draft=false" >> "$GITHUB_OUTPUT"
           else
             echo "tag=campfire-dev" >> "$GITHUB_OUTPUT"
             echo "name=Campfire (dev build)" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # O updater compara exatamente a versão do tauri.conf.json com a que o
+      # cliente instalado tem. Uma tag que não bate com ela publicaria uma
+      # release "nova" que ninguém baixa — falha aqui, com a diferença na tela,
+      # em vez de silenciosamente.
+      - name: Check the tag matches the declared version
+        if: startsWith(github.ref, 'refs/tags/client-v')
+        shell: bash
+        working-directory: client
+        run: |
+          tag_version="${GITHUB_REF_NAME#client-v}"
+          conf_version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          pkg_version=$(node -p "require('./package.json').version")
+          cargo_version=$(grep -m1 '^version = ' src-tauri/Cargo.toml | cut -d'"' -f2)
+
+          status=0
+          for pair in "tauri.conf.json:$conf_version" "package.json:$pkg_version" "Cargo.toml:$cargo_version"; do
+            file="${pair%%:*}"
+            version="${pair#*:}"
+            if [[ "$version" != "$tag_version" ]]; then
+              echo "::error::$file diz $version, mas a tag é $tag_version"
+              status=1
+            fi
+          done
+          exit $status
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Assina os artefatos de update. Com `createUpdaterArtifacts` ligado
+          # o build falha sem isto, então vale para as duas trilhas.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: client
           uploadWorkflowArtifacts: true
           tagName: ${{ steps.release.outputs.tag }}
           releaseName: ${{ steps.release.outputs.name }}
           releaseBody: "Build automático via GitHub Actions."
-          releaseDraft: true
+          releaseDraft: ${{ steps.release.outputs.draft }}
           prerelease: ${{ steps.release.outputs.prerelease }}
+
+      # O `latest.json` aponta para os assets da release versionada, que são
+      # permanentes — a tag `client-latest` guarda só o ponteiro. Ela nasce como
+      # pre-release para não roubar o selo de "Latest" da release de verdade; o
+      # download direto por URL funciona igual.
+      - name: Point the updater at this release
+        if: startsWith(github.ref, 'refs/tags/client-v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          gh release download "$TAG" --pattern latest.json --dir . --clobber
+          if ! gh release view client-latest > /dev/null 2>&1; then
+            gh release create client-latest \
+              --title "Updater manifest" \
+              --notes "Ponteiro do auto-update para a release estável mais recente. Não baixe daqui — use a release versionada." \
+              --prerelease
+          fi
+          gh release upload client-latest latest.json --clobber
