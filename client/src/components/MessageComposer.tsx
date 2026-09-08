@@ -300,7 +300,7 @@ export function MessageComposer({
               <Reply className="size-3.5 shrink-0" />
               Replying to{" "}
               <span className={cn("font-medium", usernameColorFor(replyingTo.author.username))}>
-                {replyingTo.author.username}
+                {replyingTo.author.display_name ?? replyingTo.author.username}
               </span>
             </span>
             <button

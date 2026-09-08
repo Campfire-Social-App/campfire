@@ -111,7 +111,7 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
               <UserModerationMenu user={message.author}>
                 <button
                   type="button"
-                  title={`View ${message.author.username}'s profile`}
+                  title={`View ${message.author.display_name ?? message.author.username}'s profile`}
                   className="rounded-full"
                 >
                   <UserAvatar username={message.author.username} avatarUrl={message.author.avatar_url} />
@@ -136,7 +136,7 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
                 usernameColorFor(message.reply_to.author.username),
               )}
             >
-              {message.reply_to.author.username}
+              {message.reply_to.author.display_name ?? message.reply_to.author.username}
             </span>
             <span className="min-w-0 truncate">
               {message.reply_to.content.trim() ||
@@ -149,7 +149,7 @@ export function MessageItem({ message, showHeader, onReply }: MessageItemProps) 
           <div className="flex items-baseline gap-2">
             <UserProfileHoverCard user={message.author}>
               <span className={cn("cursor-default text-[15px] font-semibold", usernameColorFor(message.author.username))}>
-                {isOwn ? "You" : message.author.username}
+                {isOwn ? "You" : (message.author.display_name ?? message.author.username)}
               </span>
             </UserProfileHoverCard>
             {message.author.is_bot && <BotBadge className="self-center" />}

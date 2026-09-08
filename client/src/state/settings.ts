@@ -2,15 +2,18 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { createSecureStorage } from "./persist";
 import type { NoiseGateMode } from "@/lib/noiseGate";
+import type { ThemeId } from "@/lib/themes";
 
 interface SettingsState {
   serverUrl: string | null;
   noiseSuppressionEnabled: boolean;
   noiseGateMode: NoiseGateMode;
+  theme: ThemeId;
   setServerUrl: (url: string) => void;
   clearServerUrl: () => void;
   setNoiseSuppressionEnabled: (enabled: boolean) => void;
   setNoiseGateMode: (mode: NoiseGateMode) => void;
+  setTheme: (theme: ThemeId) => void;
 }
 
 function normalizeServerUrl(url: string): string {
@@ -27,10 +30,12 @@ export const useSettingsStore = create<SettingsState>()(
       serverUrl: null,
       noiseSuppressionEnabled: true,
       noiseGateMode: "standard",
+      theme: "ember",
       setServerUrl: (url) => set({ serverUrl: normalizeServerUrl(url) }),
       clearServerUrl: () => set({ serverUrl: null }),
       setNoiseSuppressionEnabled: (enabled) => set({ noiseSuppressionEnabled: enabled }),
       setNoiseGateMode: (mode) => set({ noiseGateMode: mode }),
+      setTheme: (theme) => set({ theme }),
     }),
     {
       name: "campfire-settings",

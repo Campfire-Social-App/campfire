@@ -68,7 +68,11 @@ function DirectMessageRailItem({
   const isOnline = usePresenceStore((s) => !!s.onlineUserIds[conversation.recipient.id]);
 
   return (
-    <RailItem active={active} label={conversation.recipient.username} onClick={onClick}>
+    <RailItem
+      active={active}
+      label={conversation.recipient.display_name ?? conversation.recipient.username}
+      onClick={onClick}
+    >
       <div className="relative">
         {/* Sized to match the server button above it, so the rail reads as one
             column. Circular (not the server button's squircle) — that's the

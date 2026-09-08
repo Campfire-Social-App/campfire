@@ -112,6 +112,8 @@ async def _build_ready_payload(user: User) -> dict:
         "user": {
             "id": str(user.id),
             "username": user.username,
+            "display_name": user.display_name,
+            "identity_plate_decoration": user.identity_plate_decoration,
             "is_admin": user.is_admin,
             "is_bot": user.is_bot,
             "avatar_url": user.avatar_url,

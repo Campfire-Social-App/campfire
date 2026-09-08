@@ -82,6 +82,23 @@ Pré-requisitos: Docker, Node.js + npm, Rust (para o Tauri), Python 3.12+ + Poet
 No Linux, o `tauri dev`/`tauri build` também precisa das libs de sistema do WebView
 (`webkit2gtk`, `gtk3`, etc.) — veja https://tauri.app/start/prerequisites/#linux.
 
+Para iniciar tudo com um único comando:
+
+```bash
+./run.sh          # serviços + cliente web: http://localhost:1420
+./run.sh desktop  # alternativa desktop Tauri (requer Node 22 + Rust)
+./run.sh rebuild  # reconstrói os containers após mudar o backend
+./run.sh stop     # encerra os containers locais
+```
+
+O script usa `infra/docker-compose.dev.yml`, aguarda a API ficar saudável e não
+depende das variáveis `DOMAIN`, `LIVEKIT_DOMAIN` e `POSTGRES_PASSWORD` do deploy
+de produção. Se não houver Node.js 22 localmente, o modo web usa automaticamente
+o container oficial do Node. Execute `./run.sh help` para ver logs, status e
+demais comandos.
+
+Inicialização manual, se preferir controlar cada processo:
+
 ```bash
 # Stack de apoio (Postgres + LiveKit em modo dev)
 docker compose -f infra/docker-compose.dev.yml up -d

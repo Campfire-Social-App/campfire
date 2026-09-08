@@ -1,6 +1,9 @@
 export interface User {
   id: string;
   username: string;
+  display_name?: string | null;
+  identity_plate_decoration?: ProfileDecorationId;
+  custom_identity_plate?: CustomDecorationAsset | null;
   is_admin: boolean;
   /** A bot account, driven by the bots service rather than by a person. It is
    * online like anyone else; the badge is what tells the two apart. */
@@ -11,6 +14,56 @@ export interface User {
   banner_url: string | null;
   created_at: string;
 }
+
+export type ProfileLayout = "standard" | "minimal" | "gamer" | "creator" | "developer";
+export type AvatarDecoration =
+  | "none" | "admin" | "founder" | "developer" | "bug_hunter" | "early_adopter" | "event_winner";
+export type ProfileDecorationId =
+  | "none" | "spectral_warden" | "ember_sovereign" | "neon_revenant" | "custom";
+
+export type DecorationRole = "card-frame" | "card-top" | "avatar-frame" | "identity-plate";
+
+export interface CustomDecorationAsset {
+  src: string;
+  poster_src: string | null;
+  format: "png" | "gif";
+  source_size: [number, number];
+  animated: boolean;
+}
+
+export type CustomDecorationAssets = Partial<Record<DecorationRole, CustomDecorationAsset>>;
+
+export interface UserActivity {
+  type: "game" | "music" | "streaming" | "custom";
+  name: string;
+  details?: string | null;
+  state?: string | null;
+  started_at?: string | null;
+  url?: string | null;
+}
+
+export interface UserProfile {
+  user: User;
+  display_name: string | null;
+  bio: string | null;
+  custom_status: string | null;
+  profile_layout: ProfileLayout;
+  accent_color: string;
+  banner_type: "solid" | "gradient" | "image";
+  banner_color: string;
+  banner_secondary_color: string;
+  background_type: "solid" | "gradient" | "glass";
+  avatar_decoration: AvatarDecoration;
+  profile_decoration: ProfileDecorationId;
+  avatar_frame_decoration: ProfileDecorationId;
+  identity_plate_decoration: ProfileDecorationId;
+  profile_effect: "none" | "ember" | "glow";
+  custom_decoration_assets: CustomDecorationAssets;
+  badges: string[];
+  activities: UserActivity[];
+}
+
+export type UserProfileUpdate = Omit<UserProfile, "user" | "badges" | "activities" | "custom_decoration_assets">;
 
 export interface AuthResponse {
   access_token: string;
@@ -184,6 +237,8 @@ export interface ReadyEventData {
   user: {
     id: string;
     username: string;
+    display_name?: string | null;
+    identity_plate_decoration?: ProfileDecorationId;
     is_admin: boolean;
     is_bot?: boolean;
     avatar_url: string | null;

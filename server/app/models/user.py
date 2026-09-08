@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +13,15 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Denormalized profile summary used by member/message identity rows without
+    # issuing one profile query per user.
+    identity_plate_decoration: Mapped[str] = mapped_column(
+        String(32), default="none", nullable=False
+    )
+    custom_identity_plate_data: Mapped[dict | None] = mapped_column(
+        "custom_identity_plate", JSON, nullable=True
+    )
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # A bot is a normal account driven by the bots service rather than by a
@@ -49,3 +58,20 @@ class User(Base):
     @property
     def banner_url(self) -> str | None:
         return f"/api/uploads/{self.banner_attachment_id}" if self.banner_attachment_id else None
+
+    @property
+    def custom_identity_plate(self) -> dict | None:
+        asset = self.custom_identity_plate_data
+        if not asset:
+            return None
+        return {
+            "src": f"/api/uploads/{asset['attachment_id']}",
+            "poster_src": (
+                f"/api/uploads/{asset['poster_attachment_id']}"
+                if asset.get("poster_attachment_id")
+                else None
+            ),
+            "format": asset["format"],
+            "source_size": asset["source_size"],
+            "animated": asset["animated"],
+        }
