@@ -9,7 +9,7 @@
 
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::RecvTimeoutError,
         Arc, Mutex,
     },
@@ -28,11 +28,15 @@ use xcap::{
 /// Thumbnails only have to fill a grid cell in the picker.
 const THUMBNAIL_WIDTH: u32 = 320;
 const THUMBNAIL_QUALITY: u8 = 60;
-/// WebRTC re-encodes these frames downstream, so middling quality here costs
-/// little in the final picture and saves a lot of CPU and IPC traffic.
-const FRAME_QUALITY: u8 = 72;
+// These are intermediate images, encoded again by WebRTC. Motion at 60 FPS uses
+// a smaller JPEG so IPC and decoding do not consume the frame-time budget.
+const DETAIL_FRAME_QUALITY: u8 = 85;
+const MOTION_FRAME_QUALITY: u8 = 76;
 /// How long to wait on an idle screen before checking whether we've been stopped.
 const RECORDER_TIMEOUT: Duration = Duration::from_millis(500);
+/// Keep the native producer close to the WebView consumer. Without this bound,
+/// JPEG frames can accumulate in IPC and are displayed long after capture.
+const MAX_IN_FLIGHT_FRAMES: usize = 2;
 /// Windows below this are dialogs, tooltips and tray popups — noise in the grid.
 const MIN_WINDOW_SIDE: u32 = 96;
 
@@ -68,26 +72,71 @@ impl Target {
     }
 }
 
-/// Holds the stop flag of the capture thread that is currently running, if any.
+struct CaptureSession {
+    id: String,
+    stop: AtomicBool,
+    in_flight: AtomicUsize,
+}
+
+impl CaptureSession {
+    fn new(id: String) -> Self {
+        Self {
+            id,
+            stop: AtomicBool::new(false),
+            in_flight: AtomicUsize::new(0),
+        }
+    }
+
+    fn reserve_frame(&self) -> bool {
+        self.in_flight
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                (current < MAX_IN_FLIGHT_FRAMES).then_some(current + 1)
+            })
+            .is_ok()
+    }
+
+    fn acknowledge_frame(&self) {
+        let _ = self
+            .in_flight
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current.checked_sub(1)
+            });
+    }
+}
+
+/// Holds the native capture session that is currently running, if any.
 /// Exactly one capture at a time: starting a second one retires the first.
 #[derive(Default)]
 pub struct CaptureManager {
-    active: Mutex<Option<Arc<AtomicBool>>>,
+    active: Mutex<Option<Arc<CaptureSession>>>,
 }
 
 impl CaptureManager {
-    fn start(&self, stop: Arc<AtomicBool>) {
+    fn start(&self, session: Arc<CaptureSession>) {
         if let Ok(mut active) = self.active.lock() {
-            if let Some(previous) = active.replace(stop) {
-                previous.store(true, Ordering::Relaxed);
+            if let Some(previous) = active.replace(session) {
+                previous.stop.store(true, Ordering::Relaxed);
             }
         }
     }
 
-    fn stop(&self) {
+    fn stop(&self, capture_id: Option<&str>) {
         if let Ok(mut active) = self.active.lock() {
+            if capture_id
+                .is_some_and(|id| active.as_ref().is_some_and(|session| session.id != id))
+            {
+                return;
+            }
             if let Some(previous) = active.take() {
-                previous.store(true, Ordering::Relaxed);
+                previous.stop.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn acknowledge(&self, capture_id: &str) {
+        if let Ok(active) = self.active.lock() {
+            if let Some(session) = active.as_ref().filter(|session| session.id == capture_id) {
+                session.acknowledge_frame();
             }
         }
     }
@@ -193,8 +242,9 @@ fn send_frame(
     channel: &Channel<InvokeResponseBody>,
     image: RgbaImage,
     max_height: u32,
+    quality: u8,
 ) -> Result<(), String> {
-    let frame = encode_jpeg(&downscale(image, max_height), FRAME_QUALITY)?;
+    let frame = encode_jpeg(&downscale(image, max_height), quality)?;
     channel
         .send(InvokeResponseBody::Raw(frame))
         .map_err(|error| error.to_string())
@@ -225,47 +275,64 @@ fn stream_screen(
     id: u32,
     max_height: u32,
     interval: Duration,
-    stop: &AtomicBool,
+    quality: u8,
+    session: &CaptureSession,
     channel: &Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     let monitor = find_monitor(id)?;
     let (recorder, frames) = monitor.video_recorder().map_err(|error| error.to_string())?;
     recorder.start().map_err(|error| error.to_string())?;
 
-    let mut last_sent: Option<Instant> = None;
-    while !stop.load(Ordering::Relaxed) {
-        let mut frame = match frames.recv_timeout(RECORDER_TIMEOUT) {
-            Ok(frame) => frame,
-            // Nothing on screen changed; loop back and re-check the stop flag.
-            Err(RecvTimeoutError::Timeout) => continue,
-            Err(RecvTimeoutError::Disconnected) => break,
-        };
-        // Frames arrive at the display's refresh rate — anything above the
-        // requested rate is dropped here, before the cost of encoding it.
-        if last_sent.is_some_and(|at| at.elapsed() < interval) {
-            continue;
+    // Always release the recorder, including failures in encoding or IPC.
+    let result = (|| {
+        let mut last_sent: Option<Instant> = None;
+        while !session.stop.load(Ordering::Relaxed) {
+            let mut frame = match frames.recv_timeout(RECORDER_TIMEOUT) {
+                Ok(frame) => frame,
+                // Nothing on screen changed; loop back and re-check the stop flag.
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err("Screen capture stopped unexpectedly".to_string());
+                }
+            };
+            // Frames arrive at the display's refresh rate — anything above the
+            // requested rate is dropped here, before the cost of encoding it.
+            if last_sent.is_some_and(|at| at.elapsed() < interval) {
+                continue;
+            }
+            if !session.reserve_frame() {
+                continue;
+            }
+            // Encoding and IPC can briefly take longer than a display refresh. A
+            // recorder queue represents old screen state, not valuable video: use
+            // its newest frame so congestion reduces FPS instead of adding delay.
+            for newer in frames.try_iter() {
+                frame = newer;
+            }
+            // Include encoding time in the frame interval instead of adding it
+            // on top of the interval and silently undershooting the requested FPS.
+            last_sent = Some(Instant::now());
+            let sent = RgbaImage::from_raw(frame.width, frame.height, frame.raw)
+                .ok_or_else(|| "Capture produced a malformed frame".to_string())
+                .and_then(|image| send_frame(channel, image, max_height, quality));
+            if let Err(error) = sent {
+                session.acknowledge_frame();
+                return Err(error);
+            }
         }
-        // Encoding and IPC can briefly take longer than a display refresh. A
-        // recorder queue represents old screen state, not valuable video: use
-        // its newest frame so congestion reduces FPS instead of adding delay.
-        for newer in frames.try_iter() {
-            frame = newer;
-        }
-        let image = RgbaImage::from_raw(frame.width, frame.height, frame.raw)
-            .ok_or_else(|| "Capture produced a malformed frame".to_string())?;
-        send_frame(channel, image, max_height)?;
-        last_sent = Some(Instant::now());
-    }
+        Ok(())
+    })();
 
     let _ = recorder.stop();
-    Ok(())
+    result
 }
 
 fn stream_window(
     id: u32,
     max_height: u32,
     interval: Duration,
-    stop: &AtomicBool,
+    quality: u8,
+    session: &CaptureSession,
     channel: &Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     // Windows have no recorder in xcap, only whole-window grabs, so this side is
@@ -273,10 +340,18 @@ fn stream_window(
     // display's, and a dead window surfaces as a capture error on the next tick.
     let window = find_window(id)?;
 
-    while !stop.load(Ordering::Relaxed) {
+    while !session.stop.load(Ordering::Relaxed) {
         let started = Instant::now();
-        let image = window.capture_image().map_err(|error| error.to_string())?;
-        send_frame(channel, image, max_height)?;
+        if session.reserve_frame() {
+            let sent = window
+                .capture_image()
+                .map_err(|error| error.to_string())
+                .and_then(|image| send_frame(channel, image, max_height, quality));
+            if let Err(error) = sent {
+                session.acknowledge_frame();
+                return Err(error);
+            }
+        }
         if let Some(remaining) = interval.checked_sub(started.elapsed()) {
             thread::sleep(remaining);
         }
@@ -298,24 +373,35 @@ pub async fn list_capture_sources() -> Result<Vec<CaptureSource>, String> {
 pub fn start_capture(
     manager: tauri::State<'_, CaptureManager>,
     source_id: String,
+    capture_id: String,
     max_height: u32,
     fps: u32,
     on_frame: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     let target = Target::parse(&source_id)?;
-    let interval = Duration::from_secs_f64(1.0 / f64::from(fps.clamp(1, 60)));
-    let stop = Arc::new(AtomicBool::new(false));
-    manager.start(stop.clone());
+    let fps = fps.clamp(1, 60);
+    let interval = Duration::from_secs_f64(1.0 / f64::from(fps));
+    let quality = if fps > 30 {
+        MOTION_FRAME_QUALITY
+    } else {
+        DETAIL_FRAME_QUALITY
+    };
+    let session = Arc::new(CaptureSession::new(capture_id));
+    manager.start(session.clone());
 
     thread::spawn(move || {
         let result = match target {
-            Target::Screen(id) => stream_screen(id, max_height, interval, &stop, &on_frame),
-            Target::Window(id) => stream_window(id, max_height, interval, &stop, &on_frame),
+            Target::Screen(id) => {
+                stream_screen(id, max_height, interval, quality, &session, &on_frame)
+            }
+            Target::Window(id) => {
+                stream_window(id, max_height, interval, quality, &session, &on_frame)
+            }
         };
         // A capture that dies on its own — window closed, device lost — has to say
         // so: the frontend is still holding a track that nothing will feed again.
         if let Err(error) = result {
-            if !stop.load(Ordering::Relaxed) {
+            if !session.stop.load(Ordering::Relaxed) {
                 send_error(&on_frame, &error);
             }
         }
@@ -325,6 +411,11 @@ pub fn start_capture(
 }
 
 #[tauri::command]
-pub fn stop_capture(manager: tauri::State<'_, CaptureManager>) {
-    manager.stop();
+pub fn acknowledge_capture(manager: tauri::State<'_, CaptureManager>, capture_id: String) {
+    manager.acknowledge(&capture_id);
+}
+
+#[tauri::command]
+pub fn stop_capture(manager: tauri::State<'_, CaptureManager>, capture_id: Option<String>) {
+    manager.stop(capture_id.as_deref());
 }

@@ -20,8 +20,10 @@ webhook:
   urls:
     - http://server:8000/api/webhooks/livekit
 
-# TURN embutido, compartilhando 443/TLS — evita rodar um coturn separado.
-# Confirmar nomes/portas exatos contra a versão do LiveKit em uso antes do deploy.
+# ATENÇÃO: external_tls exige um terminador TLS L4 antes desta porta.
+# O reverse_proxy HTTP do Caddy no compose NÃO termina TURN/TLS.
+# Sem esse componente externo, este fallback não funciona. Consulte
+# docs/SCREEN_SHARE_RELIABILITY.md antes de habilitar em produção.
 turn:
   enabled: true
   domain: $LIVEKIT_DOMAIN

@@ -4,7 +4,7 @@ import type { LocalVideoTrack, RemoteVideoTrack } from "livekit-client";
 import type { VoiceParticipantState, VoiceStateUpdateData } from "@/lib/types";
 import { createSecureStorage } from "@/state/persist";
 
-export type VoiceConnectionStatus = "disconnected" | "connecting" | "connected";
+export type VoiceConnectionStatus = "disconnected" | "connecting" | "reconnecting" | "connected";
 export type VideoTrack = LocalVideoTrack | RemoteVideoTrack;
 
 interface VoiceState {

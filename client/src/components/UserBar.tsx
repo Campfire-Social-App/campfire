@@ -135,6 +135,8 @@ export function UserBar() {
                 <Wifi className="size-3.5 shrink-0" />
                 {connectionStatus === "connecting"
                   ? "Connecting…"
+                  : connectionStatus === "reconnecting"
+                    ? "Reconnecting…"
                   : dmRecipient
                     ? "In call"
                     : "Voice connected"}

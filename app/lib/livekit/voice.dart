@@ -11,8 +11,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 const _responsiveScreenShare = VideoParameters(
-  dimensions: VideoDimensions(1280, 720),
-  encoding: VideoEncoding(maxFramerate: 30, maxBitrate: 2000000),
+  dimensions: VideoDimensions(1920, 1080),
+  encoding: VideoEncoding(maxFramerate: 30, maxBitrate: 6000000),
 );
 
 // The Flutter SDK does not expose JavaScript's screenShareH360FPS15 preset.
@@ -20,6 +20,11 @@ const _responsiveScreenShare = VideoParameters(
 const _responsiveScreenShareLow = VideoParameters(
   dimensions: VideoDimensions(640, 360),
   encoding: VideoEncoding(maxFramerate: 15, maxBitrate: 500000),
+);
+
+const _responsiveScreenShareMid = VideoParameters(
+  dimensions: VideoDimensions(1280, 720),
+  encoding: VideoEncoding(maxFramerate: 30, maxBitrate: 2000000),
 );
 
 /// The LiveKit half of voice: one room at a time, its events folded into
@@ -36,6 +41,8 @@ class VoiceSession {
 
   Room? _room;
   EventsListener<RoomEvent>? _listener;
+  Timer? _emptyCallTimer;
+  bool _reconnecting = false;
 
   /// Whether deafening, rather than the microphone button, caused the current
   /// mute. Only an automatic mute may be automatically undone.
@@ -76,16 +83,19 @@ class VoiceSession {
         defaultVideoPublishOptions: VideoPublishOptions(
           screenShareEncoding: VideoEncoding(
             maxFramerate: 30,
-            maxBitrate: 2000000,
+            maxBitrate: 6000000,
           ),
           screenShareSimulcastLayers: [
             _responsiveScreenShareLow,
+            _responsiveScreenShareMid,
           ],
-          degradationPreference: DegradationPreference.balanced,
+          // Use the SDK's source-specific default: preserve screen resolution
+          // without applying a screen policy to camera tracks.
         ),
       ),
     );
     _room = room;
+    _reconnecting = false;
     _listen(room);
 
     try {
@@ -196,6 +206,24 @@ class VoiceSession {
     _listener = listener;
 
     listener
+      ..on<RoomReconnectingEvent>((_) {
+        if (_room != room) return;
+        _reconnecting = true;
+        _emptyCallTimer?.cancel();
+      })
+      ..on<RoomResumingEvent>((_) {
+        if (_room != room) return;
+        _reconnecting = true;
+        _emptyCallTimer?.cancel();
+      })
+      ..on<RoomReconnectedEvent>((_) {
+        if (_room != room) return;
+        _reconnecting = false;
+        if (room.remoteParticipants.isEmpty) _scheduleEmptyCallCheck(room);
+      })
+      ..on<ParticipantConnectedEvent>((_) {
+        if (_room == room) _emptyCallTimer?.cancel();
+      })
       ..on<ActiveSpeakersChangedEvent>(
         (event) => _voice.setSpeaking(event.speakers.map((p) => p.identity)),
       )
@@ -229,11 +257,18 @@ class VoiceSession {
         }
       })
       ..on<LocalTrackPublishedEvent>((event) {
+        if (_room != room) return;
+        if (event.publication.source == TrackSource.screenShareVideo) {
+          _voice.setLocalScreenShareEnabled(enabled: true);
+        }
         if (event.publication.track case final VideoTrack track) {
           _setVideoTrack(event.participant.identity, event.publication.source, track);
         }
       })
       ..on<LocalTrackUnpublishedEvent>((event) {
+        // The SDK republishes these tracks during a full reconnect. Do not
+        // downgrade Android's media-projection service during that recovery.
+        if (_room != room || _reconnecting) return;
         if (event.publication.track is! VideoTrack) return;
         _setVideoTrack(event.participant.identity, event.publication.source, null);
         // Catches a screen share stopped from the system's own "stop sharing"
@@ -263,14 +298,14 @@ class VoiceSession {
         }
       })
       ..on<ParticipantDisconnectedEvent>((event) {
-        // A 1:1 call is over the moment the other person leaves — unlike a
-        // voice channel, where sitting in an empty room waiting for someone is
-        // a normal thing to do.
-        final channelId = _ref.read(voiceProvider).connectedChannelId;
-        final isDm = _ref.read(dmsProvider).any((c) => c.id == channelId);
-        if (isDm && room.remoteParticipants.isEmpty) unawaited(leave());
+        if (_room == room && room.remoteParticipants.isEmpty) {
+          _scheduleEmptyCallCheck(room);
+        }
       })
       ..on<RoomDisconnectedEvent>((_) {
+        if (_room != room) return;
+        _emptyCallTimer?.cancel();
+        _reconnecting = false;
         // Only sound off if we had actually finished joining: a mid-setup
         // failure disconnects too, and never played a join sound to answer.
         final wasConnected = _ref.read(voiceProvider).isConnected;
@@ -281,6 +316,23 @@ class VoiceSession {
         unawaited(stopCallService());
         if (wasConnected) _sounds.leave();
       });
+  }
+
+  void _scheduleEmptyCallCheck(Room room) {
+    _emptyCallTimer?.cancel();
+    // A peer disappearing may be either end reconnecting. Give the SDK time
+    // to recover before ending an empty direct call.
+    _emptyCallTimer = Timer(const Duration(seconds: 30), () {
+      if (_room != room || _reconnecting ||
+          room.connectionState != ConnectionState.connected ||
+          room.remoteParticipants.isNotEmpty) {
+        return;
+      }
+      final channelId = _ref.read(voiceProvider).connectedChannelId;
+      if (_ref.read(dmsProvider).any((c) => c.id == channelId)) {
+        unawaited(leave());
+      }
+    });
   }
 
   /// Track visibility is keyed by participant *and* source: a camera and a
@@ -297,6 +349,9 @@ class VoiceSession {
   }
 
   Future<void> leave() async {
+    _emptyCallTimer?.cancel();
+    _emptyCallTimer = null;
+    _reconnecting = false;
     final room = _room;
     if (room == null) return;
     _room = null;

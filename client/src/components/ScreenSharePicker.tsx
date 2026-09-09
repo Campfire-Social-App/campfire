@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { useVoiceStore } from "@/state/voice";
 import { startNativeScreenShare, startWebViewScreenShare } from "@/livekit/voice";
-import { listCaptureSources, type CaptureQuality, type CaptureSource } from "@/lib/screenCapture";
+import { isNativeCaptureAvailable, listCaptureSources, type CaptureQuality, type CaptureSource } from "@/lib/screenCapture";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -18,9 +18,8 @@ const FRAME_RATES = [15, 30, 60];
 
 type Tab = "window" | "screen";
 
-/** Our own source picker, in place of the WebView's: it can show what the
- * WebView's can't be asked for — thumbnails, quality and frame rate — because
- * the capture behind it is ours (see lib/screenCapture.ts). */
+/** The desktop client always uses its own source picker and capture pipeline.
+ * The browser picker exists only for the standalone web build. */
 export function ScreenSharePicker() {
   const open = useVoiceStore((s) => s.screenPickerOpen);
   const setOpen = useVoiceStore((s) => s.setScreenPickerOpen);
@@ -29,12 +28,12 @@ export function ScreenSharePicker() {
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>("window");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // 720p/30 is the responsive default: text remains readable while capture,
-  // JPEG bridging and WebRTC encoding all finish materially sooner. Users can
-  // still opt into 1080p/native when fidelity matters more than motion delay.
-  const [quality, setQuality] = useState<CaptureQuality>("720p");
+  const [quality, setQuality] = useState<CaptureQuality>("1080p");
   const [fps, setFps] = useState(30);
-  const [shareAudio, setShareAudio] = useState(false);
+  const nativeAvailable = isNativeCaptureAvailable();
+  const [shareAudio, setShareAudio] = useState(true);
+  const platformPicker = !nativeAvailable;
+  const platformQuality = quality === "native" ? "1080p" : quality;
   const [sharing, setSharing] = useState(false);
 
   const load = async () => {
@@ -52,7 +51,7 @@ export function ScreenSharePicker() {
   useEffect(() => {
     if (!open) return;
     setSelectedId(null);
-    void load();
+    if (nativeAvailable) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -60,10 +59,10 @@ export function ScreenSharePicker() {
   const selected = sources.find((source) => source.id === selectedId) ?? null;
 
   const handleShare = async () => {
-    if (!shareAudio && !selected) return;
+    if (!platformPicker && !selected) return;
     setSharing(true);
     try {
-      if (shareAudio) await startWebViewScreenShare(true);
+      if (platformPicker) await startWebViewScreenShare(shareAudio, platformQuality, fps);
       else await startNativeScreenShare(selected!.id, quality, fps);
       setOpen(false);
     } catch (err) {
@@ -80,24 +79,26 @@ export function ScreenSharePicker() {
           <DialogTitle>Share your screen</DialogTitle>
         </DialogHeader>
 
-        <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
-          <TabButton active={tab === "window"} onClick={() => setTab("window")}>
-            <AppWindow className="size-4" /> Applications
-          </TabButton>
-          <TabButton active={tab === "screen"} onClick={() => setTab("screen")}>
-            <Monitor className="size-4" /> Entire screen
-          </TabButton>
-          <button
-            onClick={() => void load()}
-            title="Refresh"
-            className="ml-auto flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
-          >
-            <RefreshCw className={cn("size-4", loading && "animate-spin")} />
-          </button>
-        </div>
+        {!platformPicker && (
+          <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
+            <TabButton active={tab === "window"} onClick={() => setTab("window")}>
+              <AppWindow className="size-4" /> Applications
+            </TabButton>
+            <TabButton active={tab === "screen"} onClick={() => setTab("screen")}>
+              <Monitor className="size-4" /> Entire screen
+            </TabButton>
+            <button
+              onClick={() => void load()}
+              title="Refresh"
+              className="ml-auto flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+            >
+              <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+            </button>
+          </div>
+        )}
 
         <div className="max-h-96 min-h-56 overflow-y-auto">
-          {shareAudio ? (
+          {platformPicker ? (
             <div className="flex h-56 flex-col items-center justify-center gap-3 px-8 text-center">
               <div className="flex size-11 items-center justify-center rounded-full bg-primary/15 text-primary">
                 <Volume2 className="size-5" />
@@ -152,33 +153,32 @@ export function ScreenSharePicker() {
         </div>
 
         <div className="flex flex-wrap items-center gap-4 border-t border-glass-border pt-4">
-          {!shareAudio && (
-            <>
-              <Segmented
-                label="Quality"
-                options={QUALITIES.map((q) => ({ value: q.value, label: q.label }))}
-                value={quality}
-                onChange={setQuality}
-              />
-              <Segmented
-                label="Frame rate"
-                options={FRAME_RATES.map((rate) => ({ value: rate, label: `${rate}fps` }))}
-                value={fps}
-                onChange={setFps}
-              />
-            </>
-          )}
+          <Segmented
+            label="Quality"
+            options={QUALITIES.filter((q) => !platformPicker || q.value !== "native")
+              .map((q) => ({ value: q.value, label: q.label }))}
+            value={platformPicker ? platformQuality : quality}
+            onChange={setQuality}
+          />
+          <Segmented
+            label="Frame rate"
+            options={FRAME_RATES.map((rate) => ({ value: rate, label: `${rate}fps` }))}
+            value={fps}
+            onChange={setFps}
+          />
 
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={shareAudio}
-              onChange={(event) => setShareAudio(event.target.checked)}
-              className="size-4 accent-primary"
-            />
-            <Volume2 className="size-4 text-muted-foreground" />
-            Share system audio
-          </label>
+          {!nativeAvailable && (
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={shareAudio}
+                onChange={(event) => setShareAudio(event.target.checked)}
+                className="size-4 accent-primary"
+              />
+              <Volume2 className="size-4 text-muted-foreground" />
+              Share system audio
+            </label>
+          )}
 
           <div className="ml-auto flex items-center gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -186,7 +186,7 @@ export function ScreenSharePicker() {
             </Button>
             <Button
               onClick={() => void handleShare()}
-              disabled={(!shareAudio && !selected) || sharing}
+              disabled={(!platformPicker && !selected) || sharing}
             >
               {sharing && <Loader2 className="size-4 animate-spin" />}
               Share

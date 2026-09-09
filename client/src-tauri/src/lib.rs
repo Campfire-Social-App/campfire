@@ -28,6 +28,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             capture::list_capture_sources,
             capture::start_capture,
+            capture::acknowledge_capture,
             capture::stop_capture,
         ])
         .setup(|_app| {
