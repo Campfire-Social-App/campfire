@@ -21,6 +21,8 @@ class Sounds {
   void microphoneUnmute() => play('mic_unmute.mp3');
   void deafen() => play('deafen.mp3');
   void undeafen() => play('undeafen.mp3');
+  void streamStart() => play('stream_start.mp3');
+  void streamStop() => play('stream_stop.mp3');
 
   /// Fire and forget, deliberately: a device with no audio output, or a web
   /// autoplay policy that has not seen a gesture yet, must not turn a mute into

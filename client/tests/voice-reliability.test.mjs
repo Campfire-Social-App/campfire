@@ -170,6 +170,7 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     setInputVolume(volume) { this.inputVolume = volume; },
     setOutputVolume(volume) { this.outputVolume = volume; },
   };
+  const sounds = { streamStarts: 0, streamStops: 0 };
   class Room extends EventEmitter {
     state = "connected";
     remoteParticipants = new Map();
@@ -209,11 +210,61 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     "@/state/channels": {},
     "@/state/settings": { useSettingsStore: { getState: () => settings } },
     "@/lib/noiseGate": { NoiseGateProcessor: class {} },
-    "@/lib/sounds": { playJoinSound() {}, playLeaveSound() {} },
+    "@/lib/sounds": {
+      playJoinSound() {}, playLeaveSound() {},
+      playDeafenSound() {}, playMicrophoneMuteSound() {},
+      playMicrophoneUnmuteSound() {}, playUndeafenSound() {},
+      playStreamStartSound() { sounds.streamStarts++; },
+      playStreamStopSound() { sounds.streamStops++; },
+    },
     sonner: { toast: {} },
   }, { queueMicrotask, console });
-  return { api, state, settings, rooms };
+  return { api, state, settings, rooms, sounds };
 }
+
+test("screen share sounds play once for each real start and stop", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  const room = h.rooms[0];
+  const publication = { source: "screen", track: { kind: "video" } };
+  const participant = { identity: "self" };
+
+  room.emit("LocalTrackPublished", publication, participant);
+  room.emit("LocalTrackPublished", publication, participant);
+  assert.equal(h.sounds.streamStarts, 1);
+  assert.equal(h.state.availableScreenShares.self, true);
+
+  room.emit("LocalTrackUnpublished", publication, participant);
+  room.emit("LocalTrackUnpublished", publication, participant);
+  assert.equal(h.sounds.streamStops, 1);
+  assert.equal(h.state.availableScreenShares.self, false);
+  await h.api.leaveVoiceChannel();
+});
+
+test("remote screen share publication notifies every connected client", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  const room = h.rooms[0];
+  const publication = {
+    source: "screen",
+    isDesired: false,
+    setSubscribed(watching) { this.isDesired = watching; },
+  };
+  const participant = {
+    identity: "streamer",
+    getTrackPublication: () => undefined,
+  };
+
+  room.emit("TrackPublished", publication, participant);
+  assert.equal(h.sounds.streamStarts, 1);
+  assert.equal(h.state.availableScreenShares.streamer, true);
+
+  room.emit("TrackUnpublished", publication, participant);
+  await Promise.resolve();
+  assert.equal(h.sounds.streamStops, 1);
+  assert.equal(h.state.availableScreenShares.streamer, false);
+  await h.api.leaveVoiceChannel();
+});
 
 test("audio device and master volume changes persist without leaving the room", async (t) => {
   const h = voiceHarness(t);
@@ -245,7 +296,7 @@ test("SDK full-restart order preserves the DM and watch choice", async (t) => {
   };
   // Real SDK emits publication/participant removal BEFORE Reconnecting.
   room.emit("TrackUnpublished", publication, participant);
-  room.emit("ParticipantDisconnected");
+  room.emit("ParticipantDisconnected", participant);
   room.state = "reconnecting";
   room.emit("Reconnecting");
   await Promise.resolve();

@@ -37,6 +37,8 @@ import {
   playDeafenSound,
   playMicrophoneMuteSound,
   playMicrophoneUnmuteSound,
+  playStreamStartSound,
+  playStreamStopSound,
   playUndeafenSound,
 } from "@/lib/sounds";
 
@@ -96,6 +98,21 @@ function baselineMicrophoneCaptureOptions(): AudioCaptureOptions {
 let nativeCapture: NativeCapture | null = null;
 /** Remote audio elements keyed by track SID, so they can be torn down on unsubscribe. */
 const audioElements = new Map<string, HTMLMediaElement>();
+
+function announceScreenShareStarted(identity: string): void {
+  const voiceState = useVoiceStore.getState();
+  if (voiceState.availableScreenShares[identity]) return;
+  voiceState.setScreenShareAvailable(identity, true);
+  playStreamStartSound();
+}
+
+function announceScreenShareStopped(identity: string): void {
+  const voiceState = useVoiceStore.getState();
+  if (!voiceState.availableScreenShares[identity]) return;
+  voiceState.setScreenShareAvailable(identity, false);
+  playStreamStopSound();
+}
+
 /** Camera/screen-share track visibility is keyed by participant + source, since
  * LiveKit mutes (rather than unpublishes) camera/mic tracks on disable — the
  * publish/unpublish events alone don't cover that case. */
@@ -131,7 +148,7 @@ function configureRemoteScreenPublication(
   participant: RemoteParticipant,
 ): void {
   if (publication.source === Track.Source.ScreenShare) {
-    useVoiceStore.getState().setScreenShareAvailable(participant.identity, true);
+    announceScreenShareStarted(participant.identity);
   }
   if (
     publication.source !== Track.Source.ScreenShare &&
@@ -387,7 +404,7 @@ export async function joinVoiceChannel(
         queueMicrotask(() => {
           if (room === nextRoom && nextRoom.state === ConnectionState.Connected &&
             !participant.getTrackPublication(Track.Source.ScreenShare)) {
-            useVoiceStore.getState().setScreenShareAvailable(participant.identity, false);
+            announceScreenShareStopped(participant.identity);
           }
         });
       } else if (publication.source === Track.Source.ScreenShareAudio) {
@@ -397,7 +414,7 @@ export async function joinVoiceChannel(
     .on(RoomEvent.LocalTrackPublished, (publication: LocalTrackPublication, participant) => {
       if (publication.source === Track.Source.ScreenShare) {
         const voiceState = useVoiceStore.getState();
-        voiceState.setScreenShareAvailable(participant.identity, true);
+        announceScreenShareStarted(participant.identity);
         voiceState.setScreenShareViewing(participant.identity, true);
         voiceState.setLocalScreenShareEnabled(true);
       }
@@ -408,7 +425,7 @@ export async function joinVoiceChannel(
     .on(RoomEvent.LocalTrackUnpublished, (publication: LocalTrackPublication, participant) => {
       if (room !== nextRoom || nextRoom.state === ConnectionState.Reconnecting) return;
       if (publication.source === Track.Source.ScreenShare) {
-        useVoiceStore.getState().setScreenShareAvailable(participant.identity, false);
+        announceScreenShareStopped(participant.identity);
       }
       if (publication.track?.kind !== Track.Kind.Video) return;
       setVideoTrackForSource(participant, publication.source, null);
@@ -442,7 +459,19 @@ export async function joinVoiceChannel(
         );
       }
     })
-    .on(RoomEvent.ParticipantDisconnected, () => {
+    .on(RoomEvent.ParticipantDisconnected, (participant) => {
+      // A full SDK restart removes participants before it reports
+      // Reconnecting. Let that state change land before treating this as the
+      // end of their stream.
+      queueMicrotask(() => {
+        if (
+          room === nextRoom &&
+          nextRoom.state === ConnectionState.Connected &&
+          !nextRoom.remoteParticipants.has(participant.identity)
+        ) {
+          announceScreenShareStopped(participant.identity);
+        }
+      });
       if (nextRoom.remoteParticipants.size === 0) emptyCall.schedule();
     })
     .on(RoomEvent.Disconnected, (reason) => {

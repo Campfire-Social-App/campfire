@@ -36,3 +36,11 @@ export function playDeafenSound(): void {
 export function playUndeafenSound(): void {
   playSound("/sounds/undeafen.mp3");
 }
+
+export function playStreamStartSound(): void {
+  playSound("/sounds/stream_start.mp3");
+}
+
+export function playStreamStopSound(): void {
+  playSound("/sounds/stream_stop.mp3");
+}
