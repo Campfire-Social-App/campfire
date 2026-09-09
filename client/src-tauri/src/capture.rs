@@ -34,15 +34,17 @@ use xcap::{
 /// Thumbnails only have to fill a grid cell in the picker.
 const THUMBNAIL_WIDTH: u32 = 320;
 const THUMBNAIL_QUALITY: u8 = 60;
-// These are intermediate images, encoded again by WebRTC. Motion at 60 FPS uses
-// a smaller JPEG so IPC and decoding do not consume the frame-time budget.
-const DETAIL_FRAME_QUALITY: u8 = 85;
-const MOTION_FRAME_QUALITY: u8 = 76;
+// These are intermediate images, encoded again by WebRTC. Regular 60 FPS
+// capture uses a smaller JPEG; game mode spends more bytes here so block edges
+// are not amplified by the final video encoder.
+const DETAIL_FRAME_QUALITY: u8 = 88;
+const MOTION_FRAME_QUALITY: u8 = 82;
+const GAME_FRAME_QUALITY: u8 = 88;
 /// How long to wait on an idle screen before checking whether we've been stopped.
 const RECORDER_TIMEOUT: Duration = Duration::from_millis(500);
 /// Keep the native producer close to the WebView consumer. Without this bound,
 /// JPEG frames can accumulate in IPC and are displayed long after capture.
-const MAX_IN_FLIGHT_FRAMES: usize = 2;
+const MAX_IN_FLIGHT_FRAMES: usize = 1;
 /// Windows below this are dialogs, tooltips and tray popups — noise in the grid.
 const MIN_WINDOW_SIDE: u32 = 96;
 
@@ -468,12 +470,15 @@ pub fn start_capture(
     fps: u32,
     on_frame: Channel<InvokeResponseBody>,
     capture_audio: bool,
+    game_mode: bool,
     on_audio: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     let target = Target::parse(&source_id)?;
     let fps = fps.clamp(1, 60);
     let interval = Duration::from_secs_f64(1.0 / f64::from(fps));
-    let quality = if fps > 30 {
+    let quality = if game_mode {
+        GAME_FRAME_QUALITY
+    } else if fps > 30 {
         MOTION_FRAME_QUALITY
     } else {
         DETAIL_FRAME_QUALITY

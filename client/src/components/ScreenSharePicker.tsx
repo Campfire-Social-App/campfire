@@ -33,6 +33,7 @@ export function ScreenSharePicker() {
   const [fps, setFps] = useState(30);
   const nativeAvailable = isNativeCaptureAvailable();
   const [shareAudio, setShareAudio] = useState(true);
+  const [gameMode, setGameMode] = useState(true);
   const platformPicker = !nativeAvailable;
   const platformQuality = quality === "native" ? "1080p" : quality;
   const [sharing, setSharing] = useState(false);
@@ -56,6 +57,7 @@ export function ScreenSharePicker() {
     setQuality(current?.quality ?? "1080p");
     setFps(current?.fps ?? 30);
     setShareAudio(current?.audioEnabled ?? true);
+    setGameMode(current?.gameMode ?? true);
     if (current?.sourceId) setTab(current.sourceId.startsWith("screen:") ? "screen" : "window");
     if (nativeAvailable) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,7 +71,7 @@ export function ScreenSharePicker() {
     setSharing(true);
     try {
       if (platformPicker) await startWebViewScreenShare(shareAudio, platformQuality, fps);
-      else await startNativeScreenShare(selected!.id, quality, fps, shareAudio);
+      else await startNativeScreenShare(selected!.id, quality, fps, shareAudio, gameMode);
       setOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't start sharing.");
@@ -183,6 +185,18 @@ export function ScreenSharePicker() {
               <Volume2 className="size-4 text-muted-foreground" />
               Share system audio
           </label>
+
+          {!platformPicker && (
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={gameMode}
+                onChange={(event) => setGameMode(event.target.checked)}
+                className="size-4 accent-primary"
+              />
+              Optimize for games
+            </label>
+          )}
 
           <div className="ml-auto flex items-center gap-2">
             {active && (

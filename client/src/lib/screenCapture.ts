@@ -128,8 +128,9 @@ export async function startNativeCapture(
   onError: (message: string) => void,
   captureAudio = false,
   onAudioError: (message: string) => void = onError,
+  gameMode = false,
 ): Promise<NativeCapture> {
-  const profile = screenShareProfile(quality, fps);
+  const profile = screenShareProfile(quality, fps, gameMode);
   const captureId = crypto.randomUUID();
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d", { alpha: false });
@@ -220,6 +221,7 @@ export async function startNativeCapture(
       fps: profile.fps,
       onFrame: channel,
       captureAudio,
+      gameMode,
       onAudio: audioChannel,
     });
     if (captureError) throw new Error(captureError);

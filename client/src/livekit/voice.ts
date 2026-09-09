@@ -48,6 +48,7 @@ export interface ActiveScreenShareSettings {
   quality: CaptureQuality;
   fps: number;
   audioEnabled: boolean;
+  gameMode: boolean;
   native: boolean;
 }
 
@@ -786,32 +787,42 @@ export async function startNativeScreenShare(
   quality: CaptureQuality,
   fps: number,
   captureAudio = true,
+  gameMode = true,
 ): Promise<void> {
   if (!room) return;
   const currentRoom = room;
 
   await stopScreenShare();
-  const profile = screenShareProfile(quality, fps);
+  const profile = screenShareProfile(quality, fps, gameMode);
   const capture = await startNativeCapture(sourceId, quality, fps, (message) => {
     // The capture died on its own (window closed, device lost) — the track is
     // still published but nothing will ever feed it again.
     toast.error(message);
     void stopScreenShare();
-  }, captureAudio, (message) => toast.warning(message));
+  }, captureAudio, (message) => toast.warning(message), gameMode);
 
   try {
     if (room !== currentRoom) throw new Error("The call ended before capture started.");
     await currentRoom.localParticipant.publishTrack(capture.track, {
       name: "screen",
       source: Track.Source.ScreenShare,
-      // An intermediate 720p layer avoids a direct drop from 1080p to 360p;
-      // dynacast stops paying for layers when nobody needs them.
-      simulcast: true,
-      screenShareSimulcastLayers: quality === "720p"
-        ? [ScreenSharePresets.h360fps15]
-        : [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps30],
+      // Games use one hardware-friendly H.264 encode at the selected
+      // resolution. Multiple VP8 simulcast encoders compete with the game for
+      // CPU/GPU time and can leave a large viewer on a softer 720p layer.
+      simulcast: !gameMode,
+      ...(gameMode
+        ? { videoCodec: "h264" as const, backupCodec: false as const }
+        : {
+            screenShareSimulcastLayers: quality === "720p"
+              ? [ScreenSharePresets.h360fps15]
+              : [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps30],
+          }),
       degradationPreference: profile.degradationPreference,
-      screenShareEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: profile.fps },
+      screenShareEncoding: {
+        maxBitrate: capture.maxBitrate,
+        maxFramerate: profile.fps,
+        priority: profile.priority,
+      },
     });
     if (capture.audioTrack) {
       await currentRoom.localParticipant.publishTrack(capture.audioTrack, {
@@ -830,7 +841,14 @@ export async function startNativeScreenShare(
   }
 
   nativeCapture = capture;
-  activeScreenShareSettings = { sourceId, quality, fps, audioEnabled: captureAudio, native: true };
+  activeScreenShareSettings = {
+    sourceId,
+    quality,
+    fps,
+    audioEnabled: captureAudio,
+    gameMode,
+    native: true,
+  };
   useVoiceStore.getState().setLocalScreenShareEnabled(true);
   void syncOwnVoiceState();
 }
@@ -886,6 +904,7 @@ export async function startWebViewScreenShare(
       quality,
       fps,
       audioEnabled: captureAudio,
+      gameMode: false,
       native: false,
     };
     void syncOwnVoiceState();

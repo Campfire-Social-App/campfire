@@ -33,6 +33,9 @@ test("quality budgets match resolution and FPS, with bounded native bitrate", ()
   assert.equal(profile("native", 120).maxBitrate, 10_000_000);
   assert.equal(profile("1080p", 60).contentHint, "motion");
   assert.equal(profile("1080p", 60).degradationPreference, "maintain-framerate");
+  assert.equal(profile("1080p", 30, true).maxBitrate, 12_000_000);
+  assert.equal(profile("1080p", 30, true).contentHint, "motion");
+  assert.equal(profile("1080p", 30, true).priority, "high");
   assert.equal(profile("native", 30).maxHeight, 0);
   assert.equal(profile("1080p", NaN).fps, 30);
 });
@@ -176,10 +179,14 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     remoteParticipants = new Map();
     disconnects = 0;
     deviceSwitches = [];
+    publishedTracks = [];
+    unpublishedTracks = [];
     localParticipant = {
       identity: "self",
       setAttributes: async () => {},
       setScreenShareEnabled: async (...args) => { this.screenOptions = args; },
+      publishTrack: async (track, options) => { this.publishedTracks.push([track, options]); },
+      unpublishTrack: async (track) => { this.unpublishedTracks.push(track); },
       getTrackPublication: () => undefined,
     };
     constructor(options) { super(); this.options = options; rooms.push(this); }
@@ -200,7 +207,15 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     },
     "./emptyCallGrace": load("../src/livekit/emptyCallGrace.ts"),
     "@/lib/screenShareProfile": profileModule,
-    "@/lib/screenCapture": { isNativeCaptureAvailable: () => nativeCaptureAvailable },
+    "@/lib/screenCapture": {
+      isNativeCaptureAvailable: () => nativeCaptureAvailable,
+      startNativeCapture: async (_sourceId, quality, fps, _onError, _audio, _onAudioError, gameMode) => ({
+        track: { kind: "video" },
+        audioTrack: null,
+        maxBitrate: profileModule.screenShareProfile(quality, fps, gameMode).maxBitrate,
+        stop: async () => {},
+      }),
+    },
     "@/api/endpoints": {
       getVoiceToken: async () => ({ token: "test", url: "test" }),
       updateOwnVoiceState: async () => {},
@@ -335,6 +350,22 @@ test("browser publication applies chosen quality and an intermediate layer", asy
   assert.equal(publish.screenShareSimulcastLayers[1].height, 720);
   assert.equal(publish.degradationPreference, "maintain-framerate");
   assert.equal(h.rooms[0].options.adaptiveStream.pixelDensity, "screen");
+  await h.api.leaveVoiceChannel();
+});
+
+test("native game capture publishes one high-priority H.264 layer", async (t) => {
+  const h = voiceHarness(t, true);
+  await h.api.joinVoiceChannel("channel");
+  await h.api.startNativeScreenShare("window:42", "1080p", 30, false, true);
+
+  const [, publish] = h.rooms[0].publishedTracks[0];
+  assert.equal(publish.videoCodec, "h264");
+  assert.equal(publish.backupCodec, false);
+  assert.equal(publish.simulcast, false);
+  assert.equal(publish.screenShareEncoding.maxBitrate, 12_000_000);
+  assert.equal(publish.screenShareEncoding.priority, "high");
+  assert.equal(publish.degradationPreference, "maintain-framerate");
+  await h.api.stopScreenShare();
   await h.api.leaveVoiceChannel();
 });
 
