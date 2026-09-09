@@ -325,7 +325,9 @@ class VoiceSession {
     _emptyCallTimer = Timer(const Duration(seconds: 30), () {
       if (_room != room || _reconnecting ||
           room.connectionState != ConnectionState.connected ||
-          room.remoteParticipants.isNotEmpty) return;
+          room.remoteParticipants.isNotEmpty) {
+        return;
+      }
       final channelId = _ref.read(voiceProvider).connectedChannelId;
       if (_ref.read(dmsProvider).any((c) => c.id == channelId)) {
         unawaited(leave());
