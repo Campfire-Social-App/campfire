@@ -13,6 +13,9 @@ import type {
   SlashCommand,
   User,
   UserModerationOverview,
+  UserProfile,
+  UserProfileUpdate,
+  DecorationRole,
   VoiceTokenResponse,
 } from "@/lib/types";
 
@@ -84,6 +87,21 @@ export const markDmRead = (channelId: string) =>
 
 export const listUsers = () => apiFetch<User[]>("/api/users");
 
+export const getUserProfile = (userId: string) =>
+  apiFetch<UserProfile>(`/api/users/${userId}/profile`);
+
+export const updateMyProfile = (profile: UserProfileUpdate) =>
+  apiFetch<UserProfile>("/api/users/@me/profile", { method: "PATCH", body: profile });
+
+export const uploadMyDecoration = (
+  role: DecorationRole,
+  file: File,
+  onProgress?: (fraction: number) => void,
+) => apiUpload<UserProfile>(`/api/users/@me/decorations/${role}`, file, onProgress);
+
+export const deleteMyDecoration = (role: DecorationRole) =>
+  apiFetch<UserProfile>(`/api/users/@me/decorations/${role}`, { method: "DELETE" });
+
 export const getUserModerationOverview = (userId: string) =>
   apiFetch<UserModerationOverview>(`/api/users/${userId}/moderation`);
 
@@ -96,13 +114,13 @@ export const banUser = (userId: string) =>
 export const timeoutUser = (userId: string) =>
   apiFetch<User>(`/api/users/${userId}/timeout`, { method: "POST" });
 
-export const updateMyAvatar = (attachmentId: string) =>
+export const updateMyAvatar = (attachmentId: string | null) =>
   apiFetch<User>("/api/users/@me/avatar", {
     method: "PUT",
     body: { attachment_id: attachmentId },
   });
 
-export const updateMyBanner = (attachmentId: string) =>
+export const updateMyBanner = (attachmentId: string | null) =>
   apiFetch<User>("/api/users/@me/banner", {
     method: "PUT",
     body: { attachment_id: attachmentId },

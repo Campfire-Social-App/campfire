@@ -34,6 +34,12 @@ function App() {
   const serverUrl = useSettingsStore((s) => s.serverUrl);
   const authStatus = useAuthStore((s) => s.status);
   const restoreSession = useAuthStore((s) => s.restoreSession);
+  const theme = useSettingsStore((s) => s.theme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.classList.add("dark");
+  }, [theme]);
 
   useEffect(() => {
     if (hydrated && authStatus === "idle") {

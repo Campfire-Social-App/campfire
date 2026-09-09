@@ -79,7 +79,7 @@ export function NewDirectMessageDialog({ open, onOpenChange }: NewDirectMessageD
                   status={onlineUserIds[user.id] ? "online" : "offline"}
                 />
                 <span className={cn("truncate text-sm", usernameColorFor(user.username))}>
-                  {user.username}
+                  {user.display_name ?? user.username}
                 </span>
               </button>
             ))

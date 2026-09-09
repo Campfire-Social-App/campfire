@@ -87,7 +87,9 @@ function ConversationRow({
         size="sm"
         status={isOnline ? "online" : "offline"}
       />
-      <span className="min-w-0 flex-1 truncate text-left">{conversation.recipient.username}</span>
+      <span className="min-w-0 flex-1 truncate text-left">
+        {conversation.recipient.display_name ?? conversation.recipient.username}
+      </span>
       {inCall && <Phone className="size-3.5 shrink-0 animate-pulse text-online" />}
       {unread > 0 ? (
         <span className="flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-white">

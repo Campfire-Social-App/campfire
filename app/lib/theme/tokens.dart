@@ -39,6 +39,11 @@ abstract final class CampfireTokens {
   static const Color popoverForeground = Color(0xFFEAE3DE);
   static const Color primary = Color(0xFFF67F2F);
   static const Color primaryForeground = Color(0xFF2D1205);
+  static const Color profileCardInnerBorder = Color(0x14FFFFFF);
+  static const Color profilePopoutBg = Color(0xF503050C);
+  static const Color profilePopoutBorder = Color(0x1CFFFFFF);
+  static const Color profilePopoutGlow = Color(0x33E85E00);
+  static const Color profilePopoutHighlight = Color(0x0FFFFFFF);
   static const Color rail = Color(0x8003040B);
   static const Color ring = Color(0xFFE85E00);
   static const Color scrollbarThumb = Color(0x1AFFFFFF);

@@ -210,11 +210,7 @@ class GatewayClient {
       case "READY": {
         const data = event.data as ReadyEventData;
         useAuthStore.getState().setUser({
-          id: data.user.id,
-          username: data.user.username,
-          is_admin: data.user.is_admin,
-          avatar_url: data.user.avatar_url,
-          banner_url: data.user.banner_url,
+          ...data.user,
           created_at: useAuthStore.getState().user?.created_at ?? new Date().toISOString(),
         });
         useServerStore.getState().setServer(data.server);

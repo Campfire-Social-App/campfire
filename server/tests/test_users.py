@@ -23,6 +23,69 @@ async def test_list_users_requires_auth(client: AsyncClient) -> None:
     assert resp.status_code == 401
 
 
+async def test_profile_defaults_and_validated_identity_update(
+    client: AsyncClient, admin_headers: dict[str, str], admin_user
+) -> None:
+    response = await client.get(f"/api/users/{admin_user.id}/profile", headers=admin_headers)
+    assert response.status_code == 200
+    assert response.json()["profile_layout"] == "standard"
+    assert response.json()["avatar_frame_decoration"] == "none"
+    assert response.json()["identity_plate_decoration"] == "none"
+    assert response.json()["badges"] == ["admin"]
+
+    update = await client.patch(
+        "/api/users/@me/profile",
+        headers=admin_headers,
+        json={
+            "display_name": "Camp Keeper",
+            "bio": "Keeping the fire lit.",
+            "custom_status": "🔥 Shipping",
+            "profile_layout": "developer",
+            "accent_color": "#38bdf8",
+            "banner_type": "gradient",
+            "banner_color": "#080D16",
+            "banner_secondary_color": "#155E75",
+            "background_type": "glass",
+            "avatar_decoration": "developer",
+            "profile_decoration": "spectral_warden",
+            "avatar_frame_decoration": "ember_sovereign",
+            "identity_plate_decoration": "neon_revenant",
+            "profile_effect": "glow",
+        },
+    )
+    assert update.status_code == 200, update.text
+    assert update.json()["display_name"] == "Camp Keeper"
+    assert update.json()["accent_color"] == "#38BDF8"
+    assert update.json()["profile_decoration"] == "spectral_warden"
+    assert update.json()["avatar_frame_decoration"] == "ember_sovereign"
+    assert update.json()["identity_plate_decoration"] == "neon_revenant"
+    assert update.json()["user"]["identity_plate_decoration"] == "neon_revenant"
+
+    users = await client.get("/api/users", headers=admin_headers)
+    updated_user = next(item for item in users.json() if item["username"] == "admin")
+    assert updated_user["identity_plate_decoration"] == "neon_revenant"
+
+
+async def test_profile_rejects_injection_and_unknown_decoration(
+    client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    bad_color = await client.patch(
+        "/api/users/@me/profile", headers=admin_headers,
+        json={"accent_color": "red; background:url(javascript:alert(1))"},
+    )
+    bad_decoration = await client.patch(
+        "/api/users/@me/profile", headers=admin_headers,
+        json={"avatar_decoration": "administrator"},
+    )
+    bad_plate = await client.patch(
+        "/api/users/@me/profile", headers=admin_headers,
+        json={"identity_plate_decoration": "external_url"},
+    )
+    assert bad_color.status_code == 422
+    assert bad_decoration.status_code == 422
+    assert bad_plate.status_code == 422
+
+
 async def test_user_can_update_profile_photo(
     client: AsyncClient, admin_headers: dict[str, str], admin_user, db_session
 ) -> None:
@@ -87,6 +150,37 @@ async def test_user_can_update_avatar_and_profile_background_separately(
     assert response.status_code == 200, response.text
     assert response.json()["avatar_url"] == f"/api/uploads/{avatar.id}"
     assert response.json()["banner_url"] == f"/api/uploads/{banner.id}"
+
+
+async def test_user_can_remove_avatar_and_profile_background(
+    client: AsyncClient, admin_headers: dict[str, str], admin_user, db_session
+) -> None:
+    from app.models.attachment import Attachment
+
+    image = Attachment(
+        uploaded_by_id=admin_user.id,
+        filename="profile.webp",
+        content_type="image/webp",
+        size_bytes=256,
+        storage_path="profile.webp",
+    )
+    db_session.add(image)
+    await db_session.commit()
+    admin_user.avatar_attachment_id = image.id
+    admin_user.banner_attachment_id = image.id
+    await db_session.commit()
+
+    avatar = await client.put(
+        "/api/users/@me/avatar", json={"attachment_id": None}, headers=admin_headers
+    )
+    banner = await client.put(
+        "/api/users/@me/banner", json={"attachment_id": None}, headers=admin_headers
+    )
+
+    assert avatar.status_code == 200
+    assert banner.status_code == 200
+    assert banner.json()["avatar_url"] is None
+    assert banner.json()["banner_url"] is None
 
 
 async def test_profile_image_larger_than_eight_megabytes_is_rejected(

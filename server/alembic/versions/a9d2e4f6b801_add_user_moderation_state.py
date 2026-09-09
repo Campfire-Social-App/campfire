@@ -1,7 +1,7 @@
 """add user moderation state
 
 Revision ID: a9d2e4f6b801
-Revises: f1a7c0b93e42
+Revises: a7d4100f5e33
 """
 
 from typing import Union
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "a9d2e4f6b801"
-down_revision: Union[str, None] = "f1a7c0b93e42"
+down_revision: Union[str, None] = "a7d4100f5e33"
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
 

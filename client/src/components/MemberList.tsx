@@ -3,6 +3,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { BotBadge } from "@/components/BotBadge";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { UserModerationMenu } from "@/components/UserModerationMenu";
+import { DecoratedIdentityPlate } from "@/components/ProfileDecorationLayer";
 import { useAuthStore } from "@/state/auth";
 import { useDmsStore } from "@/state/dms";
 import { usePresenceStore } from "@/state/presence";
@@ -70,19 +71,26 @@ function MemberGroup({
             >
               <button
                 type="button"
-                title={`View ${user.username}'s profile`}
-                className={`flex w-full items-center gap-2 rounded-md px-1 py-1.5 pr-8 text-left hover:bg-white/5 ${
+                title={`View ${user.display_name ?? user.username}'s profile`}
+                className={`block h-10 w-full rounded-md text-left hover:bg-white/5 ${
                   status === "offline" ? "opacity-50" : ""
                 }`}
               >
-                <UserAvatar username={user.username} avatarUrl={user.avatar_url} size="sm" status={status} />
-                <span className="truncate text-sm text-foreground">{user.username}</span>
-                {user.is_bot && <BotBadge className="ml-auto" />}
-                {user.is_admin && (
-                  <span className="ml-auto text-[10px] font-semibold tracking-wide text-primary uppercase">
-                    Admin
+                <DecoratedIdentityPlate
+                  decoration={user.identity_plate_decoration ?? "none"}
+                  customAssets={user.custom_identity_plate ? { "identity-plate": user.custom_identity_plate } : undefined}
+                >
+                  <UserAvatar username={user.username} avatarUrl={user.avatar_url} size="sm" status={status} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                    {user.display_name ?? user.username}
                   </span>
-                )}
+                  {user.is_bot && <BotBadge className="member-role-tag mr-8 ml-auto shrink-0" />}
+                  {user.is_admin && (
+                    <span className="member-role-tag mr-8 ml-auto shrink-0 rounded-[4px] px-1 py-px text-[9px] font-semibold tracking-wide text-primary uppercase">
+                      Admin
+                    </span>
+                  )}
+                </DecoratedIdentityPlate>
               </button>
             </UserProfileHoverCard>
           </UserModerationMenu>

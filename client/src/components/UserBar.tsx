@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { UserAvatar } from "@/components/UserAvatar";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
-import { ProfileDialog } from "@/components/ProfileDialog";
+import { IdentitySettingsDialog } from "@/components/IdentitySettingsDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -195,7 +195,9 @@ export function UserBar() {
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <UserAvatar username={user.username} avatarUrl={user.avatar_url} size="sm" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-foreground">{user.username}</p>
+                <p className="truncate text-sm font-medium text-foreground">
+                  {user.display_name ?? user.username}
+                </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {user.is_admin ? "Admin" : "Member"}
                 </p>
@@ -261,7 +263,7 @@ export function UserBar() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+          <IdentitySettingsDialog open={profileOpen} onOpenChange={setProfileOpen} />
         </div>
       </div>
     </div>

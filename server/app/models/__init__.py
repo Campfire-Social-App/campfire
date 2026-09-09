@@ -6,6 +6,7 @@ from app.models.message import Message
 from app.models.message_reaction import MessageReaction, ReactionType
 from app.models.server_settings import ServerSettings
 from app.models.user import User
+from app.models.user_profile import UserProfile
 
 __all__ = [
     "Attachment",
@@ -18,4 +19,5 @@ __all__ = [
     "ReactionType",
     "ServerSettings",
     "User",
+    "UserProfile",
 ]
