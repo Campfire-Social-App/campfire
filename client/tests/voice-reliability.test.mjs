@@ -161,18 +161,33 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     },
     setScreenShareTrack() {},
   };
+  const settings = {
+    audioInputDeviceId: null, audioOutputDeviceId: null,
+    inputVolume: 1, outputVolume: 1,
+    noiseSuppressionEnabled: true, noiseGateMode: "standard",
+    setAudioInputDeviceId(deviceId) { this.audioInputDeviceId = deviceId; },
+    setAudioOutputDeviceId(deviceId) { this.audioOutputDeviceId = deviceId; },
+    setInputVolume(volume) { this.inputVolume = volume; },
+    setOutputVolume(volume) { this.outputVolume = volume; },
+  };
   class Room extends EventEmitter {
     state = "connected";
     remoteParticipants = new Map();
     disconnects = 0;
+    deviceSwitches = [];
     localParticipant = {
       identity: "self",
       setAttributes: async () => {},
       setScreenShareEnabled: async (...args) => { this.screenOptions = args; },
+      getTrackPublication: () => undefined,
     };
     constructor(options) { super(); this.options = options; rooms.push(this); }
     async connect() {}
     async disconnect() { this.disconnects++; this.emit("Disconnected"); }
+    async switchActiveDevice(kind, deviceId) {
+      this.deviceSwitches.push([kind, deviceId]);
+      return true;
+    }
   }
   const presets = { h360fps15: { height: 360 }, h720fps30: { height: 720 } };
   const api = load("../src/livekit/voice.ts", {
@@ -180,7 +195,7 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
       Room, RoomEvent: new Proxy({}, { get: (_, name) => name }),
       ConnectionState: { Connected: "connected", Reconnecting: "reconnecting" },
       ScreenSharePresets: presets, AudioPresets: {},
-      Track: { Source: { ScreenShare: "screen", ScreenShareAudio: "screen-audio" }, Kind: { Video: "video" } },
+      Track: { Source: { Microphone: "microphone", ScreenShare: "screen", ScreenShareAudio: "screen-audio" }, Kind: { Video: "video" } },
     },
     "./emptyCallGrace": load("../src/livekit/emptyCallGrace.ts"),
     "@/lib/screenShareProfile": profileModule,
@@ -191,12 +206,32 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     },
     "@/state/voice": { useVoiceStore: { getState: () => state } },
     "@/state/dms": { useDmsStore: { getState: () => ({ conversations: [{ id: "dm" }] }) } },
-    "@/state/channels": {}, "@/state/settings": {}, "@/lib/noiseGate": {},
+    "@/state/channels": {},
+    "@/state/settings": { useSettingsStore: { getState: () => settings } },
+    "@/lib/noiseGate": { NoiseGateProcessor: class {} },
     "@/lib/sounds": { playJoinSound() {}, playLeaveSound() {} },
     sonner: { toast: {} },
   }, { queueMicrotask, console });
-  return { api, state, rooms };
+  return { api, state, settings, rooms };
 }
+
+test("audio device and master volume changes persist without leaving the room", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  await h.api.switchAudioInputDevice("microphone-2");
+  await h.api.switchAudioOutputDevice("speaker-2");
+  await h.api.applyInputVolume(1.25);
+  h.api.applyOutputVolume(0.75);
+
+  assert.equal(h.settings.audioInputDeviceId, "microphone-2");
+  assert.equal(h.settings.audioOutputDeviceId, "speaker-2");
+  assert.equal(h.settings.inputVolume, 1.25);
+  assert.equal(h.settings.outputVolume, 0.75);
+  assert.deepEqual(h.rooms[0].deviceSwitches, [
+    ["audioinput", "microphone-2"],
+    ["audiooutput", "speaker-2"],
+  ]);
+});
 
 test("SDK full-restart order preserves the DM and watch choice", async (t) => {
   const h = voiceHarness(t);

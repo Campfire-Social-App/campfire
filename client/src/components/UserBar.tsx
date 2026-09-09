@@ -18,6 +18,7 @@ import {
 import { UserAvatar } from "@/components/UserAvatar";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { IdentitySettingsDialog } from "@/components/IdentitySettingsDialog";
+import { AudioDeviceMenu } from "@/components/AudioDeviceMenu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -205,21 +206,29 @@ export function UserBar() {
             </div>
           </UserProfileHoverCard>
 
-          <IconToggle
-            active={localMuted}
-            onClick={() => void setMicrophoneMuted(!localMuted)}
-            label={localMuted ? "Unmute microphone" : "Mute microphone"}
-          >
-            {localMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-          </IconToggle>
+          <div className="flex shrink-0">
+            <IconToggle
+              active={localMuted}
+              onClick={() => void setMicrophoneMuted(!localMuted)}
+              label={localMuted ? "Unmute microphone" : "Mute microphone"}
+              className="rounded-r-none"
+            >
+              {localMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+            </IconToggle>
+            <AudioDeviceMenu kind="input" />
+          </div>
 
-          <IconToggle
-            active={localDeafened}
-            onClick={() => void setDeafened(!localDeafened)}
-            label={localDeafened ? "Undeafen" : "Deafen"}
-          >
-            {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
-          </IconToggle>
+          <div className="flex shrink-0">
+            <IconToggle
+              active={localDeafened}
+              onClick={() => void setDeafened(!localDeafened)}
+              label={localDeafened ? "Undeafen" : "Deafen"}
+              className="rounded-r-none"
+            >
+              {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
+            </IconToggle>
+            <AudioDeviceMenu kind="output" />
+          </div>
 
           <DropdownMenu>
             <Tooltip>
@@ -276,12 +285,14 @@ function IconToggle({
   onClick,
   label,
   children,
+  className,
 }: {
   active: boolean;
   activeClassName?: string;
   onClick: () => void;
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <Tooltip>
@@ -291,6 +302,7 @@ function IconToggle({
           className={cn(
             "flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-white/10 hover:text-foreground",
             active && activeClassName,
+            className,
           )}
         >
           {children}

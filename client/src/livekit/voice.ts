@@ -76,14 +76,21 @@ function microphoneCaptureOptions(
       ? { voiceIsolation: noiseSuppressionEnabled }
       : {}),
     channelCount: 1,
+    ...(useSettingsStore.getState().audioInputDeviceId
+      ? { deviceId: { exact: useSettingsStore.getState().audioInputDeviceId! } }
+      : {}),
   };
 }
 
-const baselineMicrophoneCaptureOptions: AudioCaptureOptions = {
-  echoCancellation: true,
-  autoGainControl: true,
-  channelCount: 1,
-};
+function baselineMicrophoneCaptureOptions(): AudioCaptureOptions {
+  const deviceId = useSettingsStore.getState().audioInputDeviceId;
+  return {
+    echoCancellation: true,
+    autoGainControl: true,
+    channelCount: 1,
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+  };
+}
 /** Set while the screen share is coming from our own capture rather than the
  * WebView's — it owns a Rust capture thread that has to be torn down with it. */
 let nativeCapture: NativeCapture | null = null;
@@ -116,7 +123,7 @@ function applyParticipantPlaybackVolume(
       : voiceState.mutedScreenShares[participant.identity]
         ? 0
         : (voiceState.screenShareVolumes[participant.identity] ?? 1);
-  participant.setVolume(volume, source);
+  participant.setVolume(volume * useSettingsStore.getState().outputVolume, source);
 }
 
 function configureRemoteScreenPublication(
@@ -193,6 +200,13 @@ export interface JoinOptions {
  * denied; in both cases the call remains usable for listening and screen view. */
 async function enableInitialMicrophone(participant: Room["localParticipant"]): Promise<boolean> {
   const settings = useSettingsStore.getState();
+  if (settings.audioInputDeviceId && settings.audioInputDeviceId !== "default") {
+    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    const available = devices.some(
+      (device) => device.kind === "audioinput" && device.deviceId === settings.audioInputDeviceId,
+    );
+    if (!available) settings.setAudioInputDeviceId(null);
+  }
   try {
     await participant.setMicrophoneEnabled(
       true,
@@ -209,7 +223,7 @@ async function enableInitialMicrophone(participant: Room["localParticipant"]): P
     } catch (suppressionError) {
       console.warn("Could not start noise suppression; retrying the microphone defaults.", suppressionError);
       try {
-        await participant.setMicrophoneEnabled(true, baselineMicrophoneCaptureOptions);
+        await participant.setMicrophoneEnabled(true, baselineMicrophoneCaptureOptions());
         toast.warning("Noise suppression is unavailable on this device; the microphone is active.");
       } catch (microphoneError) {
         console.warn("Could not start the microphone; joining muted.", microphoneError);
@@ -222,7 +236,7 @@ async function enableInitialMicrophone(participant: Room["localParticipant"]): P
   // LiveKit 2.21 associates its AudioContext only after getUserMedia returns.
   // Installing a processor in AudioCaptureOptions makes capture itself fail;
   // attach the gate to the published track instead and keep it non-fatal.
-  if (settings.noiseGateMode !== "off") {
+  if (settings.noiseGateMode !== "off" || settings.inputVolume !== 1) {
     await applyNoiseGate(settings.noiseGateMode).catch((error) => {
       console.warn("Could not enable the noise gate; microphone remains active.", error);
       toast.warning("Noise gate unavailable. The microphone remains active.");
@@ -250,7 +264,7 @@ export async function joinVoiceChannel(
     webAudioMix: true,
     // Keep room defaults processor-free: LiveKit assigns the AudioContext only
     // after capture, and processors are installed on the published track.
-    audioCaptureDefaults: baselineMicrophoneCaptureOptions,
+    audioCaptureDefaults: baselineMicrophoneCaptureOptions(),
     publishDefaults: {
       simulcast: true,
       screenShareEncoding: { maxBitrate: 6_000_000, maxFramerate: 30 },
@@ -447,6 +461,11 @@ export async function joinVoiceChannel(
 
   try {
     await nextRoom.connect(url, token);
+    const outputDeviceId = useSettingsStore.getState().audioOutputDeviceId;
+    if (outputDeviceId) {
+      const switched = await nextRoom.switchActiveDevice("audiooutput", outputDeviceId).catch(() => false);
+      if (!switched) useSettingsStore.getState().setAudioOutputDeviceId(null);
+    }
     const microphoneEnabled = localMuted
       ? false
       : await enableInitialMicrophone(nextRoom.localParticipant);
@@ -631,12 +650,47 @@ export async function applyNoiseGate(mode: NoiseGateMode): Promise<void> {
   if (!track) return;
 
   const current = track.getProcessor();
-  if (mode === "off") {
-    if (current?.name.startsWith("campfire-noise-gate-")) await track.stopProcessor();
+  const inputVolume = useSettingsStore.getState().inputVolume;
+  if (mode === "off" && inputVolume === 1) {
+    if (current instanceof NoiseGateProcessor) await track.stopProcessor();
     return;
   }
-  if (current instanceof NoiseGateProcessor && current.mode === mode) return;
-  await track.setProcessor(new NoiseGateProcessor(mode));
+  if (current instanceof NoiseGateProcessor && current.mode === mode) {
+    current.setInputGain(inputVolume);
+    return;
+  }
+  await track.setProcessor(new NoiseGateProcessor(mode, inputVolume));
+}
+
+export async function switchAudioInputDevice(deviceId: string): Promise<void> {
+  if (room) {
+    const switched = await room.switchActiveDevice("audioinput", deviceId, true);
+    if (!switched) throw new Error("The microphone could not be selected.");
+    await applyNoiseGate(useSettingsStore.getState().noiseGateMode);
+  }
+  useSettingsStore.getState().setAudioInputDeviceId(deviceId);
+}
+
+export async function switchAudioOutputDevice(deviceId: string): Promise<void> {
+  if (room) {
+    const switched = await room.switchActiveDevice("audiooutput", deviceId, true);
+    if (!switched) throw new Error("The audio output could not be selected.");
+  }
+  useSettingsStore.getState().setAudioOutputDeviceId(deviceId);
+}
+
+export async function applyInputVolume(volume: number): Promise<void> {
+  useSettingsStore.getState().setInputVolume(volume);
+  await applyNoiseGate(useSettingsStore.getState().noiseGateMode);
+}
+
+export function applyOutputVolume(volume: number): void {
+  useSettingsStore.getState().setOutputVolume(volume);
+  if (!room) return;
+  for (const participant of room.remoteParticipants.values()) {
+    applyParticipantPlaybackVolume(participant, Track.Source.Microphone);
+    applyParticipantPlaybackVolume(participant, Track.Source.ScreenShareAudio);
+  }
 }
 
 export async function setDeafened(deafened: boolean): Promise<void> {

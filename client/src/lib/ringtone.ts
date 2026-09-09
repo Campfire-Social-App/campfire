@@ -22,8 +22,9 @@ function beep(ctx: AudioContext, freq: number, at: number, duration: number): vo
   osc.frequency.value = freq;
   // Ramped rather than switched: an abrupt gain step clicks audibly.
   gain.gain.setValueAtTime(0, at);
-  gain.gain.linearRampToValueAtTime(RING_VOLUME, at + 0.04);
-  gain.gain.setValueAtTime(RING_VOLUME, at + duration - 0.06);
+  const volume = Math.min(1, RING_VOLUME * useSettingsStore.getState().outputVolume);
+  gain.gain.linearRampToValueAtTime(volume, at + 0.04);
+  gain.gain.setValueAtTime(volume, at + duration - 0.06);
   gain.gain.linearRampToValueAtTime(0, at + duration);
   osc.connect(gain).connect(ctx.destination);
   osc.start(at);
@@ -38,6 +39,11 @@ function startTone(tone: Tone): void {
     return; // No audio output available — the on-screen call UI still stands alone.
   }
   const ctx = context;
+  const outputDeviceId = useSettingsStore.getState().audioOutputDeviceId;
+  const sinkContext = ctx as AudioContext & { setSinkId?: (deviceId: string) => Promise<void> };
+  if (outputDeviceId && sinkContext.setSinkId) {
+    void sinkContext.setSinkId(outputDeviceId).catch(() => {});
+  }
   // Autoplay policy suspends a context created without a user gesture; the
   // resume is best-effort, and a silent ring is better than a thrown error.
   void ctx.resume().catch(() => {});
@@ -68,3 +74,4 @@ export function stopRinging(): void {
   void context?.close().catch(() => {});
   context = null;
 }
+import { useSettingsStore } from "@/state/settings";

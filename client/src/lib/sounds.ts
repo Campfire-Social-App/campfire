@@ -1,8 +1,14 @@
+import { useSettingsStore } from "@/state/settings";
+
 const VOICE_SOUND_VOLUME = 0.5;
 
 function playSound(url: string): void {
   const audio = new Audio(url);
-  audio.volume = VOICE_SOUND_VOLUME;
+  const settings = useSettingsStore.getState();
+  audio.volume = Math.min(1, VOICE_SOUND_VOLUME * settings.outputVolume);
+  if (settings.audioOutputDeviceId && "setSinkId" in audio) {
+    void audio.setSinkId(settings.audioOutputDeviceId).catch(() => {});
+  }
   // Autoplay can be blocked before the user has interacted with the page — ignore.
   void audio.play().catch(() => {});
 }

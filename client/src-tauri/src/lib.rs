@@ -1,5 +1,23 @@
 mod capture;
 
+#[tauri::command]
+fn open_windows_sound_settings(page: Option<String>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(if page.as_deref() == Some("mixer") {
+                "ms-settings:apps-volume"
+            } else {
+                "ms-settings:sound"
+            })
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+    #[cfg(not(target_os = "windows"))]
+    Err("Windows sound settings are only available on Windows".to_string())
+}
+
 #[cfg(target_os = "windows")]
 use tauri::{
     menu::{Menu, MenuItem},
@@ -30,6 +48,7 @@ pub fn run() {
             capture::start_capture,
             capture::acknowledge_capture,
             capture::stop_capture,
+            open_windows_sound_settings,
         ])
         .setup(|_app| {
             #[cfg(target_os = "windows")]
