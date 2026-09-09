@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:campfire/api/api_exception.dart';
 import 'package:campfire/livekit/voice.dart';
 import 'package:campfire/models/channel.dart';
+import 'package:campfire/state/api.dart';
 import 'package:campfire/state/auth.dart';
 import 'package:campfire/state/channels.dart';
 import 'package:campfire/state/dms.dart';
@@ -351,6 +353,14 @@ class _VoiceParticipants extends ConsumerWidget {
     if (participants.isEmpty) return const SizedBox.shrink();
 
     final speaking = ref.watch(voiceProvider).speakingUserIds;
+    final isAdmin = switch (ref.watch(authProvider)) {
+      AuthAuthenticated(:final user) => user.isAdmin,
+      _ => false,
+    };
+    final destinations = ref
+        .watch(voiceChannelsProvider)
+        .where((channel) => channel.id != channelId)
+        .toList();
 
     return Padding(
       padding: const EdgeInsets.only(left: 16, bottom: 4),
@@ -363,9 +373,33 @@ class _VoiceParticipants extends ConsumerWidget {
           child: Column(
             children: [
               for (final participant in participants)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onLongPress: isAdmin && destinations.isNotEmpty
+                      ? () => unawaited(
+                            _showMoveParticipantSheet(
+                              context,
+                              ref,
+                              participant.userId,
+                              participant.username,
+                              destinations,
+                            ),
+                          )
+                      : null,
+                  onSecondaryTap: isAdmin && destinations.isNotEmpty
+                      ? () => unawaited(
+                            _showMoveParticipantSheet(
+                              context,
+                              ref,
+                              participant.userId,
+                              participant.username,
+                              destinations,
+                            ),
+                          )
+                      : null,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
                     children: [
                       UserAvatar(
                         username: participant.username,
@@ -435,6 +469,7 @@ class _VoiceParticipants extends ConsumerWidget {
                           ),
                         ),
                     ],
+                    ),
                   ),
                 ),
             ],
@@ -442,5 +477,51 @@ class _VoiceParticipants extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+Future<void> _showMoveParticipantSheet(
+  BuildContext context,
+  WidgetRef ref,
+  String userId,
+  String username,
+  List<Channel> destinations,
+) async {
+  final destination = await showModalBottomSheet<Channel>(
+    context: context,
+    backgroundColor: CampfireTokens.popover,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text('Move $username'),
+            subtitle: const Text('Choose a voice channel'),
+          ),
+          for (final channel in destinations)
+            ListTile(
+              leading: const Icon(CampfireIcons.voiceChannel),
+              title: Text(channel.name),
+              onTap: () => Navigator.pop(sheetContext, channel),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (destination == null || !context.mounted) {
+    return;
+  }
+  try {
+    await ref.read(apiProvider).moveVoiceParticipant(userId, destination.id);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Moving $username to ${destination.name}.')),
+      );
+    }
+  } on ApiException catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 }

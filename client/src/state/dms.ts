@@ -8,18 +8,18 @@ interface DMState {
   activeDmId: string | null;
   setConversations: (conversations: DMConversation[]) => void;
   upsertConversation: (conversation: DMConversation) => void;
+  removeConversation: (id: string) => void;
   selectDm: (id: string | null) => void;
   /** Opens (creating if needed) the conversation with a member and shows it. */
   openWithUser: (userId: string) => Promise<void>;
 }
 
-/** Most recent first; a conversation with no messages yet stays pinned at the
- * top, matching how the server orders the initial list. */
+/** Most recent first. Conversations without messages appear last. */
 function sortConversations(conversations: DMConversation[]): DMConversation[] {
   return [...conversations].sort((a, b) => {
     if (a.last_message_at === b.last_message_at) return 0;
-    if (a.last_message_at === null) return -1;
-    if (b.last_message_at === null) return 1;
+    if (a.last_message_at === null) return 1;
+    if (b.last_message_at === null) return -1;
     return b.last_message_at.localeCompare(a.last_message_at);
   });
 }
@@ -53,6 +53,12 @@ export const useDmsStore = create<DMState>()((set, get) => ({
         ),
       };
     }),
+
+  removeConversation: (id) =>
+    set((state) => ({
+      conversations: state.conversations.filter((conversation) => conversation.id !== id),
+      activeDmId: state.activeDmId === id ? null : state.activeDmId,
+    })),
 
   selectDm: (id) => {
     set({ activeDmId: id });

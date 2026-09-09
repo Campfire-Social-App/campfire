@@ -3,7 +3,7 @@ import { AppWindow, Loader2, Monitor, RefreshCw, Volume2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useVoiceStore } from "@/state/voice";
-import { startNativeScreenShare, startWebViewScreenShare } from "@/livekit/voice";
+import { getActiveScreenShareSettings, startNativeScreenShare, startWebViewScreenShare, stopScreenShare } from "@/livekit/voice";
 import { isNativeCaptureAvailable, listCaptureSources, type CaptureQuality, type CaptureSource } from "@/lib/screenCapture";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ type Tab = "window" | "screen";
 export function ScreenSharePicker() {
   const open = useVoiceStore((s) => s.screenPickerOpen);
   const setOpen = useVoiceStore((s) => s.setScreenPickerOpen);
+  const active = useVoiceStore((s) => s.localScreenShareEnabled);
 
   const [sources, setSources] = useState<CaptureSource[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,7 +51,12 @@ export function ScreenSharePicker() {
 
   useEffect(() => {
     if (!open) return;
-    setSelectedId(null);
+    const current = getActiveScreenShareSettings();
+    setSelectedId(current?.sourceId ?? null);
+    setQuality(current?.quality ?? "1080p");
+    setFps(current?.fps ?? 30);
+    setShareAudio(current?.audioEnabled ?? true);
+    if (current?.sourceId) setTab(current.sourceId.startsWith("screen:") ? "screen" : "window");
     if (nativeAvailable) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -63,7 +69,7 @@ export function ScreenSharePicker() {
     setSharing(true);
     try {
       if (platformPicker) await startWebViewScreenShare(shareAudio, platformQuality, fps);
-      else await startNativeScreenShare(selected!.id, quality, fps);
+      else await startNativeScreenShare(selected!.id, quality, fps, shareAudio);
       setOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't start sharing.");
@@ -167,8 +173,7 @@ export function ScreenSharePicker() {
             onChange={setFps}
           />
 
-          {!nativeAvailable && (
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
               <input
                 type="checkbox"
                 checked={shareAudio}
@@ -177,10 +182,23 @@ export function ScreenSharePicker() {
               />
               <Volume2 className="size-4 text-muted-foreground" />
               Share system audio
-            </label>
-          )}
+          </label>
 
           <div className="ml-auto flex items-center gap-2">
+            {active && (
+              <Button
+                variant="destructive"
+                disabled={sharing}
+                onClick={() => {
+                  setSharing(true);
+                  void stopScreenShare()
+                    .then(() => setOpen(false))
+                    .finally(() => setSharing(false));
+                }}
+              >
+                Stop sharing
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
@@ -189,7 +207,7 @@ export function ScreenSharePicker() {
               disabled={(!platformPicker && !selected) || sharing}
             >
               {sharing && <Loader2 className="size-4 animate-spin" />}
-              Share
+              {active ? "Apply changes" : "Share"}
             </Button>
           </div>
         </div>

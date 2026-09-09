@@ -24,17 +24,16 @@ class DmsNotifier extends Notifier<List<DMConversation>> {
     return const [];
   }
 
-  /// Most recent first; a conversation with no messages yet stays pinned at the
-  /// top, matching how the server orders the initial list.
+  /// Most recent first; conversations without messages appear last.
   List<DMConversation> _sorted(List<DMConversation> conversations) {
     return [...conversations]..sort((a, b) {
-        final (x, y) = (a.lastMessageAt, b.lastMessageAt);
-        if (x == null && y == null) return 0;
-        if (x == null) return -1;
-        if (y == null) return 1;
-        return y.compareTo(x);
-      });
-    }
+      final (x, y) = (a.lastMessageAt, b.lastMessageAt);
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return y.compareTo(x);
+    });
+  }
 
   void upsert(DMConversation conversation) {
     // While a conversation is on screen its messages are read by definition —
@@ -60,6 +59,18 @@ class DmsNotifier extends Notifier<List<DMConversation>> {
     state = [
       for (final c in state) c.id == id ? c.copyWith(unreadCount: 0) : c,
     ];
+  }
+
+  void remove(String id) {
+    state = state.where((conversation) => conversation.id != id).toList();
+    if (ref.read(activeDmIdProvider) == id) {
+      ref.read(activeDmIdProvider.notifier).select(null);
+    }
+  }
+
+  Future<void> delete(String id) async {
+    await ref.read(apiProvider).deleteDm(id);
+    remove(id);
   }
 }
 

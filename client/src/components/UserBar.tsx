@@ -41,7 +41,6 @@ import {
   setDeafened,
   setMicrophoneMuted,
   requestScreenShare,
-  stopScreenShare,
   applyNoiseSuppression,
   applyNoiseGate,
 } from "@/livekit/voice";
@@ -91,8 +90,7 @@ export function UserBar() {
 
   const handleToggleScreenShare = async () => {
     try {
-      if (localScreenShareEnabled) await stopScreenShare();
-      else await requestScreenShare();
+      await requestScreenShare();
     } catch (err) {
       // Cancelling the browser's share picker also rejects with NotAllowedError — not a real error.
       if (err instanceof DOMException && err.name === "NotAllowedError") return;
@@ -173,7 +171,7 @@ export function UserBar() {
             <MediaTile
               active={localScreenShareEnabled}
               onClick={() => void handleToggleScreenShare()}
-              label={localScreenShareEnabled ? "Stop screen share" : "Share screen"}
+              label={localScreenShareEnabled ? "Screen share settings" : "Share screen"}
             >
               {localScreenShareEnabled ? (
                 <ScreenShare className="size-4" />

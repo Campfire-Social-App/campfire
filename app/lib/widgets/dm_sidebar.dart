@@ -105,6 +105,8 @@ class DmSidebar extends ConsumerWidget {
                               ref.read(activeDmIdProvider.notifier).select(conversation.id);
                               onSelect?.call();
                             },
+                            onDelete: () =>
+                                _confirmDeleteConversation(context, ref, conversation),
                           ),
                       ],
                     ),
@@ -122,11 +124,13 @@ class _ConversationRow extends ConsumerWidget {
     required this.conversation,
     required this.active,
     required this.onTap,
+    required this.onDelete,
   });
 
   final DMConversation conversation;
   final bool active;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -145,6 +149,8 @@ class _ConversationRow extends ConsumerWidget {
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onTap,
+          onLongPress: onDelete,
+          onSecondaryTap: onDelete,
           borderRadius: BorderRadius.circular(8),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -221,6 +227,48 @@ class _ConversationRow extends ConsumerWidget {
       ),
     );
   }
+}
+
+void _confirmDeleteConversation(
+  BuildContext context,
+  WidgetRef ref,
+  DMConversation conversation,
+) {
+  unawaited(
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: Text(
+          'This removes ${conversation.recipient.username} from your list. '
+          'Shared message history is preserved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              try {
+                await ref.read(dmsProvider.notifier).delete(conversation.id);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Couldn't delete the conversation."),
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// How long ago, in the width a sidebar row can spare: `now`, `5m`, `2h`, `3d`.

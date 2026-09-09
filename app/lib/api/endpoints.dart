@@ -172,6 +172,10 @@ class CampfireApi {
         decode: (json) => DMConversation.fromJson(json as Map<String, dynamic>),
       );
 
+  /// Hides the conversation for this user; shared message history is retained.
+  Future<void> deleteDm(String channelId) =>
+      client.request<void>('/api/dms/$channelId', method: 'DELETE');
+
   /// Rings the other member. Joining the call itself is a separate step — the
   /// LiveKit room is the DM channel (see [voiceToken]).
   Future<void> startDmCall(String channelId) =>
@@ -244,6 +248,13 @@ class CampfireApi {
         '/api/voice/$channelId/token',
         method: 'POST',
         decode: (json) => VoiceTokenResponse.fromJson(json as Map<String, dynamic>),
+      );
+
+  Future<void> moveVoiceParticipant(String userId, String channelId) =>
+      client.request<void>(
+        '/api/voice/participants/$userId/move',
+        method: 'POST',
+        body: {'channel_id': channelId},
       );
 }
 

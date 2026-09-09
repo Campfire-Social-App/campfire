@@ -14,7 +14,6 @@ import {
   setCameraEnabled,
   setMicrophoneMuted,
   requestScreenShare,
-  stopScreenShare,
   setScreenShareViewing,
 } from "@/livekit/voice";
 import { hangUp } from "@/lib/calls";
@@ -80,8 +79,7 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
 
   const handleToggleScreenShare = async () => {
     try {
-      if (localScreenShareEnabled) await stopScreenShare();
-      else await requestScreenShare();
+      await requestScreenShare();
     } catch (err) {
       // Dismissing the browser's share picker rejects too — not a real failure.
       if (err instanceof DOMException && err.name === "NotAllowedError") return;
@@ -139,7 +137,7 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
                 active={localScreenShareEnabled}
                 activeClassName="bg-primary/15 text-primary"
                 onClick={() => void handleToggleScreenShare()}
-                label={localScreenShareEnabled ? "Stop screen share" : "Share screen"}
+                label={localScreenShareEnabled ? "Screen share settings" : "Share screen"}
               >
                 {localScreenShareEnabled ? (
                   <ScreenShare className="size-4" />

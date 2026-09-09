@@ -41,6 +41,19 @@ import {
 } from "@/lib/sounds";
 
 let room: Room | null = null;
+export interface ActiveScreenShareSettings {
+  sourceId: string | null;
+  quality: CaptureQuality;
+  fps: number;
+  audioEnabled: boolean;
+  native: boolean;
+}
+
+let activeScreenShareSettings: ActiveScreenShareSettings | null = null;
+
+export function getActiveScreenShareSettings(): ActiveScreenShareSettings | null {
+  return activeScreenShareSettings;
+}
 
 /** WebRTC's audio processing module runs before LiveKit hands the signal to
  * Opus. Keeping the complete speech preset here makes capture consistent
@@ -389,6 +402,7 @@ export async function joinVoiceChannel(
       // which bypasses our own setScreenShareEnabled(false) call.
       if (publication.source === Track.Source.ScreenShare) {
         useVoiceStore.getState().setLocalScreenShareEnabled(false);
+        activeScreenShareSettings = null;
         void syncOwnVoiceState();
       } else if (publication.source === Track.Source.Camera) {
         useVoiceStore.getState().setLocalCameraEnabled(false);
@@ -688,6 +702,7 @@ export async function startNativeScreenShare(
   sourceId: string,
   quality: CaptureQuality,
   fps: number,
+  captureAudio = true,
 ): Promise<void> {
   if (!room) return;
   const currentRoom = room;
@@ -699,7 +714,7 @@ export async function startNativeScreenShare(
     // still published but nothing will ever feed it again.
     toast.error(message);
     void stopScreenShare();
-  });
+  }, captureAudio, (message) => toast.warning(message));
 
   try {
     if (room !== currentRoom) throw new Error("The call ended before capture started.");
@@ -715,12 +730,24 @@ export async function startNativeScreenShare(
       degradationPreference: profile.degradationPreference,
       screenShareEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: profile.fps },
     });
+    if (capture.audioTrack) {
+      await currentRoom.localParticipant.publishTrack(capture.audioTrack, {
+        name: "screen-audio",
+        source: Track.Source.ScreenShareAudio,
+        audioPreset: AudioPresets.musicHighQualityStereo,
+        forceStereo: true,
+        dtx: false,
+        red: false,
+      });
+    }
   } catch (err) {
+    await currentRoom.localParticipant.unpublishTrack(capture.track).catch(() => {});
     await capture.stop();
     throw err;
   }
 
   nativeCapture = capture;
+  activeScreenShareSettings = { sourceId, quality, fps, audioEnabled: captureAudio, native: true };
   useVoiceStore.getState().setLocalScreenShareEnabled(true);
   void syncOwnVoiceState();
 }
@@ -741,6 +768,9 @@ export async function startWebViewScreenShare(
   }
   if (!room) return;
   const currentRoom = room;
+  if (useVoiceStore.getState().localScreenShareEnabled) {
+    await stopScreenShare();
+  }
   const profile = screenShareProfile(quality, fps);
   try {
     await currentRoom.localParticipant.setScreenShareEnabled(true, {
@@ -768,6 +798,13 @@ export async function startWebViewScreenShare(
       return;
     }
     useVoiceStore.getState().setLocalScreenShareEnabled(true);
+    activeScreenShareSettings = {
+      sourceId: null,
+      quality,
+      fps,
+      audioEnabled: captureAudio,
+      native: false,
+    };
     void syncOwnVoiceState();
     if (captureAudio) {
       const publication = currentRoom.localParticipant.getTrackPublication(
@@ -821,11 +858,15 @@ export async function stopScreenShare(): Promise<void> {
   nativeCapture = null;
 
   if (capture) {
+    if (capture.audioTrack) {
+      await room?.localParticipant.unpublishTrack(capture.audioTrack).catch(() => {});
+    }
     await room?.localParticipant.unpublishTrack(capture.track).catch(() => {});
     await capture.stop();
   } else {
     await room?.localParticipant.setScreenShareEnabled(false).catch(() => {});
   }
+  activeScreenShareSettings = null;
   useVoiceStore.getState().setLocalScreenShareEnabled(false);
   void syncOwnVoiceState();
 }
@@ -835,6 +876,7 @@ export async function stopScreenShare(): Promise<void> {
 async function stopNativeCapture(): Promise<void> {
   const capture = nativeCapture;
   nativeCapture = null;
+  activeScreenShareSettings = null;
   if (capture) await capture.stop();
 }
 

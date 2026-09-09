@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:campfire/core/call_service.dart';
 import 'package:campfire/core/sounds.dart';
 import 'package:campfire/state/api.dart';
+import 'package:campfire/state/channels.dart';
 import 'package:campfire/state/dms.dart';
 import 'package:campfire/state/settings.dart';
 import 'package:campfire/state/voice.dart';
@@ -302,6 +304,23 @@ class VoiceSession {
           _scheduleEmptyCallCheck(room);
         }
       })
+      ..on<DataReceivedEvent>((event) {
+        if (event.topic != 'campfire.moderation') {
+          return;
+        }
+        try {
+          final command = jsonDecode(utf8.decode(event.data));
+          if (command is! Map<String, dynamic> || command['action'] != 'move') {
+            return;
+          }
+          final channelId = command['channel_id'];
+          if (channelId is String && channelId.isNotEmpty) {
+            unawaited(_handleModeratorMove(channelId));
+          }
+        } on Object {
+          // Ignore packets that are not valid Campfire moderation commands.
+        }
+      })
       ..on<RoomDisconnectedEvent>((_) {
         if (_room != room) return;
         _emptyCallTimer?.cancel();
@@ -316,6 +335,15 @@ class VoiceSession {
         unawaited(stopCallService());
         if (wasConnected) _sounds.leave();
       });
+  }
+
+  Future<void> _handleModeratorMove(String channelId) async {
+    try {
+      await join(channelId);
+      _ref.read(selectedChannelIdProvider.notifier).selected = channelId;
+    } on Object catch (error) {
+      debugPrint('voice: moderator move to $channelId failed: $error');
+    }
   }
 
   void _scheduleEmptyCallCheck(Room room) {

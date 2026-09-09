@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:campfire/models/dm.dart';
 import 'package:campfire/state/dms.dart';
 import 'package:campfire/state/presence.dart';
@@ -60,6 +62,8 @@ class ServerRail extends ConsumerWidget {
               _RailItem(
                 active: activeDmId == conversation.id,
                 onTap: () => select(conversation.id),
+                onLongPress: () =>
+                    _confirmDeleteConversation(context, ref, conversation),
                 child: _DmAvatar(
                   conversation: conversation,
                   active: activeDmId == conversation.id,
@@ -162,10 +166,16 @@ class _DmAvatar extends ConsumerWidget {
 
 /// Rail button with the selected-state pill on the left edge.
 class _RailItem extends StatelessWidget {
-  const _RailItem({required this.active, required this.onTap, required this.child});
+  const _RailItem({
+    required this.active,
+    required this.onTap,
+    required this.child,
+    this.onLongPress,
+  });
 
   final bool active;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final Widget child;
 
   @override
@@ -190,6 +200,8 @@ class _RailItem extends StatelessWidget {
           Center(
             child: GestureDetector(
               onTap: onTap,
+              onLongPress: onLongPress,
+              onSecondaryTap: onLongPress,
               behavior: HitTestBehavior.opaque,
               child: child,
             ),
@@ -198,6 +210,48 @@ class _RailItem extends StatelessWidget {
       ),
     );
   }
+}
+
+void _confirmDeleteConversation(
+  BuildContext context,
+  WidgetRef ref,
+  DMConversation conversation,
+) {
+  unawaited(
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: Text(
+          'This removes ${conversation.recipient.username} from your list. '
+          'Shared message history is preserved.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              try {
+                await ref.read(dmsProvider.notifier).delete(conversation.id);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Couldn't delete the conversation."),
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _RailDivider extends StatelessWidget {

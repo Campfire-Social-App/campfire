@@ -28,3 +28,6 @@ class DMParticipant(Base):
     )
     # NULL means "never opened" — every message in the conversation counts as unread.
     last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Hiding is local to one participant. The channel and its history remain
+    # available to the other member and can be surfaced again by a new message.
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

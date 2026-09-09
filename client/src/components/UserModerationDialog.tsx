@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { Ban, Copy, ExternalLink, Gavel, Hash, Link2, Loader2, MessageSquare, MicOff, Shield, UserMinus, Volume2 } from "lucide-react";
-import { banUser, getUserModerationOverview, kickUserFromVoice, muteVoiceParticipant, timeoutUser } from "@/api/endpoints";
+import { banUser, getUserModerationOverview, kickUserFromVoice, moveVoiceParticipant, muteVoiceParticipant, timeoutUser } from "@/api/endpoints";
 import { AttachmentList } from "@/components/AttachmentList";
 import { UserAvatar } from "@/components/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,8 @@ export function UserModerationDialog({
   const [data, setData] = useState<UserModerationOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>("overview");
-  const [action, setAction] = useState<"mute" | null>(null);
+  const [action, setAction] = useState<"mute" | "move" | null>(null);
+  const [moveDestination, setMoveDestination] = useState("");
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [moderationBusy, setModerationBusy] = useState(false);
   const ownUserId = useAuthStore((state) => state.user?.id);
@@ -44,6 +45,7 @@ export function UserModerationDialog({
     setLoading(true);
     setData(null);
     setTab("overview");
+    setMoveDestination("");
     void getUserModerationOverview(user.id)
       .then(setData)
       .catch((error) => {
@@ -88,6 +90,21 @@ export function UserModerationDialog({
       toast.success(`${user.username}'s microphone was muted.`);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Couldn't mute the participant.");
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const moveParticipant = async () => {
+    if (!moveDestination) return;
+    setAction("move");
+    try {
+      await moveVoiceParticipant(user.id, moveDestination);
+      const destination = channels.find((channel) => channel.id === moveDestination);
+      toast.success(`${user.username} is moving to ${destination?.name ?? "the selected channel"}.`);
+      setMoveDestination("");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Couldn't move the participant.");
     } finally {
       setAction(null);
     }
@@ -313,9 +330,34 @@ export function UserModerationDialog({
                       {action === "mute" ? <Loader2 className="size-4 animate-spin" /> : <MicOff className="size-4" />}
                       {voiceState.muted ? "Microphone already muted" : "Mute microphone"}
                     </Button>
-                    <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                      To move this participant, drag their name from the voice list and drop it on another voice channel.
-                    </p>
+                    <div className="space-y-2 rounded-lg border border-border p-3">
+                      <label htmlFor="voice-move-destination" className="text-xs font-medium text-muted-foreground">
+                        Move to voice channel
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          id="voice-move-destination"
+                          value={moveDestination}
+                          disabled={action !== null}
+                          onChange={(event) => setMoveDestination(event.target.value)}
+                          className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-2 text-sm"
+                        >
+                          <option value="">Select a channel</option>
+                          {channels
+                            .filter((channel) => channel.type === "voice" && channel.id !== voiceState.channel_id)
+                            .map((channel) => (
+                              <option key={channel.id} value={channel.id}>{channel.name}</option>
+                            ))}
+                        </select>
+                        <Button
+                          disabled={!moveDestination || action !== null}
+                          onClick={() => void moveParticipant()}
+                        >
+                          {action === "move" && <Loader2 className="size-4 animate-spin" />}
+                          Move
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <p className="mt-3 text-sm text-muted-foreground">This user is not in a voice channel.</p>
