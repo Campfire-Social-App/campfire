@@ -101,6 +101,8 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
     ? `Ringing ${conversation.recipient.username}…`
     : connectionStatus === "connecting"
       ? "Connecting…"
+      : inThisCall && connectionStatus === "reconnecting"
+        ? "Reconnecting…"
       : inThisCall
         ? "In call"
         : `${conversation.recipient.username} is on a call`;

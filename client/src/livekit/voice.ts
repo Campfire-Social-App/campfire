@@ -1,6 +1,7 @@
 import {
   Room,
   RoomEvent,
+  ConnectionState,
   AudioPresets,
   ScreenSharePresets,
   Track,
@@ -16,6 +17,7 @@ import {
   type RemoteVideoTrack,
 } from "livekit-client";
 import { toast } from "sonner";
+import { emptyCallGrace } from "./emptyCallGrace";
 import { getVoiceToken, updateOwnVoiceState } from "@/api/endpoints";
 import {
   isNativeCaptureAvailable,
@@ -23,6 +25,7 @@ import {
   type CaptureQuality,
   type NativeCapture,
 } from "@/lib/screenCapture";
+import { screenShareProfile } from "@/lib/screenShareProfile";
 import { useDmsStore } from "@/state/dms";
 import { useChannelsStore } from "@/state/channels";
 import { useVoiceStore } from "@/state/voice";
@@ -226,7 +229,7 @@ export async function joinVoiceChannel(
   const { token, url } = await getVoiceToken(channelId, localMuted, localDeafened);
 
   const nextRoom = new Room({
-    adaptiveStream: true,
+    adaptiveStream: { pixelDensity: "screen" },
     dynacast: true,
     // Per-participant gain above 100% requires Web Audio; HTMLMediaElement's
     // volume property is capped at 1. The LiveKit mixer keeps each remote track
@@ -237,13 +240,41 @@ export async function joinVoiceChannel(
     audioCaptureDefaults: baselineMicrophoneCaptureOptions,
     publishDefaults: {
       simulcast: true,
-      screenShareEncoding: ScreenSharePresets.h720fps30.encoding,
-      screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
+      screenShareEncoding: { maxBitrate: 6_000_000, maxFramerate: 30 },
+      screenShareSimulcastLayers: [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps30],
     },
   });
   room = nextRoom;
 
+  const emptyCall = emptyCallGrace(
+    () => room === nextRoom && nextRoom.state === ConnectionState.Connected &&
+      nextRoom.remoteParticipants.size === 0 &&
+      useDmsStore.getState().conversations.some((c) => c.id === channelId),
+    () => { void leaveVoiceChannel(); },
+  );
+  const reconnecting = () => {
+    if (room !== nextRoom) return;
+    emptyCall.cancel();
+    useVoiceStore.getState().setConnection(channelId, "reconnecting");
+  };
+
   nextRoom
+    .on(RoomEvent.Reconnecting, reconnecting)
+    .on(RoomEvent.SignalReconnecting, reconnecting)
+    .on(RoomEvent.Reconnected, () => {
+      if (room !== nextRoom) return;
+      useVoiceStore.getState().setConnection(channelId, "connected");
+      // Publications may have new SIDs after a full restart. Restore the
+      // user's watch choices, without requiring another click on Watch.
+      for (const participant of nextRoom.remoteParticipants.values()) {
+        applyParticipantPlaybackVolume(participant);
+        for (const publication of participant.trackPublications.values()) {
+          configureRemoteScreenPublication(publication, participant);
+        }
+      }
+      void syncOwnVoiceState();
+      if (nextRoom.remoteParticipants.size === 0) emptyCall.schedule();
+    })
     .on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
       useVoiceStore.getState().setSpeaking(speakers.map((p) => p.identity));
     })
@@ -274,6 +305,7 @@ export async function joinVoiceChannel(
       }
     })
     .on(RoomEvent.ParticipantConnected, (participant) => {
+      emptyCall.cancel();
       applyParticipantPlaybackVolume(participant);
       const voiceState = useVoiceStore.getState();
       // A participant who joins already muted may not publish/subscribe a mic
@@ -323,7 +355,14 @@ export async function joinVoiceChannel(
     )
     .on(RoomEvent.TrackUnpublished, (publication: RemoteTrackPublication, participant) => {
       if (publication.source === Track.Source.ScreenShare) {
-        useVoiceStore.getState().setScreenShareAvailable(participant.identity, false);
+        // Restart unwinds publications before emitting Reconnecting. Defer
+        // clearing watch intent until the SDK has finished that transition.
+        queueMicrotask(() => {
+          if (room === nextRoom && nextRoom.state === ConnectionState.Connected &&
+            !participant.getTrackPublication(Track.Source.ScreenShare)) {
+            useVoiceStore.getState().setScreenShareAvailable(participant.identity, false);
+          }
+        });
       } else if (publication.source === Track.Source.ScreenShareAudio) {
         removeAttachedAudio(publication);
       }
@@ -333,12 +372,14 @@ export async function joinVoiceChannel(
         const voiceState = useVoiceStore.getState();
         voiceState.setScreenShareAvailable(participant.identity, true);
         voiceState.setScreenShareViewing(participant.identity, true);
+        voiceState.setLocalScreenShareEnabled(true);
       }
       if (publication.track?.kind === Track.Kind.Video) {
         setVideoTrackForSource(participant, publication.source, publication.track as LocalVideoTrack);
       }
     })
     .on(RoomEvent.LocalTrackUnpublished, (publication: LocalTrackPublication, participant) => {
+      if (room !== nextRoom || nextRoom.state === ConnectionState.Reconnecting) return;
       if (publication.source === Track.Source.ScreenShare) {
         useVoiceStore.getState().setScreenShareAvailable(participant.identity, false);
       }
@@ -374,19 +415,17 @@ export async function joinVoiceChannel(
       }
     })
     .on(RoomEvent.ParticipantDisconnected, () => {
-      // A 1:1 call is over the moment the other person leaves — unlike a voice
-      // channel, where sitting in an empty room waiting for someone is normal.
-      const isDm = useDmsStore
-        .getState()
-        .conversations.some((c) => c.id === useVoiceStore.getState().connectedChannelId);
-      if (isDm && nextRoom.remoteParticipants.size === 0) void leaveVoiceChannel();
+      if (nextRoom.remoteParticipants.size === 0) emptyCall.schedule();
     })
-    .on(RoomEvent.Disconnected, () => {
+    .on(RoomEvent.Disconnected, (reason) => {
+      emptyCall.cancel();
+      if (room !== nextRoom) return;
+      console.info("Voice room disconnected", { reason });
       void stopNativeCapture();
       cleanupAudioElements();
       // Only sound off if we'd actually finished joining — a mid-setup failure
       // (e.g. mic permission denied) disconnects too, but never played a join sound.
-      const wasConnected = useVoiceStore.getState().connectionStatus === "connected";
+      const wasConnected = ["connected", "reconnecting"].includes(useVoiceStore.getState().connectionStatus);
       useVoiceStore.getState().setConnection(null, "disconnected");
       room = null;
       if (wasConnected) playLeaveSound();
@@ -509,11 +548,13 @@ export function setScreenShareViewing(userId: string, viewing: boolean): void {
 export async function leaveVoiceChannel(): Promise<void> {
   if (!room) return;
   const current = room;
+  const wasConnected = ["connected", "reconnecting"].includes(useVoiceStore.getState().connectionStatus);
   room = null;
   await stopNativeCapture();
   await current.disconnect();
   cleanupAudioElements();
   useVoiceStore.getState().setConnection(null, "disconnected");
+  if (wasConnected) playLeaveSound();
 }
 
 export async function setMicrophoneMuted(
@@ -652,6 +693,7 @@ export async function startNativeScreenShare(
   const currentRoom = room;
 
   await stopScreenShare();
+  const profile = screenShareProfile(quality, fps);
   const capture = await startNativeCapture(sourceId, quality, fps, (message) => {
     // The capture died on its own (window closed, device lost) — the track is
     // still published but nothing will ever feed it again.
@@ -660,15 +702,18 @@ export async function startNativeScreenShare(
   });
 
   try {
+    if (room !== currentRoom) throw new Error("The call ended before capture started.");
     await currentRoom.localParticipant.publishTrack(capture.track, {
       name: "screen",
       source: Track.Source.ScreenShare,
-      // A half-resolution layer lets the SFU switch weak subscribers quickly;
-      // dynacast stops paying for it when nobody needs it.
+      // An intermediate 720p layer avoids a direct drop from 1080p to 360p;
+      // dynacast stops paying for layers when nobody needs them.
       simulcast: true,
-      screenShareSimulcastLayers: [ScreenSharePresets.h360fps15],
-      degradationPreference: "balanced",
-      screenShareEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: fps },
+      screenShareSimulcastLayers: quality === "720p"
+        ? [ScreenSharePresets.h360fps15]
+        : [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps30],
+      degradationPreference: profile.degradationPreference,
+      screenShareEncoding: { maxBitrate: capture.maxBitrate, maxFramerate: profile.fps },
     });
   } catch (err) {
     await capture.stop();
@@ -680,26 +725,28 @@ export async function startNativeScreenShare(
   void syncOwnVoiceState();
 }
 
-/** What the share button calls: our own picker in the desktop app, the WebView's
- * built-in one in a browser, where native capture isn't reachable. */
+/** Choose quality before opening the platform's capture permission prompt. */
 export async function requestScreenShare(): Promise<void> {
-  if (isNativeCaptureAvailable()) {
-    useVoiceStore.getState().setScreenPickerOpen(true);
-    return;
-  }
-  await startWebViewScreenShare();
+  useVoiceStore.getState().setScreenPickerOpen(true);
 }
 
-/** The platform picker, used by browsers and by the desktop's audio-sharing
- * mode because getDisplayMedia must return screen video and system audio in a
- * single permission grant. */
-export async function startWebViewScreenShare(captureAudio = true): Promise<void> {
+/** The platform picker is restricted to the standalone web build. */
+export async function startWebViewScreenShare(
+  captureAudio = true,
+  quality: Exclude<CaptureQuality, "native"> = "1080p",
+  fps = 30,
+): Promise<void> {
+  if (isNativeCaptureAvailable()) {
+    throw new Error("Browser screen capture is disabled in the desktop client.");
+  }
   if (!room) return;
+  const currentRoom = room;
+  const profile = screenShareProfile(quality, fps);
   try {
-    await room.localParticipant.setScreenShareEnabled(true, {
+    await currentRoom.localParticipant.setScreenShareEnabled(true, {
       audio: captureAudio,
-      resolution: ScreenSharePresets.h720fps30,
-      contentHint: "detail",
+      resolution: profile.resolution,
+      contentHint: profile.contentHint,
       systemAudio: captureAudio ? "include" : "exclude",
       surfaceSwitching: "include",
     }, {
@@ -710,11 +757,20 @@ export async function startWebViewScreenShare(captureAudio = true): Promise<void
       forceStereo: true,
       dtx: false,
       red: false,
+      degradationPreference: profile.degradationPreference,
+      screenShareEncoding: { maxBitrate: profile.maxBitrate, maxFramerate: profile.fps },
+      screenShareSimulcastLayers: quality === "720p"
+        ? [ScreenSharePresets.h360fps15]
+        : [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps30],
     });
+    if (room !== currentRoom) {
+      await currentRoom.localParticipant.setScreenShareEnabled(false);
+      return;
+    }
     useVoiceStore.getState().setLocalScreenShareEnabled(true);
     void syncOwnVoiceState();
     if (captureAudio) {
-      const publication = room.localParticipant.getTrackPublication(
+      const publication = currentRoom.localParticipant.getTrackPublication(
         Track.Source.ScreenShareAudio,
       );
       const screenAudio = publication?.track as LocalAudioTrack | undefined;
