@@ -9,6 +9,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { listAudioDevices, openSystemSoundSettings } from "@/lib/audioDevices";
@@ -94,50 +97,71 @@ export function AudioDeviceMenu({ kind }: { kind: AudioDeviceKind }) {
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-64">
-        <DropdownMenuLabel>
-          <span className="block">{kind === "input" ? "Input device" : "Output device"}</span>
-          <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
-            {selectedLabel}
-          </span>
-        </DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={selectedDeviceId ?? "default"}
-          onValueChange={(deviceId) => void selectDevice(deviceId)}
-        >
-          {devices.map((device, index) => (
-            <DropdownMenuRadioItem key={`${device.deviceId}:${index}`} value={device.deviceId}>
-              <span className="truncate">
-                {device.label || `${kind === "input" ? "Microphone" : "Speaker"} ${index + 1}`}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="py-2">
+            <span className="min-w-0 flex-1">
+              <span className="block">{kind === "input" ? "Input device" : "Output device"}</span>
+              <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                {selectedLabel}
               </span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+            </span>
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="max-h-72 w-64 overflow-y-auto">
+            <DropdownMenuLabel>
+              {kind === "input" ? "Input devices" : "Output devices"}
+            </DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={selectedDeviceId ?? "default"}
+              onValueChange={(deviceId) => void selectDevice(deviceId)}
+            >
+              {devices.map((device, index) => (
+                <DropdownMenuRadioItem key={`${device.deviceId}:${index}`} value={device.deviceId}>
+                  <span className="truncate">
+                    {device.label || `${kind === "input" ? "Microphone" : "Speaker"} ${index + 1}`}
+                  </span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
 
         {kind === "input" && (
           <>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel>Input profile</DropdownMenuLabel>
-            <DropdownMenuCheckboxItem
-              checked={noiseSuppression}
-              onCheckedChange={(checked) => void changeNoiseSuppression(checked === true)}
-              onSelect={(event) => event.preventDefault()}
-            >
-              <AudioLines className="size-4" /> Noise suppression
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuRadioGroup
-              value={noiseGate}
-              onValueChange={(mode) => void changeNoiseGate(mode as NoiseGateMode)}
-            >
-              <DropdownMenuRadioItem value="off" onSelect={(event) => event.preventDefault()}>
-                Gate off
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="standard" onSelect={(event) => event.preventDefault()}>
-                Standard
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="strong" onSelect={(event) => event.preventDefault()}>
-                Strong
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="py-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block">Input profile</span>
+                  <span className="mt-0.5 block truncate text-xs font-normal capitalize text-muted-foreground">
+                    {noiseSuppression ? "Noise suppression" : "Raw"} · {noiseGate}
+                  </span>
+                </span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-56">
+                <DropdownMenuCheckboxItem
+                  checked={noiseSuppression}
+                  onCheckedChange={(checked) => void changeNoiseSuppression(checked === true)}
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  <AudioLines className="size-4" /> Noise suppression
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Noise gate</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={noiseGate}
+                  onValueChange={(mode) => void changeNoiseGate(mode as NoiseGateMode)}
+                >
+                  <DropdownMenuRadioItem value="off" onSelect={(event) => event.preventDefault()}>
+                    Off
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="standard" onSelect={(event) => event.preventDefault()}>
+                    Standard
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="strong" onSelect={(event) => event.preventDefault()}>
+                    Strong
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
           </>
         )}
 
@@ -163,20 +187,27 @@ export function AudioDeviceMenu({ kind }: { kind: AudioDeviceKind }) {
           />
         </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={() => void openSystemSoundSettings().catch((error) => {
-            toast.error(error instanceof Error ? error.message : "Couldn't open sound settings.");
-          })}
-        >
-          <Settings className="size-4" /> Windows sound settings
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => void openSystemSoundSettings("mixer").catch((error) => {
-            toast.error(error instanceof Error ? error.message : "Couldn't open the volume mixer.");
-          })}
-        >
-          <SlidersHorizontal className="size-4" /> Windows volume mixer
-        </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>
+            <Settings className="size-4" /> Windows audio
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-56">
+            <DropdownMenuItem
+              onSelect={() => void openSystemSoundSettings().catch((error) => {
+                toast.error(error instanceof Error ? error.message : "Couldn't open sound settings.");
+              })}
+            >
+              <Settings className="size-4" /> Sound settings
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void openSystemSoundSettings("mixer").catch((error) => {
+                toast.error(error instanceof Error ? error.message : "Couldn't open the volume mixer.");
+              })}
+            >
+              <SlidersHorizontal className="size-4" /> Volume mixer
+            </DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
       </DropdownMenuContent>
     </DropdownMenu>
   );
