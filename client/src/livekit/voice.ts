@@ -565,10 +565,9 @@ export function setScreenShareVolume(userId: string, volume: number): void {
   const clamped = Math.max(0, Math.min(2, volume));
   const voiceState = useVoiceStore.getState();
   voiceState.setScreenShareVolume(userId, clamped);
-  if (!voiceState.localDeafened && !voiceState.mutedScreenShares[userId]) {
-    room?.remoteParticipants
-      .get(userId)
-      ?.setVolume(clamped, Track.Source.ScreenShareAudio);
+  const participant = room?.remoteParticipants.get(userId);
+  if (participant) {
+    applyParticipantPlaybackVolume(participant, Track.Source.ScreenShareAudio);
   }
 }
 
@@ -576,11 +575,9 @@ export function setScreenShareVolume(userId: string, volume: number): void {
 export function setScreenShareMuted(userId: string, muted: boolean): void {
   const voiceState = useVoiceStore.getState();
   voiceState.setScreenShareMuted(userId, muted);
-  if (!voiceState.localDeafened) {
-    const volume = muted ? 0 : (voiceState.screenShareVolumes[userId] ?? 1);
-    room?.remoteParticipants
-      .get(userId)
-      ?.setVolume(volume, Track.Source.ScreenShareAudio);
+  const participant = room?.remoteParticipants.get(userId);
+  if (participant) {
+    applyParticipantPlaybackVolume(participant, Track.Source.ScreenShareAudio);
   }
 }
 

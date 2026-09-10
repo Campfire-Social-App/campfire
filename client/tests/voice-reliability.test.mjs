@@ -158,6 +158,11 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     setParticipantMuted() {}, setParticipantDeafened() {},
     setLocalScreenShareEnabled(enabled) { this.localScreenShareEnabled = enabled; },
     setScreenShareViewing(id, viewing) { this.viewingScreenShares[id] = viewing; },
+    setScreenShareVolume(id, volume) { this.screenShareVolumes[id] = volume; },
+    setScreenShareMuted(id, muted) {
+      if (muted) this.mutedScreenShares[id] = true;
+      else delete this.mutedScreenShares[id];
+    },
     setScreenShareAvailable(id, available) {
       this.availableScreenShares[id] = available;
       if (!available) delete this.viewingScreenShares[id];
@@ -297,6 +302,34 @@ test("audio device and master volume changes persist without leaving the room", 
     ["audioinput", "microphone-2"],
     ["audiooutput", "speaker-2"],
   ]);
+});
+
+test("each viewer can mute a stream and raise its volume to 200%", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  const appliedVolumes = [];
+  const participant = {
+    identity: "streamer",
+    setVolume(volume, source) { appliedVolumes.push([volume, source]); },
+  };
+  h.rooms[0].remoteParticipants.set("streamer", participant);
+  h.settings.outputVolume = 0.5;
+
+  h.api.setScreenShareVolume("streamer", 5);
+  assert.equal(h.state.screenShareVolumes.streamer, 2);
+  assert.deepEqual(appliedVolumes.at(-1), [1, "screen-audio"]);
+
+  h.api.setScreenShareMuted("streamer", true);
+  assert.equal(h.state.mutedScreenShares.streamer, true);
+  assert.deepEqual(appliedVolumes.at(-1), [0, "screen-audio"]);
+
+  h.api.setScreenShareVolume("streamer", 1.5);
+  assert.deepEqual(appliedVolumes.at(-1), [0, "screen-audio"]);
+
+  h.api.setScreenShareMuted("streamer", false);
+  assert.equal(h.state.mutedScreenShares.streamer, undefined);
+  assert.deepEqual(appliedVolumes.at(-1), [0.75, "screen-audio"]);
+  await h.api.leaveVoiceChannel();
 });
 
 test("SDK full-restart order preserves the DM and watch choice", async (t) => {

@@ -66,7 +66,7 @@ export function ScreenShareAudioMenu({
         <ContextMenuSeparator />
         <div className="px-2 py-1.5" onKeyDown={(event) => event.stopPropagation()}>
           <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-muted-foreground">
-            <span>Stream volume</span>
+            <span>Stream volume (up to 200%)</span>
             <span className="tabular-nums text-foreground">{Math.round(volume * 100)}%</span>
           </div>
           <div className="flex items-center gap-2">
