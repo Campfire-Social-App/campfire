@@ -140,6 +140,10 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                 focusedTile.kind !== "screen" ||
                 focusedTile.participant.user_id === ownUserId
               }
+              own={
+                focusedTile.kind === "screen" &&
+                focusedTile.participant.user_id === ownUserId
+              }
             >
               <div
                 ref={theaterStageRef}
@@ -180,8 +184,14 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
               <div className="shrink-0 overflow-x-auto pb-1">
                 <div className="flex w-max min-w-full justify-center gap-2">
                   {tiles.filter((tile) => tile.key !== focusedTile.key).map((tile) => (
-                    <button
+                    <ScreenShareAudioMenu
                       key={tile.key}
+                      userId={tile.participant.user_id}
+                      username={tile.participant.username}
+                      disabled={tile.kind !== "screen" || tile.participant.user_id === ownUserId}
+                      own={tile.kind === "screen" && tile.participant.user_id === ownUserId}
+                    >
+                    <button
                       type="button"
                       disabled={!canOpenTheater(tile)}
                       onClick={() => {
@@ -209,6 +219,7 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                         compact
                       />
                     </button>
+                    </ScreenShareAudioMenu>
                   ))}
                 </div>
               </div>
@@ -225,6 +236,7 @@ export function VoiceChannelView({ channel }: VoiceChannelViewProps) {
                 userId={tile.participant.user_id}
                 username={tile.participant.username}
                 disabled={tile.kind !== "screen" || tile.participant.user_id === ownUserId}
+                own={tile.kind === "screen" && tile.participant.user_id === ownUserId}
               >
                 <div
                 className={cn(

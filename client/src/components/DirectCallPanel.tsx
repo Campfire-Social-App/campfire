@@ -15,6 +15,7 @@ import {
   setMicrophoneMuted,
   requestScreenShare,
   setScreenShareViewing,
+  stopScreenShare,
 } from "@/livekit/voice";
 import { hangUp } from "@/lib/calls";
 import { ApiError, type DMConversation } from "@/lib/types";
@@ -78,6 +79,12 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
   };
 
   const handleToggleScreenShare = async () => {
+    if (localScreenShareEnabled) {
+      await stopScreenShare().catch(() => {
+        toast.error("Couldn't stop sharing the screen.");
+      });
+      return;
+    }
     try {
       await requestScreenShare();
     } catch (err) {
@@ -137,7 +144,7 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
                 active={localScreenShareEnabled}
                 activeClassName="bg-primary/15 text-primary"
                 onClick={() => void handleToggleScreenShare()}
-                label={localScreenShareEnabled ? "Screen share settings" : "Share screen"}
+                label={localScreenShareEnabled ? "Stop screen sharing" : "Share screen"}
               >
                 {localScreenShareEnabled ? (
                   <ScreenShare className="size-4" />
@@ -179,6 +186,7 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
               userId={tile.participant.user_id}
               username={tile.participant.username}
               disabled={tile.kind !== "screen" || tile.participant.user_id === ownUserId}
+              own={tile.kind === "screen" && tile.participant.user_id === ownUserId}
             >
               <div
                 className={cn(

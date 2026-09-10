@@ -31,14 +31,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { useAuthStore } from "@/state/auth";
 import { useSettingsStore } from "@/state/settings";
 import { useVoiceStore } from "@/state/voice";
@@ -190,46 +182,17 @@ export function UserBar() {
             >
               {localCameraEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
             </MediaTile>
-            <ContextMenu>
-              <ContextMenuTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => void handleScreenShareClick()}
-                  aria-label={localScreenShareEnabled ? "Stop screen sharing" : "Share screen"}
-                  title={localScreenShareEnabled ? "Stop screen sharing" : "Share screen"}
-                  className={cn(
-                    "flex items-center justify-center rounded-lg bg-white/5 py-2 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground",
-                    localScreenShareEnabled && "bg-primary/15 text-primary hover:bg-primary/20",
-                  )}
-                >
-                  {localScreenShareEnabled ? (
-                    <ScreenShare className="size-4" />
-                  ) : (
-                    <ScreenShareOff className="size-4" />
-                  )}
-                </button>
-              </ContextMenuTrigger>
-              <ContextMenuContent className="w-64">
-                <ContextMenuLabel>Screen sharing</ContextMenuLabel>
-                <ContextMenuItem onSelect={() => void openScreenShareSettings()}>
-                  <Settings className="size-4" />
-                  {localScreenShareEnabled ? "Change screen and settings" : "Choose screen and settings"}
-                </ContextMenuItem>
-                {localScreenShareEnabled && (
-                  <>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem
-                      variant="destructive"
-                      onSelect={() => void stopScreenShare().catch(() => {
-                        toast.error("Couldn't stop sharing the screen.");
-                      })}
-                    >
-                      <ScreenShareOff className="size-4" /> Stop screen sharing
-                    </ContextMenuItem>
-                  </>
-                )}
-              </ContextMenuContent>
-            </ContextMenu>
+            <MediaTile
+              active={localScreenShareEnabled}
+              onClick={() => void handleScreenShareClick()}
+              label={localScreenShareEnabled ? "Stop screen sharing" : "Share screen"}
+            >
+              {localScreenShareEnabled ? (
+                <ScreenShare className="size-4" />
+              ) : (
+                <ScreenShareOff className="size-4" />
+              )}
+            </MediaTile>
           </div>
         )}
 
