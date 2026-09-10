@@ -31,6 +31,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useAuthStore } from "@/state/auth";
 import { useSettingsStore } from "@/state/settings";
 import { useVoiceStore } from "@/state/voice";
@@ -42,6 +50,7 @@ import {
   setDeafened,
   setMicrophoneMuted,
   requestScreenShare,
+  stopScreenShare,
   applyNoiseSuppression,
   applyNoiseGate,
 } from "@/livekit/voice";
@@ -89,13 +98,25 @@ export function UserBar() {
     useSettingsStore.getState().clearServerUrl();
   };
 
-  const handleToggleScreenShare = async () => {
+  const openScreenShareSettings = async () => {
     try {
       await requestScreenShare();
     } catch (err) {
       // Cancelling the browser's share picker also rejects with NotAllowedError — not a real error.
       if (err instanceof DOMException && err.name === "NotAllowedError") return;
       toast.error("Couldn't share the screen.");
+    }
+  };
+
+  const handleScreenShareClick = async () => {
+    if (!localScreenShareEnabled) {
+      await openScreenShareSettings();
+      return;
+    }
+    try {
+      await stopScreenShare();
+    } catch {
+      toast.error("Couldn't stop sharing the screen.");
     }
   };
 
@@ -169,17 +190,46 @@ export function UserBar() {
             >
               {localCameraEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
             </MediaTile>
-            <MediaTile
-              active={localScreenShareEnabled}
-              onClick={() => void handleToggleScreenShare()}
-              label={localScreenShareEnabled ? "Screen share settings" : "Share screen"}
-            >
-              {localScreenShareEnabled ? (
-                <ScreenShare className="size-4" />
-              ) : (
-                <ScreenShareOff className="size-4" />
-              )}
-            </MediaTile>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => void handleScreenShareClick()}
+                  aria-label={localScreenShareEnabled ? "Stop screen sharing" : "Share screen"}
+                  title={localScreenShareEnabled ? "Stop screen sharing" : "Share screen"}
+                  className={cn(
+                    "flex items-center justify-center rounded-lg bg-white/5 py-2 text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground",
+                    localScreenShareEnabled && "bg-primary/15 text-primary hover:bg-primary/20",
+                  )}
+                >
+                  {localScreenShareEnabled ? (
+                    <ScreenShare className="size-4" />
+                  ) : (
+                    <ScreenShareOff className="size-4" />
+                  )}
+                </button>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-64">
+                <ContextMenuLabel>Screen sharing</ContextMenuLabel>
+                <ContextMenuItem onSelect={() => void openScreenShareSettings()}>
+                  <Settings className="size-4" />
+                  {localScreenShareEnabled ? "Change screen and settings" : "Choose screen and settings"}
+                </ContextMenuItem>
+                {localScreenShareEnabled && (
+                  <>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      variant="destructive"
+                      onSelect={() => void stopScreenShare().catch(() => {
+                        toast.error("Couldn't stop sharing the screen.");
+                      })}
+                    >
+                      <ScreenShareOff className="size-4" /> Stop screen sharing
+                    </ContextMenuItem>
+                  </>
+                )}
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
         )}
 
