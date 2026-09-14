@@ -236,7 +236,7 @@ void _confirmDeleteConversation(
               Navigator.pop(dialogContext);
               try {
                 await ref.read(dmsProvider.notifier).delete(conversation.id);
-              } catch (_) {
+              } on Object {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
