@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:campfire/livekit/voice.dart';
 import 'package:campfire/models/dm.dart';
@@ -7,6 +6,7 @@ import 'package:campfire/state/calls.dart';
 import 'package:campfire/state/voice.dart';
 import 'package:campfire/theme/icons.dart';
 import 'package:campfire/theme/tokens.dart';
+import 'package:campfire/widgets/call_stage.dart';
 import 'package:campfire/widgets/call_tiles.dart';
 import 'package:campfire/widgets/voice_controls.dart';
 import 'package:flutter/material.dart';
@@ -77,16 +77,23 @@ class DirectCallPanel extends ConsumerWidget {
                 _HangUp(onTap: () => ref.read(callsProvider.notifier).hangUp(conversation.id)),
             ],
           ),
+          if (inThisCall && tiles.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              height: (MediaQuery.sizeOf(context).height * 0.25).clamp(120.0, 208.0),
+              child: CallStage(
+                key: ValueKey(conversation.id),
+                tiles: tiles,
+                speaking: voice.speakingUserIds,
+              ),
+            ),
+          ],
           if (inThisCall) ...[
             const SizedBox(height: 8),
             VoiceControls(
               dense: true,
               onHangUp: () => ref.read(callsProvider.notifier).hangUp(conversation.id),
             ),
-          ],
-          if (inThisCall && tiles.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _Tiles(tiles: tiles, speaking: voice.speakingUserIds),
           ],
         ],
       ),
@@ -176,57 +183,4 @@ class _HangUp extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A 1:1 has at most a handful of tiles, and the chat below has to keep most of
-/// the screen — so they are capped rather than left to grow with the window.
-class _Tiles extends StatelessWidget {
-  const _Tiles({required this.tiles, required this.speaking});
-
-  final List<CallTile> tiles;
-  final Set<String> speaking;
-
-  /// Same ceiling as the web client's `max-h-52`: past this the call stops
-  /// being a banner over the conversation and becomes the conversation.
-  static const double maxHeight = 208;
-
-  static const double _spacing = 6;
-
-  @override
-  Widget build(BuildContext context) {
-    final columns = math.min(3, math.max(1, tiles.length));
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final available = (constraints.maxWidth - _spacing * (columns - 1)) / columns;
-        final width = math.min(available, maxHeight * 16 / 9);
-
-        return Wrap(
-          spacing: _spacing,
-          runSpacing: _spacing,
-          alignment: WrapAlignment.center,
-          children: [
-            for (final tile in tiles)
-              SizedBox(width: width, height: width * 9 / 16, child: _tile(tile)),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _tile(CallTile tile) => DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: tile.kind == CallTileKind.camera && speaking.contains(tile.participant.userId)
-                ? CampfireTokens.primary
-                : CampfireTokens.glassBorder,
-            width: 1.5,
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(11),
-          child: TileVisual(tile: tile),
-        ),
-      );
 }

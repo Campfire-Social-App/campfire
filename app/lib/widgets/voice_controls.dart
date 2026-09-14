@@ -36,8 +36,9 @@ class VoiceControls extends ConsumerWidget {
       }
     }
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Wrap(
+      alignment: WrapAlignment.center,
+      runSpacing: 8,
       children: [
         _ControlButton(
           icon: voice.localMuted ? CampfireIcons.micOff : CampfireIcons.micOn,
@@ -188,7 +189,7 @@ class _ControlButton extends StatelessWidget {
         ),
       (true, _ActiveStyle.danger) => (CampfireTokens.destructive, Colors.white),
     };
-    final diameter = dense ? 36.0 : 48.0;
+    const diameter = 48.0;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: dense ? 3 : 6),
