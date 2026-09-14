@@ -685,6 +685,7 @@ name = "client"
 version = "0.2.2"
 dependencies = [
  "base64 0.22.1",
+ "notify-rust",
  "serde",
  "serde_json",
  "tauri",
@@ -694,6 +695,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-store",
  "tauri-plugin-updater",
+ "tauri-winrt-notification",
  "wasapi",
  "xcap",
 ]

@@ -1,4 +1,5 @@
 mod capture;
+mod notifications;
 
 #[tauri::command]
 fn open_windows_sound_settings(page: Option<String>) -> Result<(), String> {
@@ -49,6 +50,7 @@ pub fn run() {
             capture::acknowledge_capture,
             capture::stop_capture,
             open_windows_sound_settings,
+            notifications::send_chat_notification,
         ])
         .setup(|_app| {
             #[cfg(target_os = "windows")]
