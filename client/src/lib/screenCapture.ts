@@ -23,6 +23,7 @@ export const listCaptureSources = (): Promise<CaptureSource[]> =>
 
 export interface NativeCapture {
   track: MediaStreamTrack;
+  audioTrack: MediaStreamTrack | null;
   maxBitrate: number;
   stop: () => Promise<void>;
 }
@@ -30,6 +31,88 @@ export interface NativeCapture {
 /** Frames stop arriving long before a human would call it broken, so this only
  * guards the first one — if capture can't start at all, fail fast and loudly. */
 const FIRST_FRAME_TIMEOUT_MS = 8000;
+
+const SYSTEM_AUDIO_WORKLET = `
+class CampfireSystemAudioProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.queue = [];
+    this.offset = 0;
+    this.queuedFrames = 0;
+    this.port.onmessage = ({ data }) => {
+      const samples = new Float32Array(data);
+      this.queue.push(samples);
+      this.queuedFrames += samples.length / 2;
+      while (this.queuedFrames > 24000 && this.queue.length > 1) {
+        const dropped = this.queue.shift();
+        this.queuedFrames -= dropped.length / 2;
+        this.offset = 0;
+      }
+    };
+  }
+  process(_inputs, outputs) {
+    const output = outputs[0];
+    const left = output[0];
+    const right = output[1];
+    for (let frame = 0; frame < left.length; frame += 1) {
+      const chunk = this.queue[0];
+      if (!chunk) {
+        left[frame] = 0;
+        right[frame] = 0;
+        continue;
+      }
+      const index = this.offset * 2;
+      left[frame] = chunk[index] ?? 0;
+      right[frame] = chunk[index + 1] ?? left[frame];
+      this.offset += 1;
+      this.queuedFrames -= 1;
+      if (this.offset * 2 >= chunk.length) {
+        this.queue.shift();
+        this.offset = 0;
+      }
+    }
+    return true;
+  }
+}
+registerProcessor("campfire-system-audio", CampfireSystemAudioProcessor);
+`;
+
+async function createSystemAudioTrack(): Promise<{
+  track: MediaStreamTrack;
+  push: (buffer: ArrayBuffer) => void;
+  close: () => Promise<void>;
+}> {
+  const context = new AudioContext({ sampleRate: 48_000, latencyHint: "interactive" });
+  const moduleUrl = URL.createObjectURL(new Blob([SYSTEM_AUDIO_WORKLET], { type: "text/javascript" }));
+  try {
+    await context.audioWorklet.addModule(moduleUrl);
+  } finally {
+    URL.revokeObjectURL(moduleUrl);
+  }
+  const processor = new AudioWorkletNode(context, "campfire-system-audio", {
+    numberOfInputs: 0,
+    numberOfOutputs: 1,
+    outputChannelCount: [2],
+  });
+  const destination = context.createMediaStreamDestination();
+  processor.connect(destination);
+  await context.resume();
+  const track = destination.stream.getAudioTracks()[0];
+  if (!track) {
+    await context.close();
+    throw new Error("Couldn't create the system audio track.");
+  }
+  track.contentHint = "music";
+  return {
+    track,
+    push: (buffer) => processor.port.postMessage(buffer, [buffer]),
+    close: async () => {
+      processor.disconnect();
+      track.stop();
+      await context.close().catch(() => {});
+    },
+  };
+}
 
 /**
  * Starts capturing `sourceId` in Rust and turns the frames into a track.
@@ -43,8 +126,11 @@ export async function startNativeCapture(
   quality: CaptureQuality,
   fps: number,
   onError: (message: string) => void,
+  captureAudio = false,
+  onAudioError: (message: string) => void = onError,
+  gameMode = false,
 ): Promise<NativeCapture> {
-  const profile = screenShareProfile(quality, fps);
+  const profile = screenShareProfile(quality, fps, gameMode);
   const captureId = crypto.randomUUID();
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d", { alpha: false });
@@ -60,6 +146,7 @@ export async function startNativeCapture(
   let hasFirstFrame = false;
   let captureError: string | null = null;
   let rejectFirstFrame: ((error: Error) => void) | null = null;
+  const systemAudio = captureAudio ? await createSystemAudioTrack() : null;
 
   const paint = async (buffer: ArrayBuffer): Promise<void> => {
     if (decoding) {
@@ -108,6 +195,13 @@ export async function startNativeCapture(
     }
   };
 
+  const audioChannel = new Channel<ArrayBuffer | { error: string }>();
+  audioChannel.onmessage = (message) => {
+    if (stopped || !systemAudio) return;
+    if (message instanceof ArrayBuffer) systemAudio.push(message);
+    else if (typeof message === "object" && "error" in message) onAudioError(message.error);
+  };
+
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
@@ -115,6 +209,7 @@ export async function startNativeCapture(
     onFirstFrame = null;
     rejectFirstFrame = null;
     await invoke("stop_capture", { captureId }).catch(() => {});
+    await systemAudio?.close();
   };
 
   let firstFrameTimer: number | undefined;
@@ -125,6 +220,9 @@ export async function startNativeCapture(
       maxHeight: profile.maxHeight,
       fps: profile.fps,
       onFrame: channel,
+      captureAudio,
+      gameMode,
+      onAudio: audioChannel,
     });
     if (captureError) throw new Error(captureError);
     await new Promise<void>((resolve, reject) => {
@@ -171,6 +269,7 @@ export async function startNativeCapture(
 
   return {
     track,
+    audioTrack: systemAudio?.track ?? null,
     maxBitrate: profile.maxBitrate,
     stop: async () => {
       window.clearInterval(keepAlive);

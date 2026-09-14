@@ -46,7 +46,7 @@ export class NoiseGateProcessor
   implements TrackProcessor<Track.Kind.Audio, AudioProcessorOptions>
 {
   readonly name: string;
-  readonly mode: Exclude<NoiseGateMode, "off">;
+  readonly mode: NoiseGateMode;
   processedTrack?: MediaStreamTrack;
 
   private source?: MediaStreamAudioSourceNode;
@@ -59,10 +59,12 @@ export class NoiseGateProcessor
   private noiseFloorDb = -70;
   private open = false;
   private lastVoiceAt = 0;
+  private inputGain: number;
 
-  constructor(mode: Exclude<NoiseGateMode, "off">) {
+  constructor(mode: NoiseGateMode, inputGain = 1) {
     this.mode = mode;
-    this.name = `campfire-noise-gate-${mode}`;
+    this.inputGain = Math.max(0, Math.min(2, inputGain));
+    this.name = `campfire-input-processor-${mode}`;
   }
 
   async init(options: AudioProcessorOptions): Promise<void> {
@@ -78,13 +80,33 @@ export class NoiseGateProcessor
     this.teardown(false);
   }
 
+  setInputGain(value: number): void {
+    this.inputGain = Math.max(0, Math.min(2, value));
+    if (this.mode === "off" || this.open) {
+      this.gain?.gain.setValueAtTime(this.inputGain, this.gain.context.currentTime);
+    }
+  }
+
   private setup({ audioContext, track }: AudioProcessorOptions): void {
-    const preset = PRESETS[this.mode];
     const source = audioContext.createMediaStreamSource(new MediaStream([track]));
-    const analyser = audioContext.createAnalyser();
-    const delay = audioContext.createDelay(0.05);
     const gain = audioContext.createGain();
     const destination = audioContext.createMediaStreamDestination();
+
+    if (this.mode === "off") {
+      gain.gain.value = this.inputGain;
+      source.connect(gain);
+      gain.connect(destination);
+      this.source = source;
+      this.gain = gain;
+      this.destination = destination;
+      this.processedTrack = destination.stream.getAudioTracks()[0];
+      this.open = true;
+      return;
+    }
+
+    const preset = PRESETS[this.mode];
+    const analyser = audioContext.createAnalyser();
+    const delay = audioContext.createDelay(0.05);
 
     analyser.fftSize = 1024;
     analyser.smoothingTimeConstant = 0.15;
@@ -135,7 +157,7 @@ export class NoiseGateProcessor
       if (levelDb >= adaptiveOpenDb) {
         this.open = true;
         this.lastVoiceAt = now;
-        this.setGain(audioContext, 1, preset.attackSeconds);
+        this.setGain(audioContext, this.inputGain, preset.attackSeconds);
       }
       return;
     }

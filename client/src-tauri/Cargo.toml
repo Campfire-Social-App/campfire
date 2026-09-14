@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "0.2.2"
+version = "0.2.3"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -31,3 +31,12 @@ tauri-plugin-process = "2"
 # only one that can see hardware-accelerated windows (browsers, games).
 xcap = { version = "0.9.8", features = ["image", "wgc"] }
 base64 = "0.22"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# WASAPI loopback captures the desktop mix without invoking WebView2's browser
+# picker, preserving the native source-selection flow.
+wasapi = "0.24"
+tauri-winrt-notification = "0.7.3"
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+notify-rust = "4.18"

@@ -18,6 +18,7 @@ import {
 import { UserAvatar } from "@/components/UserAvatar";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { IdentitySettingsDialog } from "@/components/IdentitySettingsDialog";
+import { AudioDeviceMenu } from "@/components/AudioDeviceMenu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,14 +90,25 @@ export function UserBar() {
     useSettingsStore.getState().clearServerUrl();
   };
 
-  const handleToggleScreenShare = async () => {
+  const openScreenShareSettings = async () => {
     try {
-      if (localScreenShareEnabled) await stopScreenShare();
-      else await requestScreenShare();
+      await requestScreenShare();
     } catch (err) {
       // Cancelling the browser's share picker also rejects with NotAllowedError — not a real error.
       if (err instanceof DOMException && err.name === "NotAllowedError") return;
       toast.error("Couldn't share the screen.");
+    }
+  };
+
+  const handleScreenShareClick = async () => {
+    if (!localScreenShareEnabled) {
+      await openScreenShareSettings();
+      return;
+    }
+    try {
+      await stopScreenShare();
+    } catch {
+      toast.error("Couldn't stop sharing the screen.");
     }
   };
 
@@ -172,8 +184,8 @@ export function UserBar() {
             </MediaTile>
             <MediaTile
               active={localScreenShareEnabled}
-              onClick={() => void handleToggleScreenShare()}
-              label={localScreenShareEnabled ? "Stop screen share" : "Share screen"}
+              onClick={() => void handleScreenShareClick()}
+              label={localScreenShareEnabled ? "Stop screen sharing" : "Share screen"}
             >
               {localScreenShareEnabled ? (
                 <ScreenShare className="size-4" />
@@ -207,21 +219,29 @@ export function UserBar() {
             </div>
           </UserProfileHoverCard>
 
-          <IconToggle
-            active={localMuted}
-            onClick={() => void setMicrophoneMuted(!localMuted)}
-            label={localMuted ? "Unmute microphone" : "Mute microphone"}
-          >
-            {localMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-          </IconToggle>
+          <div className="flex shrink-0">
+            <IconToggle
+              active={localMuted}
+              onClick={() => void setMicrophoneMuted(!localMuted)}
+              label={localMuted ? "Unmute microphone" : "Mute microphone"}
+              className="rounded-r-none"
+            >
+              {localMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+            </IconToggle>
+            <AudioDeviceMenu kind="input" />
+          </div>
 
-          <IconToggle
-            active={localDeafened}
-            onClick={() => void setDeafened(!localDeafened)}
-            label={localDeafened ? "Undeafen" : "Deafen"}
-          >
-            {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
-          </IconToggle>
+          <div className="flex shrink-0">
+            <IconToggle
+              active={localDeafened}
+              onClick={() => void setDeafened(!localDeafened)}
+              label={localDeafened ? "Undeafen" : "Deafen"}
+              className="rounded-r-none"
+            >
+              {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
+            </IconToggle>
+            <AudioDeviceMenu kind="output" />
+          </div>
 
           <DropdownMenu>
             <Tooltip>
@@ -278,12 +298,14 @@ function IconToggle({
   onClick,
   label,
   children,
+  className,
 }: {
   active: boolean;
   activeClassName?: string;
   onClick: () => void;
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <Tooltip>
@@ -293,6 +315,7 @@ function IconToggle({
           className={cn(
             "flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-white/10 hover:text-foreground",
             active && activeClassName,
+            className,
           )}
         >
           {children}

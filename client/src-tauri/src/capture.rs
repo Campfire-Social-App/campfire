@@ -8,6 +8,7 @@
 //! and publishes that canvas as the screen-share track.
 
 use std::{
+    collections::VecDeque,
     sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::RecvTimeoutError,
@@ -15,6 +16,11 @@ use std::{
     },
     thread,
     time::{Duration, Instant},
+};
+
+#[cfg(target_os = "windows")]
+use wasapi::{
+    initialize_mta, AudioClient, DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat,
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -28,15 +34,17 @@ use xcap::{
 /// Thumbnails only have to fill a grid cell in the picker.
 const THUMBNAIL_WIDTH: u32 = 320;
 const THUMBNAIL_QUALITY: u8 = 60;
-// These are intermediate images, encoded again by WebRTC. Motion at 60 FPS uses
-// a smaller JPEG so IPC and decoding do not consume the frame-time budget.
-const DETAIL_FRAME_QUALITY: u8 = 85;
-const MOTION_FRAME_QUALITY: u8 = 76;
+// These are intermediate images, encoded again by WebRTC. Regular 60 FPS
+// capture uses a smaller JPEG; game mode spends more bytes here so block edges
+// are not amplified by the final video encoder.
+const DETAIL_FRAME_QUALITY: u8 = 88;
+const MOTION_FRAME_QUALITY: u8 = 82;
+const GAME_FRAME_QUALITY: u8 = 88;
 /// How long to wait on an idle screen before checking whether we've been stopped.
 const RECORDER_TIMEOUT: Duration = Duration::from_millis(500);
 /// Keep the native producer close to the WebView consumer. Without this bound,
 /// JPEG frames can accumulate in IPC and are displayed long after capture.
-const MAX_IN_FLIGHT_FRAMES: usize = 2;
+const MAX_IN_FLIGHT_FRAMES: usize = 1;
 /// Windows below this are dialogs, tooltips and tray popups — noise in the grid.
 const MIN_WINDOW_SIDE: u32 = 96;
 
@@ -122,8 +130,7 @@ impl CaptureManager {
 
     fn stop(&self, capture_id: Option<&str>) {
         if let Ok(mut active) = self.active.lock() {
-            if capture_id
-                .is_some_and(|id| active.as_ref().is_some_and(|session| session.id != id))
+            if capture_id.is_some_and(|id| active.as_ref().is_some_and(|session| session.id != id))
             {
                 return;
             }
@@ -255,6 +262,89 @@ fn send_error(channel: &Channel<InvokeResponseBody>, message: &str) {
     let _ = channel.send(InvokeResponseBody::Json(payload));
 }
 
+#[cfg(target_os = "windows")]
+fn stream_system_audio(
+    session: &CaptureSession,
+    channel: &Channel<InvokeResponseBody>,
+) -> Result<(), String> {
+    const SAMPLE_RATE: usize = 48_000;
+    const CHANNELS: usize = 2;
+    const BYTES_PER_SAMPLE: usize = 4;
+    const CHUNK_FRAMES: usize = 960; // 20 ms at 48 kHz
+    const CHUNK_BYTES: usize = CHUNK_FRAMES * CHANNELS * BYTES_PER_SAMPLE;
+
+    initialize_mta().ok().map_err(|error| error.to_string())?;
+    let format = WaveFormat::new(32, 32, &SampleType::Float, SAMPLE_RATE, CHANNELS, None);
+
+    // Excluding our own process tree keeps remote voices and Campfire sounds
+    // out of the shared mix while capturing the rest of the desktop.
+    let initialize = |mut client: AudioClient| -> Result<AudioClient, String> {
+        client
+            .initialize_client(
+                &format,
+                &Direction::Capture,
+                &StreamMode::EventsShared {
+                    autoconvert: true,
+                    buffer_duration_hns: 200_000,
+                },
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(client)
+    };
+    let audio_client = AudioClient::new_application_loopback_client(std::process::id(), false)
+        .map_err(|error| error.to_string())
+        .and_then(initialize)
+        .or_else(|_| {
+            // Process-tree exclusion requires a recent Windows build. Older
+            // supported systems still get ordinary render-endpoint loopback.
+            let enumerator = DeviceEnumerator::new().map_err(|error| error.to_string())?;
+            let device = enumerator
+                .get_default_device(&Direction::Render)
+                .map_err(|error| error.to_string())?;
+            initialize(
+                device
+                    .get_iaudioclient()
+                    .map_err(|error| error.to_string())?,
+            )
+        })?;
+    let event = audio_client
+        .set_get_eventhandle()
+        .map_err(|error| error.to_string())?;
+    let capture_client = audio_client
+        .get_audiocaptureclient()
+        .map_err(|error| error.to_string())?;
+    let mut samples = VecDeque::with_capacity(CHUNK_BYTES * 4);
+
+    audio_client
+        .start_stream()
+        .map_err(|error| error.to_string())?;
+    let result = (|| {
+        while !session.stop.load(Ordering::Relaxed) {
+            let available = capture_client
+                .get_next_packet_size()
+                .map_err(|error| error.to_string())?
+                .unwrap_or(0);
+            if available > 0 {
+                capture_client
+                    .read_from_device_to_deque(&mut samples)
+                    .map_err(|error| error.to_string())?;
+            }
+            while samples.len() >= CHUNK_BYTES {
+                let chunk: Vec<u8> = samples.drain(..CHUNK_BYTES).collect();
+                channel
+                    .send(InvokeResponseBody::Raw(chunk))
+                    .map_err(|error| error.to_string())?;
+            }
+            // A timeout is expected during silence. It also bounds how quickly
+            // stopping a share joins this loop.
+            let _ = event.wait_for_event(100);
+        }
+        Ok(())
+    })();
+    let _ = audio_client.stop_stream();
+    result
+}
+
 fn find_monitor(id: u32) -> Result<Monitor, String> {
     Monitor::all()
         .map_err(|error| error.to_string())?
@@ -280,7 +370,9 @@ fn stream_screen(
     channel: &Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     let monitor = find_monitor(id)?;
-    let (recorder, frames) = monitor.video_recorder().map_err(|error| error.to_string())?;
+    let (recorder, frames) = monitor
+        .video_recorder()
+        .map_err(|error| error.to_string())?;
     recorder.start().map_err(|error| error.to_string())?;
 
     // Always release the recorder, including failures in encoding or IPC.
@@ -377,17 +469,41 @@ pub fn start_capture(
     max_height: u32,
     fps: u32,
     on_frame: Channel<InvokeResponseBody>,
+    capture_audio: bool,
+    game_mode: bool,
+    on_audio: Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
     let target = Target::parse(&source_id)?;
     let fps = fps.clamp(1, 60);
     let interval = Duration::from_secs_f64(1.0 / f64::from(fps));
-    let quality = if fps > 30 {
+    let quality = if game_mode {
+        GAME_FRAME_QUALITY
+    } else if fps > 30 {
         MOTION_FRAME_QUALITY
     } else {
         DETAIL_FRAME_QUALITY
     };
     let session = Arc::new(CaptureSession::new(capture_id));
     manager.start(session.clone());
+
+    if capture_audio {
+        #[cfg(target_os = "windows")]
+        {
+            let audio_session = session.clone();
+            thread::spawn(move || {
+                if let Err(error) = stream_system_audio(&audio_session, &on_audio) {
+                    if !audio_session.stop.load(Ordering::Relaxed) {
+                        send_error(&on_audio, &format!("System audio capture failed: {error}"));
+                    }
+                }
+            });
+        }
+        #[cfg(not(target_os = "windows"))]
+        send_error(
+            &on_audio,
+            "System audio capture is only available on Windows",
+        );
+    }
 
     thread::spawn(move || {
         let result = match target {

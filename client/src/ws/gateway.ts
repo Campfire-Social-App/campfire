@@ -12,6 +12,7 @@ import { leaveVoiceChannel } from "@/livekit/voice";
 import { playJoinSound, playLeaveSound } from "@/lib/sounds";
 import { messageMentionsUser } from "@/lib/mentions";
 import { notify } from "@/lib/notifications";
+import { notificationTarget } from "@/lib/notificationTarget";
 import { toast } from "sonner";
 import type {
   Channel,
@@ -171,6 +172,7 @@ class GatewayClient {
       `${message.author.username}${!isDm && channel ? ` in #${channel.name}` : ""}`,
       message.content.trim().slice(0, 240) ||
         (message.attachments.length > 1 ? "Sent attachments" : "Sent an attachment"),
+      notificationTarget(message.channel_id, isDm ? "dm" : "channel"),
     );
   }
 
@@ -182,7 +184,7 @@ class GatewayClient {
     switch (data.action) {
       case "ringing":
         calls.setIncoming(data.channel_id, data.from);
-        notify(data.from.username, "Incoming call");
+        notify(data.from.username, "Incoming call", notificationTarget(data.channel_id, "dm"));
         break;
       case "accepted":
         // They're joining the room we're already in — nothing to do but stop waiting.

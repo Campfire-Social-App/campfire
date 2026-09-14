@@ -14,9 +14,7 @@ from app.models.user import User
 from app.schemas.dm import DMConversationRead
 from app.schemas.user import UserRead
 
-# Sort placeholder for a conversation with no messages yet — later than any
-# real timestamp, so an empty DM stays pinned at the top of the list.
-_NEVER_STALE = datetime.max.replace(tzinfo=UTC)
+_NO_MESSAGES = datetime.min.replace(tzinfo=UTC)
 
 
 def dm_key_for(user_a: uuid.UUID, user_b: uuid.UUID) -> str:
@@ -30,6 +28,10 @@ async def get_or_create_dm(db: AsyncSession, user_a: uuid.UUID, user_b: uuid.UUI
         await db.execute(select(Channel).where(Channel.dm_key == key))
     ).scalar_one_or_none()
     if existing is not None:
+        participant = await db.get(DMParticipant, (existing.id, user_a))
+        if participant is not None and participant.hidden_at is not None:
+            participant.hidden_at = None
+            await db.commit()
         return existing
 
     channel = Channel(name="", type=ChannelType.DM, dm_key=key)
@@ -104,6 +106,18 @@ async def mark_read(db: AsyncSession, channel_id: uuid.UUID, user_id: uuid.UUID)
     await db.commit()
 
 
+async def hide_conversation(
+    db: AsyncSession, channel_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    participant = await db.get(DMParticipant, (channel_id, user_id))
+    if participant is None:
+        return False
+    participant.hidden_at = func.now()
+    db.add(participant)
+    await db.commit()
+    return True
+
+
 async def to_conversation_read(
     db: AsyncSession, channel: Channel, viewer_id: uuid.UUID
 ) -> DMConversationRead | None:
@@ -150,7 +164,22 @@ async def push_conversation_update(db: AsyncSession, channel: Channel) -> None:
     Sent whenever a conversation gains something worth surfacing (a message, an
     incoming call) — it's how a rail learns about a conversation its owner has
     never opened."""
-    for user_id in await participant_ids(db, channel.id):
+    participants = (
+        (
+            await db.execute(
+                select(DMParticipant).where(DMParticipant.channel_id == channel.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if any(participant.hidden_at is not None for participant in participants):
+        for participant in participants:
+            participant.hidden_at = None
+        await db.commit()
+
+    for participant in participants:
+        user_id = participant.user_id
         conversation = await to_conversation_read(db, channel, user_id)
         if conversation is None:
             continue
@@ -168,17 +197,21 @@ async def list_conversations(db: AsyncSession, viewer_id: uuid.UUID) -> list[DMC
             await db.execute(
                 select(Channel)
                 .join(DMParticipant, DMParticipant.channel_id == Channel.id)
-                .where(Channel.type == ChannelType.DM, DMParticipant.user_id == viewer_id)
+                .where(
+                    Channel.type == ChannelType.DM,
+                    DMParticipant.user_id == viewer_id,
+                    DMParticipant.hidden_at.is_(None),
+                )
             )
         )
         .scalars()
         .all()
     )
     conversations = [await to_conversation_read(db, c, viewer_id) for c in channels]
-    # Most recently active first; a conversation with no messages yet (just
-    # opened, nothing sent) sorts to the top, where the user left it.
+    # Most recently active first. Empty conversations come last until they gain
+    # a message, avoiding an alphabetical-looking rail after initial setup.
     return sorted(
         (c for c in conversations if c is not None),
-        key=lambda c: c.last_message_at or _NEVER_STALE,
+        key=lambda c: (c.last_message_at is not None, c.last_message_at or _NO_MESSAGES),
         reverse=True,
     )

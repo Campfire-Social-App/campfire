@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:campfire/core/call_service.dart';
 import 'package:campfire/core/sounds.dart';
 import 'package:campfire/state/api.dart';
+import 'package:campfire/state/channels.dart';
 import 'package:campfire/state/dms.dart';
 import 'package:campfire/state/settings.dart';
 import 'package:campfire/state/voice.dart';
@@ -43,6 +45,7 @@ class VoiceSession {
   EventsListener<RoomEvent>? _listener;
   Timer? _emptyCallTimer;
   bool _reconnecting = false;
+  final Set<String> _screenSharingParticipants = {};
 
   /// Whether deafening, rather than the microphone button, caused the current
   /// mute. Only an automatic mute may be automatically undone.
@@ -149,6 +152,11 @@ class VoiceSession {
         participant.identity,
         deafened: participant.attributes['deafened'] == 'true',
       );
+      for (final publication in participant.trackPublications.values) {
+        if (publication.source == TrackSource.screenShareVideo) {
+          _announceScreenShareStarted(participant.identity);
+        }
+      }
     }
     if (deafened) await _applyDeafenToRemoteAudio(room, deafened: true);
   }
@@ -224,6 +232,19 @@ class VoiceSession {
       ..on<ParticipantConnectedEvent>((_) {
         if (_room == room) _emptyCallTimer?.cancel();
       })
+      ..on<TrackPublishedEvent>((event) {
+        if (event.publication.source == TrackSource.screenShareVideo) {
+          _announceScreenShareStarted(event.participant.identity);
+        }
+      })
+      ..on<TrackUnpublishedEvent>((event) {
+        if (event.publication.source == TrackSource.screenShareVideo) {
+          _announceRemoteScreenShareStoppedAfterSdkTransition(
+            room,
+            event.participant.identity,
+          );
+        }
+      })
       ..on<ActiveSpeakersChangedEvent>(
         (event) => _voice.setSpeaking(event.speakers.map((p) => p.identity)),
       )
@@ -259,6 +280,7 @@ class VoiceSession {
       ..on<LocalTrackPublishedEvent>((event) {
         if (_room != room) return;
         if (event.publication.source == TrackSource.screenShareVideo) {
+          _announceScreenShareStarted(event.participant.identity);
           _voice.setLocalScreenShareEnabled(enabled: true);
         }
         if (event.publication.track case final VideoTrack track) {
@@ -269,6 +291,9 @@ class VoiceSession {
         // The SDK republishes these tracks during a full reconnect. Do not
         // downgrade Android's media-projection service during that recovery.
         if (_room != room || _reconnecting) return;
+        if (event.publication.source == TrackSource.screenShareVideo) {
+          _announceScreenShareStopped(event.participant.identity);
+        }
         if (event.publication.track is! VideoTrack) return;
         _setVideoTrack(event.participant.identity, event.publication.source, null);
         // Catches a screen share stopped from the system's own "stop sharing"
@@ -298,14 +323,37 @@ class VoiceSession {
         }
       })
       ..on<ParticipantDisconnectedEvent>((event) {
+        _announceRemoteScreenShareStoppedAfterSdkTransition(
+          room,
+          event.participant.identity,
+          requireParticipantGone: true,
+        );
         if (_room == room && room.remoteParticipants.isEmpty) {
           _scheduleEmptyCallCheck(room);
+        }
+      })
+      ..on<DataReceivedEvent>((event) {
+        if (event.topic != 'campfire.moderation') {
+          return;
+        }
+        try {
+          final command = jsonDecode(utf8.decode(event.data));
+          if (command is! Map<String, dynamic> || command['action'] != 'move') {
+            return;
+          }
+          final channelId = command['channel_id'];
+          if (channelId is String && channelId.isNotEmpty) {
+            unawaited(_handleModeratorMove(channelId));
+          }
+        } on Object {
+          // Ignore packets that are not valid Campfire moderation commands.
         }
       })
       ..on<RoomDisconnectedEvent>((_) {
         if (_room != room) return;
         _emptyCallTimer?.cancel();
         _reconnecting = false;
+        _screenSharingParticipants.clear();
         // Only sound off if we had actually finished joining: a mid-setup
         // failure disconnects too, and never played a join sound to answer.
         final wasConnected = _ref.read(voiceProvider).isConnected;
@@ -316,6 +364,15 @@ class VoiceSession {
         unawaited(stopCallService());
         if (wasConnected) _sounds.leave();
       });
+  }
+
+  Future<void> _handleModeratorMove(String channelId) async {
+    try {
+      await join(channelId);
+      _ref.read(selectedChannelIdProvider.notifier).selected = channelId;
+    } on Object catch (error) {
+      debugPrint('voice: moderator move to $channelId failed: $error');
+    }
   }
 
   void _scheduleEmptyCallCheck(Room room) {
@@ -348,10 +405,42 @@ class VoiceSession {
     }
   }
 
+  void _announceScreenShareStarted(String identity) {
+    if (_screenSharingParticipants.add(identity)) {
+      _sounds.streamStart();
+    }
+  }
+
+  void _announceScreenShareStopped(String identity) {
+    if (_screenSharingParticipants.remove(identity)) {
+      _sounds.streamStop();
+    }
+  }
+
+  void _announceRemoteScreenShareStoppedAfterSdkTransition(
+    Room room,
+    String identity, {
+    bool requireParticipantGone = false,
+  }) {
+    // During a full restart the SDK removes publications and participants
+    // before emitting RoomReconnectingEvent. Defer the decision so that a
+    // reconnect does not sound like a stream ending.
+    scheduleMicrotask(() {
+      if (_room == room &&
+          !_reconnecting &&
+          room.connectionState == ConnectionState.connected &&
+          (!requireParticipantGone ||
+              !room.remoteParticipants.containsKey(identity))) {
+        _announceScreenShareStopped(identity);
+      }
+    });
+  }
+
   Future<void> leave() async {
     _emptyCallTimer?.cancel();
     _emptyCallTimer = null;
     _reconnecting = false;
+    _screenSharingParticipants.clear();
     final room = _room;
     if (room == null) return;
     _room = null;

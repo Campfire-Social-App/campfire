@@ -1,4 +1,4 @@
-import { Volume2, VolumeX } from "lucide-react";
+import { Settings, ScreenShareOff, Volume2, VolumeX } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -6,22 +6,52 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { setScreenShareMuted, setScreenShareVolume } from "@/livekit/voice";
+import {
+  requestScreenShare,
+  setScreenShareMuted,
+  setScreenShareVolume,
+  stopScreenShare,
+} from "@/livekit/voice";
 import { useVoiceStore } from "@/state/voice";
+import { toast } from "sonner";
 
 export function ScreenShareAudioMenu({
   userId,
   username,
   disabled,
+  own,
   children,
 }: {
   userId: string;
   username: string;
   disabled?: boolean;
+  own?: boolean;
   children: React.ReactElement;
 }) {
   const volume = useVoiceStore((state) => state.screenShareVolumes[userId] ?? 1);
   const muted = useVoiceStore((state) => !!state.mutedScreenShares[userId]);
+
+  if (own) {
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+        <ContextMenuContent className="w-64">
+          <ContextMenuItem onSelect={() => void requestScreenShare()}>
+            <Settings className="size-4" /> Change screen and settings
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            variant="destructive"
+            onSelect={() => void stopScreenShare().catch(() => {
+              toast.error("Couldn't stop sharing the screen.");
+            })}
+          >
+            <ScreenShareOff className="size-4" /> Stop screen sharing
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    );
+  }
 
   if (disabled) return children;
 
@@ -36,7 +66,7 @@ export function ScreenShareAudioMenu({
         <ContextMenuSeparator />
         <div className="px-2 py-1.5" onKeyDown={(event) => event.stopPropagation()}>
           <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-muted-foreground">
-            <span>Stream volume</span>
+            <span>Stream volume (up to 200%)</span>
             <span className="tabular-nums text-foreground">{Math.round(volume * 100)}%</span>
           </div>
           <div className="flex items-center gap-2">

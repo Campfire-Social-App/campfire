@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
-import { Phone, Plus } from "lucide-react";
+import { Phone, Plus, Trash2 } from "lucide-react";
+import { deleteDm } from "@/api/endpoints";
 import { UserAvatar } from "@/components/UserAvatar";
 import { UserProfileHoverCard } from "@/components/UserProfileHoverCard";
 import { UserBar } from "@/components/UserBar";
@@ -10,6 +11,8 @@ import { usePresenceStore } from "@/state/presence";
 import { useVoiceStore } from "@/state/voice";
 import { cn } from "@/lib/utils";
 import type { DMConversation } from "@/lib/types";
+import { ApiError } from "@/lib/types";
+import { toast } from "sonner";
 
 /** Stands in for the channel sidebar while a DM is open — same column, same
  * bottom user bar, listing conversations instead of channels. */
@@ -17,6 +20,7 @@ export function DirectMessageSidebar() {
   const conversations = useDmsStore((s) => s.conversations);
   const activeDmId = useDmsStore((s) => s.activeDmId);
   const selectDm = useDmsStore((s) => s.selectDm);
+  const removeConversation = useDmsStore((s) => s.removeConversation);
   const [newDmOpen, setNewDmOpen] = useState(false);
 
   return (
@@ -45,6 +49,15 @@ export function DirectMessageSidebar() {
                 conversation={conversation}
                 active={activeDmId === conversation.id}
                 onClick={() => selectDm(conversation.id)}
+                onDelete={async () => {
+                  if (!window.confirm(`Delete your conversation with ${conversation.recipient.username}?`)) return;
+                  try {
+                    await deleteDm(conversation.id);
+                    removeConversation(conversation.id);
+                  } catch (error) {
+                    toast.error(error instanceof ApiError ? error.message : "Couldn't delete the conversation.");
+                  }
+                }}
               />
             ))}
           </div>
@@ -61,10 +74,12 @@ function ConversationRow({
   conversation,
   active,
   onClick,
+  onDelete,
 }: {
   conversation: DMConversation;
   active: boolean;
   onClick: () => void;
+  onDelete: () => Promise<void>;
 }) {
   const isOnline = usePresenceStore((s) => !!s.onlineUserIds[conversation.recipient.id]);
   // Voice state for a DM only ever reaches its two members, so anyone in this
@@ -73,11 +88,12 @@ function ConversationRow({
   const unread = conversation.unread_count;
 
   return (
+    <div className="group relative">
     <UserProfileHoverCard user={conversation.recipient}>
     <button
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground",
+        "flex w-full items-center gap-2 rounded-lg border border-transparent px-2 py-1.5 pr-8 text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground",
         active && "border-ember-tint-border/75 bg-ember-tint/50 font-semibold text-foreground",
         !active && unread > 0 && "font-semibold text-foreground",
       )}
@@ -106,5 +122,18 @@ function ConversationRow({
       )}
     </button>
     </UserProfileHoverCard>
+    <button
+      type="button"
+      title="Delete conversation"
+      aria-label={`Delete conversation with ${conversation.recipient.username}`}
+      onClick={(event) => {
+        event.stopPropagation();
+        void onDelete();
+      }}
+      className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition hover:bg-destructive/15 hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+    >
+      <Trash2 className="size-3.5" />
+    </button>
+    </div>
   );
 }

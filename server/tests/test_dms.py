@@ -115,6 +115,60 @@ async def test_outsider_cannot_mark_dm_read(client: AsyncClient, alice, bob, adm
     assert resp.status_code == 404
 
 
+async def test_delete_dm_hides_it_only_for_current_user_and_preserves_history(
+    client: AsyncClient, alice, bob
+) -> None:
+    dm = await client.post("/api/dms", json={"user_id": str(bob.id)}, headers=_headers(alice))
+    dm_id = dm.json()["id"]
+    await client.post(
+        f"/api/channels/{dm_id}/messages",
+        json={"content": "kept history"},
+        headers=_headers(alice),
+    )
+
+    assert (await client.delete(f"/api/dms/{dm_id}", headers=_headers(alice))).status_code == 204
+    assert dm_id not in [item["id"] for item in (await client.get("/api/dms", headers=_headers(alice))).json()]
+    assert dm_id in [item["id"] for item in (await client.get("/api/dms", headers=_headers(bob))).json()]
+
+    history = await client.get(f"/api/channels/{dm_id}/messages", headers=_headers(alice))
+    assert [message["content"] for message in history.json()["messages"]] == ["kept history"]
+
+    reopened = await client.post(
+        "/api/dms", json={"user_id": str(bob.id)}, headers=_headers(alice)
+    )
+    assert reopened.json()["id"] == dm_id
+    assert dm_id in [item["id"] for item in (await client.get("/api/dms", headers=_headers(alice))).json()]
+
+    await client.delete(f"/api/dms/{dm_id}", headers=_headers(alice))
+    await client.post(
+        f"/api/channels/{dm_id}/messages",
+        json={"content": "new message"},
+        headers=_headers(bob),
+    )
+    assert dm_id in [item["id"] for item in (await client.get("/api/dms", headers=_headers(alice))).json()]
+
+
+async def test_outsider_cannot_delete_dm(client: AsyncClient, alice, bob, admin_headers) -> None:
+    dm = await client.post("/api/dms", json={"user_id": str(bob.id)}, headers=_headers(alice))
+    assert (await client.delete(f"/api/dms/{dm.json()['id']}", headers=admin_headers)).status_code == 404
+
+
+async def test_dm_list_places_latest_message_first_and_empty_conversations_last(
+    client: AsyncClient, db_session: AsyncSession, alice, bob
+) -> None:
+    carol = await _make_member(db_session, "carol")
+    empty = await client.post("/api/dms", json={"user_id": str(carol.id)}, headers=_headers(alice))
+    active = await client.post("/api/dms", json={"user_id": str(bob.id)}, headers=_headers(alice))
+    await client.post(
+        f"/api/channels/{active.json()['id']}/messages",
+        json={"content": "latest"},
+        headers=_headers(bob),
+    )
+
+    listed = (await client.get("/api/dms", headers=_headers(alice))).json()
+    assert [conversation["id"] for conversation in listed] == [active.json()["id"], empty.json()["id"]]
+
+
 async def test_admin_cannot_moderate_messages_inside_a_dm(
     client: AsyncClient, alice, bob, admin_headers: dict[str, str]
 ) -> None:

@@ -33,6 +33,9 @@ test("quality budgets match resolution and FPS, with bounded native bitrate", ()
   assert.equal(profile("native", 120).maxBitrate, 10_000_000);
   assert.equal(profile("1080p", 60).contentHint, "motion");
   assert.equal(profile("1080p", 60).degradationPreference, "maintain-framerate");
+  assert.equal(profile("1080p", 30, true).maxBitrate, 12_000_000);
+  assert.equal(profile("1080p", 30, true).contentHint, "motion");
+  assert.equal(profile("1080p", 30, true).priority, "high");
   assert.equal(profile("native", 30).maxHeight, 0);
   assert.equal(profile("1080p", NaN).fps, 30);
 });
@@ -155,24 +158,49 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     setParticipantMuted() {}, setParticipantDeafened() {},
     setLocalScreenShareEnabled(enabled) { this.localScreenShareEnabled = enabled; },
     setScreenShareViewing(id, viewing) { this.viewingScreenShares[id] = viewing; },
+    setScreenShareVolume(id, volume) { this.screenShareVolumes[id] = volume; },
+    setScreenShareMuted(id, muted) {
+      if (muted) this.mutedScreenShares[id] = true;
+      else delete this.mutedScreenShares[id];
+    },
     setScreenShareAvailable(id, available) {
       this.availableScreenShares[id] = available;
       if (!available) delete this.viewingScreenShares[id];
     },
     setScreenShareTrack() {},
   };
+  const settings = {
+    audioInputDeviceId: null, audioOutputDeviceId: null,
+    inputVolume: 1, outputVolume: 1,
+    noiseSuppressionEnabled: true, noiseGateMode: "standard",
+    setAudioInputDeviceId(deviceId) { this.audioInputDeviceId = deviceId; },
+    setAudioOutputDeviceId(deviceId) { this.audioOutputDeviceId = deviceId; },
+    setInputVolume(volume) { this.inputVolume = volume; },
+    setOutputVolume(volume) { this.outputVolume = volume; },
+  };
+  const sounds = { streamStarts: 0, streamStops: 0 };
   class Room extends EventEmitter {
     state = "connected";
     remoteParticipants = new Map();
     disconnects = 0;
+    deviceSwitches = [];
+    publishedTracks = [];
+    unpublishedTracks = [];
     localParticipant = {
       identity: "self",
       setAttributes: async () => {},
       setScreenShareEnabled: async (...args) => { this.screenOptions = args; },
+      publishTrack: async (track, options) => { this.publishedTracks.push([track, options]); },
+      unpublishTrack: async (track) => { this.unpublishedTracks.push(track); },
+      getTrackPublication: () => undefined,
     };
     constructor(options) { super(); this.options = options; rooms.push(this); }
     async connect() {}
     async disconnect() { this.disconnects++; this.emit("Disconnected"); }
+    async switchActiveDevice(kind, deviceId) {
+      this.deviceSwitches.push([kind, deviceId]);
+      return true;
+    }
   }
   const presets = { h360fps15: { height: 360 }, h720fps30: { height: 720 } };
   const api = load("../src/livekit/voice.ts", {
@@ -180,23 +208,129 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
       Room, RoomEvent: new Proxy({}, { get: (_, name) => name }),
       ConnectionState: { Connected: "connected", Reconnecting: "reconnecting" },
       ScreenSharePresets: presets, AudioPresets: {},
-      Track: { Source: { ScreenShare: "screen", ScreenShareAudio: "screen-audio" }, Kind: { Video: "video" } },
+      Track: { Source: { Microphone: "microphone", ScreenShare: "screen", ScreenShareAudio: "screen-audio" }, Kind: { Video: "video" } },
     },
     "./emptyCallGrace": load("../src/livekit/emptyCallGrace.ts"),
     "@/lib/screenShareProfile": profileModule,
-    "@/lib/screenCapture": { isNativeCaptureAvailable: () => nativeCaptureAvailable },
+    "@/lib/screenCapture": {
+      isNativeCaptureAvailable: () => nativeCaptureAvailable,
+      startNativeCapture: async (_sourceId, quality, fps, _onError, _audio, _onAudioError, gameMode) => ({
+        track: { kind: "video" },
+        audioTrack: null,
+        maxBitrate: profileModule.screenShareProfile(quality, fps, gameMode).maxBitrate,
+        stop: async () => {},
+      }),
+    },
     "@/api/endpoints": {
       getVoiceToken: async () => ({ token: "test", url: "test" }),
       updateOwnVoiceState: async () => {},
     },
     "@/state/voice": { useVoiceStore: { getState: () => state } },
     "@/state/dms": { useDmsStore: { getState: () => ({ conversations: [{ id: "dm" }] }) } },
-    "@/state/channels": {}, "@/state/settings": {}, "@/lib/noiseGate": {},
-    "@/lib/sounds": { playJoinSound() {}, playLeaveSound() {} },
+    "@/state/channels": {},
+    "@/state/settings": { useSettingsStore: { getState: () => settings } },
+    "@/lib/noiseGate": { NoiseGateProcessor: class {} },
+    "@/lib/sounds": {
+      playJoinSound() {}, playLeaveSound() {},
+      playDeafenSound() {}, playMicrophoneMuteSound() {},
+      playMicrophoneUnmuteSound() {}, playUndeafenSound() {},
+      playStreamStartSound() { sounds.streamStarts++; },
+      playStreamStopSound() { sounds.streamStops++; },
+    },
     sonner: { toast: {} },
   }, { queueMicrotask, console });
-  return { api, state, rooms };
+  return { api, state, settings, rooms, sounds };
 }
+
+test("screen share sounds play once for each real start and stop", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  const room = h.rooms[0];
+  const publication = { source: "screen", track: { kind: "video" } };
+  const participant = { identity: "self" };
+
+  room.emit("LocalTrackPublished", publication, participant);
+  room.emit("LocalTrackPublished", publication, participant);
+  assert.equal(h.sounds.streamStarts, 1);
+  assert.equal(h.state.availableScreenShares.self, true);
+
+  room.emit("LocalTrackUnpublished", publication, participant);
+  room.emit("LocalTrackUnpublished", publication, participant);
+  assert.equal(h.sounds.streamStops, 1);
+  assert.equal(h.state.availableScreenShares.self, false);
+  await h.api.leaveVoiceChannel();
+});
+
+test("remote screen share publication notifies every connected client", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  const room = h.rooms[0];
+  const publication = {
+    source: "screen",
+    isDesired: false,
+    setSubscribed(watching) { this.isDesired = watching; },
+  };
+  const participant = {
+    identity: "streamer",
+    getTrackPublication: () => undefined,
+  };
+
+  room.emit("TrackPublished", publication, participant);
+  assert.equal(h.sounds.streamStarts, 1);
+  assert.equal(h.state.availableScreenShares.streamer, true);
+
+  room.emit("TrackUnpublished", publication, participant);
+  await Promise.resolve();
+  assert.equal(h.sounds.streamStops, 1);
+  assert.equal(h.state.availableScreenShares.streamer, false);
+  await h.api.leaveVoiceChannel();
+});
+
+test("audio device and master volume changes persist without leaving the room", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  await h.api.switchAudioInputDevice("microphone-2");
+  await h.api.switchAudioOutputDevice("speaker-2");
+  await h.api.applyInputVolume(1.25);
+  h.api.applyOutputVolume(0.75);
+
+  assert.equal(h.settings.audioInputDeviceId, "microphone-2");
+  assert.equal(h.settings.audioOutputDeviceId, "speaker-2");
+  assert.equal(h.settings.inputVolume, 1.25);
+  assert.equal(h.settings.outputVolume, 0.75);
+  assert.deepEqual(h.rooms[0].deviceSwitches, [
+    ["audioinput", "microphone-2"],
+    ["audiooutput", "speaker-2"],
+  ]);
+});
+
+test("each viewer can mute a stream and raise its volume to 200%", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  const appliedVolumes = [];
+  const participant = {
+    identity: "streamer",
+    setVolume(volume, source) { appliedVolumes.push([volume, source]); },
+  };
+  h.rooms[0].remoteParticipants.set("streamer", participant);
+  h.settings.outputVolume = 0.5;
+
+  h.api.setScreenShareVolume("streamer", 5);
+  assert.equal(h.state.screenShareVolumes.streamer, 2);
+  assert.deepEqual(appliedVolumes.at(-1), [1, "screen-audio"]);
+
+  h.api.setScreenShareMuted("streamer", true);
+  assert.equal(h.state.mutedScreenShares.streamer, true);
+  assert.deepEqual(appliedVolumes.at(-1), [0, "screen-audio"]);
+
+  h.api.setScreenShareVolume("streamer", 1.5);
+  assert.deepEqual(appliedVolumes.at(-1), [0, "screen-audio"]);
+
+  h.api.setScreenShareMuted("streamer", false);
+  assert.equal(h.state.mutedScreenShares.streamer, undefined);
+  assert.deepEqual(appliedVolumes.at(-1), [0.75, "screen-audio"]);
+  await h.api.leaveVoiceChannel();
+});
 
 test("SDK full-restart order preserves the DM and watch choice", async (t) => {
   const h = voiceHarness(t);
@@ -210,7 +344,7 @@ test("SDK full-restart order preserves the DM and watch choice", async (t) => {
   };
   // Real SDK emits publication/participant removal BEFORE Reconnecting.
   room.emit("TrackUnpublished", publication, participant);
-  room.emit("ParticipantDisconnected");
+  room.emit("ParticipantDisconnected", participant);
   room.state = "reconnecting";
   room.emit("Reconnecting");
   await Promise.resolve();
@@ -249,6 +383,22 @@ test("browser publication applies chosen quality and an intermediate layer", asy
   assert.equal(publish.screenShareSimulcastLayers[1].height, 720);
   assert.equal(publish.degradationPreference, "maintain-framerate");
   assert.equal(h.rooms[0].options.adaptiveStream.pixelDensity, "screen");
+  await h.api.leaveVoiceChannel();
+});
+
+test("native game capture publishes one high-priority H.264 layer", async (t) => {
+  const h = voiceHarness(t, true);
+  await h.api.joinVoiceChannel("channel");
+  await h.api.startNativeScreenShare("window:42", "1080p", 30, false, true);
+
+  const [, publish] = h.rooms[0].publishedTracks[0];
+  assert.equal(publish.videoCodec, "h264");
+  assert.equal(publish.backupCodec, false);
+  assert.equal(publish.simulcast, false);
+  assert.equal(publish.screenShareEncoding.maxBitrate, 12_000_000);
+  assert.equal(publish.screenShareEncoding.priority, "high");
+  assert.equal(publish.degradationPreference, "maintain-framerate");
+  await h.api.stopScreenShare();
   await h.api.leaveVoiceChannel();
 });
 

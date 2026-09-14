@@ -49,6 +49,13 @@ async def mark_dm_read(channel_id: uuid.UUID, user: CurrentUser, db: DbSession) 
     await dm_service.mark_read(db, channel_id, user.id)
 
 
+@router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dm(channel_id: uuid.UUID, user: CurrentUser, db: DbSession) -> None:
+    """Remove a conversation from this user's list without deleting shared history."""
+    if not await dm_service.hide_conversation(db, channel_id, user.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+
+
 async def _other_member_or_404(channel_id: uuid.UUID, user: CurrentUser, db: DbSession) -> User:
     """The person on the other end of `channel_id`. Non-participants get the same
     404 as a conversation that doesn't exist (see api/messages.py)."""

@@ -50,6 +50,13 @@ e [correções de FPS e encoder](https://discord.com/blog/from-blocky-to-brillia
 - Até 30 FPS, a publicação prioriza resolução e legibilidade. Acima disso,
   prioriza a taxa de quadros e permite reduzir a resolução sob carga. Simulcast,
   adaptive stream e dynacast continuam ativos.
+- O cliente Windows captura o áudio do sistema com WASAPI em 48 kHz estéreo e
+  publica uma faixa LiveKit `ScreenShareAudio` independente. Em versões recentes
+  do Windows, o processo do Campfire é excluído do loopback para não devolver as
+  vozes da chamada; versões anteriores usam o loopback do dispositivo de saída.
+- Durante uma transmissão, clicar novamente no botão de tela abre os controles
+  com a fonte e o perfil atuais. É possível trocar janela/monitor, qualidade,
+  FPS e áudio, aplicar as alterações ou encerrar a transmissão.
 
 ## Infraestrutura: ponto pendente
 

@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Flame, Plus } from "lucide-react";
+import { Flame, Plus, X } from "lucide-react";
+import { deleteDm } from "@/api/endpoints";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserAvatar } from "@/components/UserAvatar";
 import { NewDirectMessageDialog } from "@/components/NewDirectMessageDialog";
 import { useDmsStore } from "@/state/dms";
 import { usePresenceStore } from "@/state/presence";
 import { cn } from "@/lib/utils";
-import type { DMConversation } from "@/lib/types";
+import { ApiError, type DMConversation } from "@/lib/types";
+import { toast } from "sonner";
 
 interface ServerRailProps {
   serverName: string;
@@ -19,6 +21,8 @@ export function ServerRail({ serverName }: ServerRailProps) {
   const conversations = useDmsStore((s) => s.conversations);
   const activeDmId = useDmsStore((s) => s.activeDmId);
   const selectDm = useDmsStore((s) => s.selectDm);
+  const removeConversation = useDmsStore((s) => s.removeConversation);
+  const upsertConversation = useDmsStore((s) => s.upsertConversation);
   const [newDmOpen, setNewDmOpen] = useState(false);
 
   return (
@@ -42,6 +46,26 @@ export function ServerRail({ serverName }: ServerRailProps) {
           conversation={conversation}
           active={activeDmId === conversation.id}
           onClick={() => selectDm(conversation.id)}
+          onDelete={async () => {
+            if (!window.confirm(`Delete your conversation with ${conversation.recipient.username}?`)) {
+              return;
+            }
+            // Remove immediately so the action feels responsive. Put it back
+            // if the server rejects the request, preserving unread/order data.
+            const wasActive = activeDmId === conversation.id;
+            removeConversation(conversation.id);
+            try {
+              await deleteDm(conversation.id);
+            } catch (error) {
+              upsertConversation(conversation);
+              if (wasActive) selectDm(conversation.id);
+              toast.error(
+                error instanceof ApiError
+                  ? error.message
+                  : "Couldn't delete the conversation.",
+              );
+            }
+          }}
         />
       ))}
 
@@ -60,10 +84,12 @@ function DirectMessageRailItem({
   conversation,
   active,
   onClick,
+  onDelete,
 }: {
   conversation: DMConversation;
   active: boolean;
   onClick: () => void;
+  onDelete: () => Promise<void>;
 }) {
   const isOnline = usePresenceStore((s) => !!s.onlineUserIds[conversation.recipient.id]);
 
@@ -72,6 +98,20 @@ function DirectMessageRailItem({
       active={active}
       label={conversation.recipient.display_name ?? conversation.recipient.username}
       onClick={onClick}
+      action={
+        <button
+          type="button"
+          title="Delete conversation"
+          aria-label={`Delete conversation with ${conversation.recipient.username}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            void onDelete();
+          }}
+          className="flex size-5 items-center justify-center rounded-full border border-sidebar-border bg-rail text-muted-foreground shadow-sm transition-colors hover:border-destructive/70 hover:bg-destructive hover:text-white"
+        >
+          <X className="size-3.5" />
+        </button>
+      }
     >
       <div className="relative">
         {/* Sized to match the server button above it, so the rail reads as one
@@ -99,11 +139,13 @@ function RailItem({
   label,
   onClick,
   children,
+  action,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
   children: React.ReactNode;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="relative shrink-0">
@@ -119,6 +161,7 @@ function RailItem({
         </TooltipTrigger>
         <TooltipContent side="right">{label}</TooltipContent>
       </Tooltip>
+      {action && <div className="absolute -top-1 -right-1 z-10">{action}</div>}
     </div>
   );
 }

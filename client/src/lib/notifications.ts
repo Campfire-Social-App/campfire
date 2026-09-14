@@ -1,23 +1,29 @@
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification,
-} from "@tauri-apps/plugin-notification";
+import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { openNotificationTarget, type NotificationTarget } from "@/lib/notificationTarget";
+import { toast } from "sonner";
 
 const isTauri = "__TAURI_INTERNALS__" in window;
-
 let permissionGranted = false;
 let initialization: Promise<void> | null = null;
 
-/** Requests OS notification permission once, at app startup. */
+function activate(target: NotificationTarget): void {
+  if (!openNotificationTarget(target)) {
+    toast("This conversation is no longer available in the current server/account.");
+  }
+}
+
+/** Register activation before any notification can be sent. Lives for the app session. */
 export function initNotifications(): Promise<void> {
   initialization ??= (async () => {
     try {
       if (isTauri) {
+        // The desktop plugin only sends notifications; the native command keeps
+        // the activation callback and restores hidden/minimized windows.
+        await listen<NotificationTarget>("notification-activated", ({ payload }) => activate(payload));
         permissionGranted = await isPermissionGranted();
-        if (!permissionGranted) {
-          permissionGranted = (await requestPermission()) === "granted";
-        }
+        if (!permissionGranted) permissionGranted = (await requestPermission()) === "granted";
       } else if ("Notification" in window) {
         permissionGranted = Notification.permission === "granted";
         if (Notification.permission === "default") {
@@ -25,35 +31,31 @@ export function initNotifications(): Promise<void> {
         }
       }
     } catch {
-      // Notifications are a nice-to-have — never block startup on this.
+      // A failed notification integration must not prevent startup.
     }
   })();
   return initialization;
 }
 
-export function notify(title: string, body: string): void {
-  // A gateway frame can arrive while the OS permission dialog is still open.
-  // Queue that notification behind initialization instead of silently losing it.
-  if (initialization) {
-    void initialization.then(() => send(title, body));
-    return;
-  }
-  send(title, body);
+export function notify(title: string, body: string, target: NotificationTarget | undefined): void {
+  if (!target) return;
+  void initNotifications().then(() => send(title, body, target));
 }
 
-function send(title: string, body: string): void {
+async function send(title: string, body: string, target: NotificationTarget): Promise<void> {
   if (!permissionGranted) return;
   try {
     if (isTauri) {
-      sendNotification({ title, body });
+      await invoke("send_chat_notification", { title, body, target });
     } else if ("Notification" in window) {
       const notification = new Notification(title, { body });
       notification.onclick = () => {
         window.focus();
+        activate(target);
         notification.close();
       };
     }
   } catch {
-    // Best-effort; a failed OS notification shouldn't surface to the user.
+    // Best-effort; a failed OS notification shouldn't interrupt the conversation.
   }
 }

@@ -1,21 +1,18 @@
-import { useMemo } from "react";
-import { Mic, MicOff, Phone, PhoneOff, ScreenShare, ScreenShareOff, Video, VideoOff } from "lucide-react";
+import { Headphones, VolumeX, Mic, MicOff, Phone, PhoneOff, ScreenShare, ScreenShareOff, Video, VideoOff } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { TileVisual, buildTiles, type CallTile } from "@/components/CallTiles";
-import { ScreenShareAudioMenu } from "@/components/ScreenShareAudioMenu";
-import { useAuthStore } from "@/state/auth";
+import { CallStage } from "@/components/CallStage";
+import { AudioDeviceMenu } from "@/components/AudioDeviceMenu";
 import { useCallsStore } from "@/state/calls";
-import { usePresenceStore } from "@/state/presence";
 import { useVoiceStore } from "@/state/voice";
 import {
   joinVoiceChannel,
   setCameraEnabled,
+  setDeafened,
   setMicrophoneMuted,
   requestScreenShare,
   stopScreenShare,
-  setScreenShareViewing,
 } from "@/livekit/voice";
 import { hangUp } from "@/lib/calls";
 import { ApiError, type DMConversation } from "@/lib/types";
@@ -31,40 +28,15 @@ interface DirectCallPanelProps {
  * it runs. Renders nothing at all when there's no call to show. */
 export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
   const participants = useVoiceStore(useShallow((s) => s.participantsInChannel(conversation.id)));
-  const cameraTracks = useVoiceStore((s) => s.cameraTracks);
-  const screenShareTracks = useVoiceStore((s) => s.screenShareTracks);
-  const availableScreenShares = useVoiceStore((s) => s.availableScreenShares);
-  const viewingScreenShares = useVoiceStore((s) => s.viewingScreenShares);
   const connectedChannelId = useVoiceStore((s) => s.connectedChannelId);
   const connectionStatus = useVoiceStore((s) => s.connectionStatus);
-  const speakingUserIds = useVoiceStore((s) => s.speakingUserIds);
+  const localDeafened = useVoiceStore((s) => s.localDeafened);
   const localMuted = useVoiceStore((s) => s.localMuted);
   const localCameraEnabled = useVoiceStore((s) => s.localCameraEnabled);
   const localScreenShareEnabled = useVoiceStore((s) => s.localScreenShareEnabled);
-  const onlineUserIds = usePresenceStore((s) => s.onlineUserIds);
-  const ownUserId = useAuthStore((s) => s.user?.id);
   const isRinging = useCallsStore((s) => s.outgoing === conversation.id);
 
   const inThisCall = connectedChannelId === conversation.id;
-  const tiles = useMemo<CallTile[]>(
-    () =>
-      buildTiles(
-        participants,
-        inThisCall ? cameraTracks : {},
-        inThisCall ? screenShareTracks : {},
-        inThisCall ? availableScreenShares : {},
-        inThisCall ? viewingScreenShares : {},
-      ),
-    [
-      participants,
-      cameraTracks,
-      screenShareTracks,
-      availableScreenShares,
-      viewingScreenShares,
-      inThisCall,
-    ],
-  );
-
   // Someone is in the room without us: a call we left, or one we declined and
   // they stayed on. Offer the way back in rather than pretending it's over.
   const callInProgressElsewhere = !inThisCall && participants.length > 0;
@@ -79,9 +51,14 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
   };
 
   const handleToggleScreenShare = async () => {
+    if (localScreenShareEnabled) {
+      await stopScreenShare().catch(() => {
+        toast.error("Couldn't stop sharing the screen.");
+      });
+      return;
+    }
     try {
-      if (localScreenShareEnabled) await stopScreenShare();
-      else await requestScreenShare();
+      await requestScreenShare();
     } catch (err) {
       // Dismissing the browser's share picker rejects too — not a real failure.
       if (err instanceof DOMException && err.name === "NotAllowedError") return;
@@ -107,19 +84,23 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
         ? "In call"
         : `${conversation.recipient.username} is on a call`;
 
-  const columns = Math.min(3, Math.max(1, tiles.length));
-
   return (
-    <div className="shrink-0 border-b border-glass-border bg-glass/40 px-4 py-3">
+    <div className="group/call shrink-0 max-h-[65vh] overflow-y-auto border-b border-glass-border bg-glass/40 px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <p className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Phone className={cn("size-4 text-primary", isRinging && "animate-pulse")} />
           {status}
         </p>
-
-        <div className="flex items-center gap-1.5">
-          {inThisCall ? (
-            <>
+      </div>
+      {inThisCall && <CallStage channelId={conversation.id} compact />}
+      <div
+        role="group"
+        aria-label="Call controls"
+        className="mt-3 flex items-center justify-center gap-1.5 opacity-0 pointer-events-none transition-opacity duration-200 group-hover/call:pointer-events-auto group-hover/call:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
+      >
+        {inThisCall ? (
+          <>
+            <div className="flex items-center">
               <CallControl
                 active={localMuted}
                 onClick={() => void setMicrophoneMuted(!localMuted)}
@@ -127,82 +108,62 @@ export function DirectCallPanel({ conversation }: DirectCallPanelProps) {
               >
                 {localMuted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
               </CallControl>
+              <AudioDeviceMenu kind="input" />
+            </div>
+            <div className="flex items-center">
               <CallControl
-                active={localCameraEnabled}
-                activeClassName="bg-primary/15 text-primary"
-                onClick={() => void handleToggleCamera()}
-                label={localCameraEnabled ? "Turn off camera" : "Turn on camera"}
+                active={localDeafened}
+                onClick={() => void setDeafened(!localDeafened)}
+                label={localDeafened ? "Undeafen" : "Deafen"}
               >
-                {localCameraEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
+                {localDeafened ? <VolumeX className="size-4" /> : <Headphones className="size-4" />}
               </CallControl>
-              <CallControl
-                active={localScreenShareEnabled}
-                activeClassName="bg-primary/15 text-primary"
-                onClick={() => void handleToggleScreenShare()}
-                label={localScreenShareEnabled ? "Stop screen share" : "Share screen"}
-              >
-                {localScreenShareEnabled ? (
-                  <ScreenShare className="size-4" />
-                ) : (
-                  <ScreenShareOff className="size-4" />
-                )}
-              </CallControl>
-            </>
-          ) : (
-            <Button size="sm" onClick={() => void handleJoin()}>
-              <Phone className="size-4" /> Join call
-            </Button>
-          )}
+              <AudioDeviceMenu kind="output" />
+            </div>
+            <CallControl
+              active={localCameraEnabled}
+              activeClassName="bg-primary/15 text-primary"
+              onClick={() => void handleToggleCamera()}
+              label={localCameraEnabled ? "Turn off camera" : "Turn on camera"}
+            >
+              {localCameraEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
+            </CallControl>
+            <CallControl
+              active={localScreenShareEnabled}
+              activeClassName="bg-primary/15 text-primary"
+              onClick={() => void handleToggleScreenShare()}
+              label={localScreenShareEnabled ? "Stop screen sharing" : "Share screen"}
+            >
+              {localScreenShareEnabled ? (
+                <ScreenShare className="size-4" />
+              ) : (
+                <ScreenShareOff className="size-4" />
+              )}
+            </CallControl>
+          </>
+        ) : (
+          <Button size="sm" onClick={() => void handleJoin()}>
+            <Phone className="size-4" /> Join call
+          </Button>
+        )}
 
-          {(inThisCall || isRinging) && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => void hangUp(conversation.id)}
-                  className="ml-1 flex size-8 items-center justify-center rounded-full bg-destructive/90 text-white transition-colors hover:bg-destructive"
-                >
-                  <PhoneOff className="size-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>{isRinging ? "Cancel call" : "Hang up"}</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
+        {(inThisCall || isRinging) && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label={isRinging ? "Cancel call" : "Hang up"}
+                onClick={() => void hangUp(conversation.id)}
+                className="ml-1 flex size-8 items-center justify-center rounded-full bg-destructive/90 text-white transition-colors hover:bg-destructive"
+              >
+                <PhoneOff className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{isRinging ? "Cancel call" : "Hang up"}</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
-      {inThisCall && tiles.length > 0 && (
-        <div
-          className="mt-3 grid gap-2"
-          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-        >
-          {tiles.map((tile) => (
-            <ScreenShareAudioMenu
-              key={tile.key}
-              userId={tile.participant.user_id}
-              username={tile.participant.username}
-              disabled={tile.kind !== "screen" || tile.participant.user_id === ownUserId}
-            >
-              <div
-                className={cn(
-                  "relative aspect-video max-h-52 overflow-hidden rounded-xl bg-glass ring-2 ring-glass-border transition-all",
-                  tile.kind === "camera" &&
-                    speakingUserIds[tile.participant.user_id] &&
-                    "ring-primary shadow-[0_0_16px_1px_rgba(255,122,61,0.4)]",
-                )}
-              >
-                <TileVisual
-                  tile={tile}
-                  isOwn={tile.participant.user_id === ownUserId}
-                  online={!!onlineUserIds[tile.participant.user_id]}
-                  onWatchScreenShare={() =>
-                    setScreenShareViewing(tile.participant.user_id, true)
-                  }
-                />
-              </div>
-            </ScreenShareAudioMenu>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -224,6 +185,9 @@ function CallControl({
     <Tooltip>
       <TooltipTrigger asChild>
         <button
+          type="button"
+          aria-label={label}
+          aria-pressed={active}
           onClick={onClick}
           className={cn(
             "flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground",

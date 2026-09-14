@@ -69,6 +69,10 @@ export const listDms = () => apiFetch<DMConversation[]>("/api/dms");
 export const openDmWith = (userId: string) =>
   apiFetch<DMConversation>("/api/dms", { method: "POST", body: { user_id: userId } });
 
+/** Hides the conversation for the current user while preserving shared history. */
+export const deleteDm = (channelId: string) =>
+  apiFetch<void>(`/api/dms/${channelId}`, { method: "DELETE" });
+
 /** Rings the other member. Joining the call itself is a separate step — the
  * LiveKit room is the DM channel (see getVoiceToken). */
 export const startDmCall = (channelId: string) =>
