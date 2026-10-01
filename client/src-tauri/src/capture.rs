@@ -22,6 +22,8 @@ use std::{
 use wasapi::{
     initialize_mta, AudioClient, DeviceEnumerator, Direction, SampleType, StreamMode, WaveFormat,
 };
+#[cfg(target_os = "windows")]
+use windows_version::OsVersion;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::Serialize;
@@ -262,10 +264,43 @@ fn send_error(channel: &Channel<InvokeResponseBody>, message: &str) {
     let _ = channel.send(InvokeResponseBody::Json(payload));
 }
 
+/// WebView2 plays the call's WebRTC audio inside its own browser process
+/// group (`msedgewebview2.exe`), which — at least on Tauri v2/wry — does not
+/// show up as a descendant of our own process (a known process-grouping gap:
+/// <https://github.com/tauri-apps/tauri/issues/15567>, reproduced in Task
+/// Manager). Excluding our own process tree therefore leaves that group's
+/// audio in the loopback mix. `ICoreWebView2::BrowserProcessId` gives us the
+/// PID of that group directly, so we can exclude its tree instead of ours.
+///
+/// `with_webview` marshals the closure onto the WebView2 COM apartment's
+/// thread and returns once it's merely scheduled, so the result comes back
+/// over a channel instead of as a return value.
+#[cfg(target_os = "windows")]
+fn webview2_browser_process_id(webview: &tauri::Webview) -> Option<u32> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    webview
+        .with_webview(move |platform_webview| {
+            // The two WebView2 calls below come from `webview2-com`'s own
+            // pinned `windows-core`, whose `Error` type we'd otherwise have to
+            // depend on just to name here — collapse it to `()` instead.
+            let pid: Result<u32, ()> = (|| {
+                let core = unsafe { platform_webview.controller().CoreWebView2() }
+                    .map_err(|_| ())?;
+                let mut pid = 0u32;
+                unsafe { core.BrowserProcessId(&mut pid) }.map_err(|_| ())?;
+                Ok(pid)
+            })();
+            let _ = tx.send(pid.ok());
+        })
+        .ok()?;
+    rx.recv_timeout(Duration::from_secs(2)).ok().flatten()
+}
+
 #[cfg(target_os = "windows")]
 fn stream_system_audio(
     session: &CaptureSession,
     channel: &Channel<InvokeResponseBody>,
+    exclude_pid: u32,
 ) -> Result<(), String> {
     const SAMPLE_RATE: usize = 48_000;
     const CHANNELS: usize = 2;
@@ -276,8 +311,13 @@ fn stream_system_audio(
     initialize_mta().ok().map_err(|error| error.to_string())?;
     let format = WaveFormat::new(32, 32, &SampleType::Float, SAMPLE_RATE, CHANNELS, None);
 
-    // Excluding our own process tree keeps remote voices and Campfire sounds
-    // out of the shared mix while capturing the rest of the desktop.
+    // Per-process loopback exclusion (AUDIOCLIENT_ACTIVATION_PARAMS) needs
+    // Windows 10 build 20348+. We check the build directly instead of
+    // treating any activation failure as "unsupported": on a build that
+    // should support it, silently falling back to whole-device loopback
+    // would resurface remote voices and Campfire's own sounds in the share.
+    const PROCESS_EXCLUSION_MIN_BUILD: u32 = 20348;
+
     let initialize = |mut client: AudioClient| -> Result<AudioClient, String> {
         client
             .initialize_client(
@@ -291,22 +331,21 @@ fn stream_system_audio(
             .map_err(|error| error.to_string())?;
         Ok(client)
     };
-    let audio_client = AudioClient::new_application_loopback_client(std::process::id(), false)
-        .map_err(|error| error.to_string())
-        .and_then(initialize)
-        .or_else(|_| {
-            // Process-tree exclusion requires a recent Windows build. Older
-            // supported systems still get ordinary render-endpoint loopback.
-            let enumerator = DeviceEnumerator::new().map_err(|error| error.to_string())?;
-            let device = enumerator
-                .get_default_device(&Direction::Render)
-                .map_err(|error| error.to_string())?;
-            initialize(
-                device
-                    .get_iaudioclient()
-                    .map_err(|error| error.to_string())?,
-            )
-        })?;
+    let audio_client = if OsVersion::current().build >= PROCESS_EXCLUSION_MIN_BUILD {
+        AudioClient::new_application_loopback_client(exclude_pid, false)
+            .map_err(|error| error.to_string())
+            .and_then(initialize)?
+    } else {
+        let enumerator = DeviceEnumerator::new().map_err(|error| error.to_string())?;
+        let device = enumerator
+            .get_default_device(&Direction::Render)
+            .map_err(|error| error.to_string())?;
+        initialize(
+            device
+                .get_iaudioclient()
+                .map_err(|error| error.to_string())?,
+        )?
+    };
     let event = audio_client
         .set_get_eventhandle()
         .map_err(|error| error.to_string())?;
@@ -464,6 +503,7 @@ pub async fn list_capture_sources() -> Result<Vec<CaptureSource>, String> {
 #[tauri::command]
 pub fn start_capture(
     manager: tauri::State<'_, CaptureManager>,
+    webview: tauri::Webview,
     source_id: String,
     capture_id: String,
     max_height: u32,
@@ -491,7 +531,13 @@ pub fn start_capture(
         {
             let audio_session = session.clone();
             thread::spawn(move || {
-                if let Err(error) = stream_system_audio(&audio_session, &on_audio) {
+                // Resolved here, off the command-handler thread: `with_webview`
+                // only schedules the lookup, so this blocks until the COM call
+                // completes on the WebView2 apartment thread (bounded by its
+                // own timeout).
+                let exclude_pid =
+                    webview2_browser_process_id(&webview).unwrap_or_else(std::process::id);
+                if let Err(error) = stream_system_audio(&audio_session, &on_audio, exclude_pid) {
                     if !audio_session.stop.load(Ordering::Relaxed) {
                         send_error(&on_audio, &format!("System audio capture failed: {error}"));
                     }
@@ -499,10 +545,13 @@ pub fn start_capture(
             });
         }
         #[cfg(not(target_os = "windows"))]
-        send_error(
-            &on_audio,
-            "System audio capture is only available on Windows",
-        );
+        {
+            let _ = webview;
+            send_error(
+                &on_audio,
+                "System audio capture is only available on Windows",
+            );
+        }
     }
 
     thread::spawn(move || {
