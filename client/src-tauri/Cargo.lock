@@ -697,6 +697,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-winrt-notification",
  "wasapi",
+ "windows-version",
  "xcap",
 ]
 
