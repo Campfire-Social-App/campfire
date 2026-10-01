@@ -256,6 +256,15 @@ class CampfireApi {
         method: 'POST',
         body: {'channel_id': channelId},
       );
+
+  // ------------------------------------------------------------- diagnostics
+
+  Future<void> sendAudioEvents(List<Map<String, dynamic>> events) =>
+      client.request<void>(
+        '/api/diagnostics/audio-events',
+        method: 'POST',
+        body: {'events': events},
+      );
 }
 
 List<T> _listOf<T>(dynamic json, T Function(Map<String, dynamic>) fromJson) =>

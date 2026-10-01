@@ -9,6 +9,7 @@ from app.gateway.events import GatewayEvent, GatewayEventType
 from app.gateway.manager import VoiceParticipantState, manager
 from app.models.channel import Channel, ChannelType
 from app.services import dm_service
+from app.services.audio_event_service import record_audio_event
 from app.services.livekit_service import get_webhook_receiver
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
@@ -26,6 +27,25 @@ async def _dispatch_voice_event(channel_id: uuid.UUID | None, event: GatewayEven
                     await manager.send_to_user(user_id, event)
                 return
     await manager.broadcast(event)
+
+
+async def _log_server_audio_event(
+    event_type: str,
+    user_id: uuid.UUID | None = None,
+    channel_id: uuid.UUID | None = None,
+    detail: dict | None = None,
+) -> None:
+    """Persists what LiveKit itself observed, independent of whether the
+    client's own diagnostic reporting is working. See audio_event_service."""
+    async with async_session_maker() as db:
+        await record_audio_event(
+            db,
+            source="server",
+            event_type=event_type,
+            user_id=user_id,
+            channel_id=channel_id,
+            detail=detail,
+        )
 
 
 @router.post("/livekit", status_code=status.HTTP_204_NO_CONTENT)
@@ -58,6 +78,12 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
             muted=muted,
             deafened=deafened,
         )
+        await _log_server_audio_event(
+            "participant_joined",
+            user_id=user_id,
+            channel_id=channel_id,
+            detail={"muted": muted, "deafened": deafened},
+        )
         await _dispatch_voice_event(
             channel_id,
             GatewayEvent(
@@ -75,13 +101,26 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
         )
 
     elif event.event in ("track_published", "track_unpublished"):
-        # Screen availability must travel through the gateway so members who
-        # are not subscribed to this LiveKit room can still see that it is live.
-        if event.track.source != livekit_api.TrackSource.SCREEN_SHARE:
-            return
         try:
             user_id = uuid.UUID(event.participant.identity)
         except ValueError:
+            return
+
+        if event.track.source == livekit_api.TrackSource.MICROPHONE:
+            # The SFU's own record of a mic track appearing/disappearing —
+            # the most trustworthy signal for "muted itself" bugs, since it
+            # does not depend on the client's own reporting being intact.
+            participant = manager.voice_state.get(user_id)
+            await _log_server_audio_event(
+                "mic_track_published" if event.event == "track_published" else "mic_track_unpublished",
+                user_id=user_id,
+                channel_id=participant.channel_id if participant else None,
+            )
+            return
+
+        # Screen availability must travel through the gateway so members who
+        # are not subscribed to this LiveKit room can still see that it is live.
+        if event.track.source != livekit_api.TrackSource.SCREEN_SHARE:
             return
         participant = manager.voice_state.get(user_id)
         if participant is None:
@@ -109,8 +148,15 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
         if participant is None:
             return
         attributes = event.participant.attributes
+        was_muted = participant.muted
         participant.muted = attributes.get("muted") == "true"
         participant.deafened = attributes.get("deafened") == "true"
+        if participant.muted != was_muted:
+            await _log_server_audio_event(
+                "mic_muted" if participant.muted else "mic_unmuted",
+                user_id=user_id,
+                channel_id=participant.channel_id,
+            )
         await _dispatch_voice_event(
             participant.channel_id,
             GatewayEvent(
@@ -133,6 +179,7 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
 
         state = manager.voice_state.pop(user_id, None)
         channel_id = state.channel_id if state else None
+        await _log_server_audio_event("participant_left", user_id=user_id, channel_id=channel_id)
         await _dispatch_voice_event(
             channel_id,
             GatewayEvent(
@@ -154,6 +201,7 @@ async def livekit_webhook(request: Request, authorization: str = Header(default=
         stale = [uid for uid, s in manager.voice_state.items() if s.channel_id == channel_id]
         for uid in stale:
             manager.voice_state.pop(uid, None)
+        await _log_server_audio_event("room_finished", channel_id=channel_id)
         await _dispatch_voice_event(
             channel_id,
             GatewayEvent(

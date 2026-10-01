@@ -1,4 +1,5 @@
 from app.models.attachment import Attachment
+from app.models.audio_event import AudioEvent
 from app.models.channel import Channel, ChannelType
 from app.models.dm import DMParticipant
 from app.models.invite import Invite
@@ -10,6 +11,7 @@ from app.models.user_profile import UserProfile
 
 __all__ = [
     "Attachment",
+    "AudioEvent",
     "Channel",
     "ChannelType",
     "DMParticipant",
