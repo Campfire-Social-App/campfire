@@ -19,14 +19,32 @@ bool get _needsForegroundService =>
 
 /// Starts it, or promotes one already running: [screenShare] adds the
 /// `mediaProjection` type Android wants declared while the screen is captured.
-Future<void> startCallService({bool screenShare = false}) async {
+///
+/// [onError] is the one place a background-restriction failure (Android 12+
+/// refuses `startForegroundService` from outside the foreground, throwing
+/// `ForegroundServiceStartNotAllowedException`) becomes observable — a strong
+/// candidate for "the mic went silent on its own" reports, and otherwise
+/// invisible once this reaches a release build.
+Future<void> startCallService({
+  bool screenShare = false,
+  void Function(Object error)? onError,
+}) async {
   if (!_needsForegroundService) return;
-  await _channel.invokeMethod<void>('start', {'screenShare': screenShare});
+  try {
+    await _channel.invokeMethod<void>('start', {'screenShare': screenShare});
+  } on Object catch (error) {
+    onError?.call(error);
+    rethrow;
+  }
 }
 
-Future<void> stopCallService() async {
+Future<void> stopCallService({void Function(Object error)? onError}) async {
   if (!_needsForegroundService) return;
-  // Never worth failing a hang-up over: the call is what the user asked to
-  // end, and the service is bookkeeping around it.
-  await _channel.invokeMethod<void>('stop').catchError((_) {});
+  try {
+    await _channel.invokeMethod<void>('stop');
+  } on Object catch (error) {
+    // Never worth failing a hang-up over: the call is what the user asked to
+    // end, and the service is bookkeeping around it.
+    onError?.call(error);
+  }
 }

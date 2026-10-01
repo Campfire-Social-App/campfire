@@ -11,6 +11,7 @@ from app.api import (
     auth,
     channels,
     commands,
+    diagnostics,
     dms,
     invites,
     messages,
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(uploads.router)
     app.include_router(voice.router)
     app.include_router(webhooks.router)
+    app.include_router(diagnostics.router)
     app.include_router(gateway_router)
 
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)

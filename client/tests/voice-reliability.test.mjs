@@ -230,6 +230,9 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     "@/state/channels": {},
     "@/state/settings": { useSettingsStore: { getState: () => settings } },
     "@/lib/noiseGate": { NoiseGateProcessor: class {} },
+    "@/lib/audioDiagnostics": {
+      startAudioDiagnosticsSession() {}, endAudioDiagnosticsSession() {}, logAudioEvent() {},
+    },
     "@/lib/sounds": {
       playJoinSound() {}, playLeaveSound() {},
       playDeafenSound() {}, playMicrophoneMuteSound() {},

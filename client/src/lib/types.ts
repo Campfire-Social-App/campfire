@@ -200,6 +200,16 @@ export interface VoiceTokenResponse {
   room: string;
 }
 
+/** One entry reported to POST /api/diagnostics/audio-events — see lib/audioDiagnostics.ts. */
+export interface AudioEventPayload {
+  platform: string;
+  event_type: string;
+  channel_id: string | null;
+  session_id: string | null;
+  client_ts: string;
+  detail: Record<string, unknown>;
+}
+
 export interface VoiceParticipantState {
   user_id: string;
   username: string;

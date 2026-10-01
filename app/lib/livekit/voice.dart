@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:campfire/core/audio_diagnostics.dart';
 import 'package:campfire/core/call_service.dart';
 import 'package:campfire/core/sounds.dart';
 import 'package:campfire/state/api.dart';
@@ -40,6 +41,7 @@ class VoiceSession {
   VoiceSession(this._ref);
 
   final Ref _ref;
+  late final _diagnostics = AudioDiagnostics(_ref);
 
   Room? _room;
   EventsListener<RoomEvent>? _listener;
@@ -53,6 +55,17 @@ class VoiceSession {
 
   VoiceNotifier get _voice => _ref.read(voiceProvider.notifier);
   Sounds get _sounds => _ref.read(soundsProvider);
+
+  Future<void> _startCallService({bool screenShare = false}) => startCallService(
+        screenShare: screenShare,
+        onError: (error) =>
+            _diagnostics.logEvent('call_service_start_failed', {'error': '$error'}),
+      );
+
+  Future<void> _stopCallService() => stopCallService(
+        onError: (error) =>
+            _diagnostics.logEvent('call_service_stop_failed', {'error': '$error'}),
+      );
 
   AudioCaptureOptions get _microphoneCaptureOptions {
     final enabled = _ref.read(settingsProvider).noiseSuppressionEnabled;
@@ -70,6 +83,7 @@ class VoiceSession {
   Future<void> join(String channelId, {bool camera = false}) async {
     await leave();
 
+    _diagnostics.startSession(channelId);
     _voice.setConnection(channelId, VoiceConnectionStatus.connecting);
     final credentials = await _ref.read(apiProvider).voiceToken(channelId);
 
@@ -108,7 +122,7 @@ class VoiceSession {
       // service declare the microphone type once `RECORD_AUDIO` is granted, and
       // the thing that asks for it is the capture itself. Starting it first
       // crashed the process on the very first call of a fresh install.
-      await startCallService();
+      await _startCallService();
       _voice.setConnection(channelId, VoiceConnectionStatus.connected);
       _sounds.join();
       if (camera) await _enableCameraAfterJoin(room);
@@ -118,7 +132,8 @@ class VoiceSession {
       // expired token and an unreachable SFU all read the same. The cause goes
       // to the log so `flutter logs` still has it.
       debugPrint('voice: join failed — $error');
-      await stopCallService();
+      _diagnostics.logEvent('join_failed', {'error': '$error'});
+      await _stopCallService();
       _voice.setConnection(null, VoiceConnectionStatus.disconnected);
       _room = null;
       await _listener?.dispose();
@@ -170,9 +185,11 @@ class VoiceSession {
         true,
         audioCaptureOptions: _microphoneCaptureOptions,
       );
+      _diagnostics.logEvent('mic_enable_succeeded');
       return true;
     } on Object catch (error) {
       debugPrint('voice: microphone unavailable — $error');
+      _diagnostics.logEvent('mic_enable_failed', {'error': '$error'});
       return false;
     }
   }
@@ -218,15 +235,18 @@ class VoiceSession {
         if (_room != room) return;
         _reconnecting = true;
         _emptyCallTimer?.cancel();
+        _diagnostics.logEvent('room_reconnecting');
       })
       ..on<RoomResumingEvent>((_) {
         if (_room != room) return;
         _reconnecting = true;
         _emptyCallTimer?.cancel();
+        _diagnostics.logEvent('room_resuming');
       })
       ..on<RoomReconnectedEvent>((_) {
         if (_room != room) return;
         _reconnecting = false;
+        _diagnostics.logEvent('room_reconnected');
         if (room.remoteParticipants.isEmpty) _scheduleEmptyCallCheck(room);
       })
       ..on<ParticipantConnectedEvent>((_) {
@@ -300,7 +320,7 @@ class VoiceSession {
         // notification, which never goes through our button.
         if (event.publication.source == TrackSource.screenShareVideo) {
           _voice.setLocalScreenShareEnabled(enabled: false);
-          unawaited(startCallService());
+          unawaited(_startCallService());
         } else if (event.publication.source == TrackSource.camera) {
           _voice.setLocalCameraEnabled(enabled: false);
         }
@@ -310,6 +330,9 @@ class VoiceSession {
       // to react to mute as well as to publish.
       ..on<TrackMutedEvent>((event) {
         if (event.publication.source == TrackSource.microphone) {
+          if (event.participant.identity == room.localParticipant?.identity) {
+            _diagnostics.logEvent('local_mic_track_muted');
+          }
           _voice.setParticipantMuted(event.participant.identity, muted: true);
         } else if (event.publication.kind == TrackType.VIDEO) {
           _setVideoTrack(event.participant.identity, event.publication.source, null);
@@ -317,6 +340,9 @@ class VoiceSession {
       })
       ..on<TrackUnmutedEvent>((event) {
         if (event.publication.source == TrackSource.microphone) {
+          if (event.participant.identity == room.localParticipant?.identity) {
+            _diagnostics.logEvent('local_mic_track_unmuted');
+          }
           _voice.setParticipantMuted(event.participant.identity, muted: false);
         } else if (event.publication.track case final VideoTrack track) {
           _setVideoTrack(event.participant.identity, event.publication.source, track);
@@ -349,11 +375,14 @@ class VoiceSession {
           // Ignore packets that are not valid Campfire moderation commands.
         }
       })
-      ..on<RoomDisconnectedEvent>((_) {
+      ..on<RoomDisconnectedEvent>((event) {
         if (_room != room) return;
         _emptyCallTimer?.cancel();
         _reconnecting = false;
         _screenSharingParticipants.clear();
+        _diagnostics
+          ..logEvent('room_disconnected', {'reason': '${event.reason}'})
+          ..endSession();
         // Only sound off if we had actually finished joining: a mid-setup
         // failure disconnects too, and never played a join sound to answer.
         final wasConnected = _ref.read(voiceProvider).isConnected;
@@ -361,7 +390,7 @@ class VoiceSession {
         _room = null;
         // A disconnect the SFU decided on (kicked, room closed, network gone)
         // never passes through `leave`, and would leave the notification up.
-        unawaited(stopCallService());
+        unawaited(_stopCallService());
         if (wasConnected) _sounds.leave();
       });
   }
@@ -444,13 +473,16 @@ class VoiceSession {
     final room = _room;
     if (room == null) return;
     _room = null;
+    _diagnostics
+      ..logEvent('call_left')
+      ..endSession();
 
     await _listener?.dispose();
     _listener = null;
     await room.disconnect();
     await room.dispose();
     // The call is over, so its notification goes with it.
-    await stopCallService();
+    await _stopCallService();
     _voice.setConnection(null, VoiceConnectionStatus.disconnected);
   }
 
@@ -478,11 +510,16 @@ class VoiceSession {
       } else if (await _enableMicrophone(room)) {
         // A call joined muted asks for `RECORD_AUDIO` here rather than at join,
         // so this is where the service can finally claim the microphone type.
-        await startCallService();
+        await _startCallService();
       } else {
         applied = true;
       }
     }
+    // "explicit" because it went through our own setMicrophoneEnabled call —
+    // contrast with local_mic_track_muted/_unmuted, which fire for ANY mute of
+    // the local mic track, including ones LiveKit or the OS triggered on
+    // their own. This can also come from setDeafened(), not only the button.
+    _diagnostics.logEvent(applied ? 'mic_muted_explicit' : 'mic_unmuted_explicit');
     _voice.setLocalMuted(muted: applied);
     final identity = room?.localParticipant?.identity;
     if (identity != null) _voice.setParticipantMuted(identity, muted: applied);
@@ -497,6 +534,7 @@ class VoiceSession {
   }
 
   Future<void> setDeafened({required bool deafened}) async {
+    _diagnostics.logEvent('deafen_toggled', {'deafened': deafened});
     if (deafened) {
       // Only remember an automatic mute when the microphone was actually live.
       // If it was already muted that was the user's choice, and it has to
@@ -581,7 +619,7 @@ class VoiceSession {
         if (!granted) return;
         // Between consent and capture, which is the window Android requires
         // the mediaProjection service type to be declared in.
-        await startCallService(screenShare: true);
+        await _startCallService(screenShare: true);
       }
       await room.localParticipant?.setScreenShareEnabled(
         enabled,
@@ -597,9 +635,9 @@ class VoiceSession {
       }
       _voice.setLocalScreenShareEnabled(enabled: enabled);
       // Back to a plain call: the service stays, its projection type does not.
-      if (!enabled) await startCallService();
+      if (!enabled) await _startCallService();
     } on Object {
-      await startCallService();
+      await _startCallService();
       _voice.setLocalScreenShareEnabled(enabled: false);
       rethrow;
     }

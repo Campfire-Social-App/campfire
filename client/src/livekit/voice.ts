@@ -17,6 +17,11 @@ import {
   type RemoteVideoTrack,
 } from "livekit-client";
 import { toast } from "sonner";
+import {
+  startAudioDiagnosticsSession,
+  endAudioDiagnosticsSession,
+  logAudioEvent,
+} from "@/lib/audioDiagnostics";
 import { emptyCallGrace } from "./emptyCallGrace";
 import { getVoiceToken, updateOwnVoiceState } from "@/api/endpoints";
 import {
@@ -230,21 +235,27 @@ async function enableInitialMicrophone(participant: Room["localParticipant"]): P
       true,
       microphoneCaptureOptions(settings.noiseSuppressionEnabled),
     );
+    logAudioEvent("mic_enable_succeeded", { tier: "enhanced" });
   } catch (enhancedError) {
     console.warn("Could not start enhanced microphone processing; retrying stable WebRTC options.", enhancedError);
+    logAudioEvent("mic_enable_enhanced_failed", { error: String(enhancedError) });
     try {
       await participant.setMicrophoneEnabled(
         true,
         microphoneCaptureOptions(settings.noiseSuppressionEnabled, false),
       );
+      logAudioEvent("mic_enable_succeeded", { tier: "no_voice_isolation" });
       toast.warning("Voice isolation is unavailable; standard noise suppression is active.");
     } catch (suppressionError) {
       console.warn("Could not start noise suppression; retrying the microphone defaults.", suppressionError);
+      logAudioEvent("mic_enable_voice_isolation_failed", { error: String(suppressionError) });
       try {
         await participant.setMicrophoneEnabled(true, baselineMicrophoneCaptureOptions());
+        logAudioEvent("mic_enable_succeeded", { tier: "baseline" });
         toast.warning("Noise suppression is unavailable on this device; the microphone is active.");
       } catch (microphoneError) {
         console.warn("Could not start the microphone; joining muted.", microphoneError);
+        logAudioEvent("mic_enable_baseline_failed", { error: String(microphoneError) });
         toast.warning("Microphone unavailable. You joined the voice channel muted.");
         return false;
       }
@@ -269,6 +280,7 @@ export async function joinVoiceChannel(
 ): Promise<void> {
   await leaveVoiceChannel();
 
+  startAudioDiagnosticsSession(channelId);
   useVoiceStore.getState().setConnection(channelId, "connecting");
   const { localMuted, localDeafened } = useVoiceStore.getState();
   const { token, url } = await getVoiceToken(channelId, localMuted, localDeafened);
@@ -300,6 +312,7 @@ export async function joinVoiceChannel(
   const reconnecting = () => {
     if (room !== nextRoom) return;
     emptyCall.cancel();
+    logAudioEvent("room_reconnecting");
     useVoiceStore.getState().setConnection(channelId, "reconnecting");
   };
 
@@ -308,6 +321,7 @@ export async function joinVoiceChannel(
     .on(RoomEvent.SignalReconnecting, reconnecting)
     .on(RoomEvent.Reconnected, () => {
       if (room !== nextRoom) return;
+      logAudioEvent("room_reconnected");
       useVoiceStore.getState().setConnection(channelId, "connected");
       // Publications may have new SIDs after a full restart. Restore the
       // user's watch choices, without requiring another click on Watch.
@@ -444,6 +458,9 @@ export async function joinVoiceChannel(
     // they've been published once, so track visibility has to react to mute too.
     .on(RoomEvent.TrackMuted, (publication: TrackPublication, participant) => {
       if (publication.source === Track.Source.Microphone) {
+        if (participant.identity === nextRoom.localParticipant.identity) {
+          logAudioEvent("local_mic_track_muted");
+        }
         useVoiceStore.getState().setParticipantMuted(participant.identity, true);
       } else if (publication.kind === Track.Kind.Video) {
         setVideoTrackForSource(participant, publication.source, null);
@@ -451,6 +468,9 @@ export async function joinVoiceChannel(
     })
     .on(RoomEvent.TrackUnmuted, (publication: TrackPublication, participant) => {
       if (publication.source === Track.Source.Microphone) {
+        if (participant.identity === nextRoom.localParticipant.identity) {
+          logAudioEvent("local_mic_track_unmuted");
+        }
         useVoiceStore.getState().setParticipantMuted(participant.identity, false);
       } else if (publication.kind === Track.Kind.Video && publication.track) {
         setVideoTrackForSource(
@@ -479,6 +499,7 @@ export async function joinVoiceChannel(
       emptyCall.cancel();
       if (room !== nextRoom) return;
       console.info("Voice room disconnected", { reason });
+      logAudioEvent("room_disconnected", { reason: String(reason) });
       void stopNativeCapture();
       cleanupAudioElements();
       // Only sound off if we'd actually finished joining — a mid-setup failure
@@ -486,6 +507,7 @@ export async function joinVoiceChannel(
       const wasConnected = ["connected", "reconnecting"].includes(useVoiceStore.getState().connectionStatus);
       useVoiceStore.getState().setConnection(null, "disconnected");
       room = null;
+      endAudioDiagnosticsSession();
       if (wasConnected) playLeaveSound();
     });
 
@@ -539,6 +561,7 @@ export async function joinVoiceChannel(
       }
     }
   } catch (err) {
+    logAudioEvent("join_failed", { error: String(err) });
     cleanupAudioElements();
     useVoiceStore.getState().setConnection(null, "disconnected");
     room = null;
@@ -610,6 +633,8 @@ export async function leaveVoiceChannel(): Promise<void> {
   const current = room;
   const wasConnected = ["connected", "reconnecting"].includes(useVoiceStore.getState().connectionStatus);
   room = null;
+  logAudioEvent("call_left");
+  endAudioDiagnosticsSession();
   await stopNativeCapture();
   await current.disconnect();
   cleanupAudioElements();
@@ -625,12 +650,22 @@ export async function setMicrophoneMuted(
   // output audio is deafened.
   useVoiceStore.getState().setMicrophoneMutedByDeafen(false);
   const wasDeafened = useVoiceStore.getState().localDeafened;
-  await room?.localParticipant.setMicrophoneEnabled(
-    !muted,
-    microphoneCaptureOptions(
-      useSettingsStore.getState().noiseSuppressionEnabled,
-    ),
-  );
+  try {
+    await room?.localParticipant.setMicrophoneEnabled(
+      !muted,
+      microphoneCaptureOptions(
+        useSettingsStore.getState().noiseSuppressionEnabled,
+      ),
+    );
+  } catch (error) {
+    logAudioEvent("mic_mute_by_user_failed", { muted, error: String(error) });
+    throw error;
+  }
+  // "explicit" because it went through our own setMicrophoneEnabled call —
+  // contrast with local_mic_track_muted/_unmuted, which fire for ANY mute of
+  // the local mic track, including ones LiveKit or the OS triggered on their
+  // own. This event can also come from setDeafened(), not only the mic button.
+  logAudioEvent(muted ? "mic_muted_explicit" : "mic_unmuted_explicit");
   if (!muted) {
     await applyNoiseGate(useSettingsStore.getState().noiseGateMode).catch(() => {});
   }
@@ -691,8 +726,18 @@ export async function applyNoiseGate(mode: NoiseGateMode): Promise<void> {
 
 export async function switchAudioInputDevice(deviceId: string): Promise<void> {
   if (room) {
-    const switched = await room.switchActiveDevice("audioinput", deviceId, true);
-    if (!switched) throw new Error("The microphone could not be selected.");
+    let switched: boolean;
+    try {
+      switched = await room.switchActiveDevice("audioinput", deviceId, true);
+    } catch (error) {
+      logAudioEvent("audio_input_switch_failed", { deviceId, error: String(error) });
+      throw error;
+    }
+    if (!switched) {
+      logAudioEvent("audio_input_switch_failed", { deviceId, error: "switchActiveDevice returned false" });
+      throw new Error("The microphone could not be selected.");
+    }
+    logAudioEvent("audio_input_switched", { deviceId });
     await applyNoiseGate(useSettingsStore.getState().noiseGateMode);
   }
   useSettingsStore.getState().setAudioInputDeviceId(deviceId);
@@ -700,8 +745,18 @@ export async function switchAudioInputDevice(deviceId: string): Promise<void> {
 
 export async function switchAudioOutputDevice(deviceId: string): Promise<void> {
   if (room) {
-    const switched = await room.switchActiveDevice("audiooutput", deviceId, true);
-    if (!switched) throw new Error("The audio output could not be selected.");
+    let switched: boolean;
+    try {
+      switched = await room.switchActiveDevice("audiooutput", deviceId, true);
+    } catch (error) {
+      logAudioEvent("audio_output_switch_failed", { deviceId, error: String(error) });
+      throw error;
+    }
+    if (!switched) {
+      logAudioEvent("audio_output_switch_failed", { deviceId, error: "switchActiveDevice returned false" });
+      throw new Error("The audio output could not be selected.");
+    }
+    logAudioEvent("audio_output_switched", { deviceId });
   }
   useSettingsStore.getState().setAudioOutputDeviceId(deviceId);
 }
@@ -721,6 +776,7 @@ export function applyOutputVolume(volume: number): void {
 }
 
 export async function setDeafened(deafened: boolean): Promise<void> {
+  logAudioEvent("deafen_toggled", { deafened });
   if (deafened) {
     // Only remember an automatic mute when the microphone was active. If it
     // was already muted, that was the user's choice and must be preserved.

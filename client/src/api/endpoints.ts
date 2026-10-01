@@ -1,6 +1,7 @@
 import { apiFetch, apiUpload } from "./client";
 import type {
   Attachment,
+  AudioEventPayload,
   Channel,
   ChannelType,
   DMConversation,
@@ -176,6 +177,9 @@ export const moveVoiceParticipant = (userId: string, channelId: string) =>
     method: "POST",
     body: { channel_id: channelId },
   });
+
+export const sendAudioEvents = (events: AudioEventPayload[]) =>
+  apiFetch<void>("/api/diagnostics/audio-events", { method: "POST", body: { events } });
 
 export const muteVoiceParticipant = (userId: string) =>
   apiFetch<void>(`/api/voice/participants/${userId}/mute`, { method: "POST" });

@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { listAudioDevices, openSystemSoundSettings } from "@/lib/audioDevices";
+import { logAudioEvent } from "@/lib/audioDiagnostics";
 import type { NoiseGateMode } from "@/lib/noiseGate";
 import {
   applyInputVolume,
@@ -44,13 +45,20 @@ export function AudioDeviceMenu({ kind }: { kind: AudioDeviceKind }) {
     try {
       const listed = await listAudioDevices();
       setDevices(kind === "input" ? listed.inputs : listed.outputs);
-    } catch {
+    } catch (error) {
+      logAudioEvent("device_enumeration_failed", { kind, error: String(error) });
       toast.error("Couldn't list the audio devices.");
     }
   };
 
   useEffect(() => {
-    const changed = () => void refresh();
+    // The OS reporting a device list change mid-call (headset unplugged, a
+    // Bluetooth mic connecting) is a prime suspect for "device switched on its
+    // own" bug reports — worth a trail even when nothing visibly breaks.
+    const changed = () => {
+      logAudioEvent("device_list_changed", { kind });
+      void refresh();
+    };
     navigator.mediaDevices?.addEventListener("devicechange", changed);
     return () => navigator.mediaDevices?.removeEventListener("devicechange", changed);
     // The listener only needs the current menu kind when the component mounts.
