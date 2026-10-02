@@ -63,7 +63,7 @@ class _VoiceChannelViewState extends ConsumerState<VoiceChannelView> {
           child: tiles.isEmpty
               ? _EmptyRoom(channel: widget.channel)
               : Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                  padding: EdgeInsets.fromLTRB(12, isCompactLandscape(context) ? 4 : 8, 12, 2),
                   child: CallStage(
                     key: ValueKey(widget.channel.id),
                     tiles: tiles,
@@ -146,13 +146,14 @@ class _BottomPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = isCompactLandscape(context);
 
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+        padding: EdgeInsets.fromLTRB(12, compact ? 2 : 4, 12, compact ? 6 : 12),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.all(compact ? 8 : 12),
           decoration: BoxDecoration(
             color: CampfireTokens.glass,
             borderRadius: BorderRadius.circular(16),

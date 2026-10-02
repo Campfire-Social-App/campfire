@@ -11,6 +11,7 @@ import 'package:campfire/state/settings.dart';
 import 'package:campfire/state/voice.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show Helper;
 import 'package:livekit_client/livekit_client.dart';
 
 const _responsiveScreenShare = VideoParameters(
@@ -48,6 +49,8 @@ class VoiceSession {
   Timer? _emptyCallTimer;
   bool _reconnecting = false;
   final Set<String> _screenSharingParticipants = {};
+  final Map<String, RemoteAudioTrack> _microphoneAudioTracks = {};
+  final Map<String, RemoteAudioTrack> _screenShareAudioTracks = {};
 
   /// Whether deafening, rather than the microphone button, caused the current
   /// mute. Only an automatic mute may be automatically undone.
@@ -274,6 +277,17 @@ class VoiceSession {
         _voice.setParticipantDeafened(event.participant.identity, deafened: deafened == 'true');
       })
       ..on<TrackSubscribedEvent>((event) {
+        final source = event.publication.source;
+        final isScreenShareTrack =
+            source == TrackSource.screenShareVideo || source == TrackSource.screenShareAudio;
+        if (isScreenShareTrack &&
+            !_ref.read(voiceProvider).viewingScreenShares.contains(event.participant.identity)) {
+          // Auto-subscribe (the SDK's RoomOptions default) races every screen
+          // share against our opt-in. Undo it immediately rather than ever
+          // rendering, or mixing into our ears, a stream nobody asked to watch.
+          unawaited(event.publication.unsubscribe());
+          return;
+        }
         if (event.track is VideoTrack) {
           if (!event.publication.muted) {
             _setVideoTrack(event.participant.identity, event.publication.source,
@@ -281,9 +295,12 @@ class VoiceSession {
           }
           return;
         }
+        final identity = event.participant.identity;
         if (event.publication.source == TrackSource.microphone) {
-          _voice.setParticipantMuted(event.participant.identity,
-              muted: event.publication.muted);
+          _voice.setParticipantMuted(identity, muted: event.publication.muted);
+        }
+        if (event.track case final RemoteAudioTrack audioTrack) {
+          _rememberAudioTrack(identity, event.publication.source, audioTrack);
         }
         // Audio needs no attaching here the way it does in a browser: the SDK
         // plays a subscribed remote track itself. Deafening is the one case
@@ -295,7 +312,9 @@ class VoiceSession {
       ..on<TrackUnsubscribedEvent>((event) {
         if (event.track is VideoTrack) {
           _setVideoTrack(event.participant.identity, event.publication.source, null);
+          return;
         }
+        _forgetAudioTrack(event.participant.identity, event.publication.source);
       })
       ..on<LocalTrackPublishedEvent>((event) {
         if (_room != room) return;
@@ -380,6 +399,8 @@ class VoiceSession {
         _emptyCallTimer?.cancel();
         _reconnecting = false;
         _screenSharingParticipants.clear();
+        _microphoneAudioTracks.clear();
+        _screenShareAudioTracks.clear();
         _diagnostics
           ..logEvent('room_disconnected', {'reason': '${event.reason}'})
           ..endSession();
@@ -434,6 +455,52 @@ class VoiceSession {
     }
   }
 
+  void _rememberAudioTrack(String identity, TrackSource source, RemoteAudioTrack track) {
+    switch (source) {
+      case TrackSource.microphone:
+        _microphoneAudioTracks[identity] = track;
+        unawaited(_applyStoredVolume(identity, screenShare: false, track: track));
+      case TrackSource.screenShareAudio:
+        _screenShareAudioTracks[identity] = track;
+        _voice.setScreenShareAudioActive(identity, active: true);
+        unawaited(_applyStoredVolume(identity, screenShare: true, track: track));
+      case _:
+        break;
+    }
+  }
+
+  void _forgetAudioTrack(String identity, TrackSource source) {
+    switch (source) {
+      case TrackSource.microphone:
+        _microphoneAudioTracks.remove(identity);
+      case TrackSource.screenShareAudio:
+        _screenShareAudioTracks.remove(identity);
+        _voice.setScreenShareAudioActive(identity, active: false);
+      case _:
+        break;
+    }
+  }
+
+  /// `Helper.setVolume` has no plugin registered on web (`flutter_webrtc`'s
+  /// pubspec declares no `web:` platform despite the `kIsWeb` branch in its
+  /// own source) — it would throw `MissingPluginException` there, so this
+  /// whole path is skipped on web, and the UI never offers the slider either.
+  Future<void> _applyStoredVolume(
+    String identity, {
+    required bool screenShare,
+    required RemoteAudioTrack track,
+  }) async {
+    if (kIsWeb) return;
+    final volumes = screenShare
+        ? _ref.read(voiceProvider).screenShareVolumes
+        : _ref.read(voiceProvider).microphoneVolumes;
+    try {
+      await Helper.setVolume(volumes[identity] ?? 1.0, track.mediaStreamTrack);
+    } on Object catch (error) {
+      debugPrint('voice: setVolume on subscribe failed: $error');
+    }
+  }
+
   void _announceScreenShareStarted(String identity) {
     if (_screenSharingParticipants.add(identity)) {
       _sounds.streamStart();
@@ -470,6 +537,8 @@ class VoiceSession {
     _emptyCallTimer = null;
     _reconnecting = false;
     _screenSharingParticipants.clear();
+    _microphoneAudioTracks.clear();
+    _screenShareAudioTracks.clear();
     final room = _room;
     if (room == null) return;
     _room = null;
@@ -572,6 +641,50 @@ class VoiceSession {
     for (final participant in room.remoteParticipants.values) {
       for (final publication in participant.audioTrackPublications) {
         await (deafened ? publication.disable() : publication.enable());
+      }
+    }
+  }
+
+  /// Local-only: how loud *we* hear [userId] — never sent anywhere.
+  /// [screenShare] picks which of their two possible audio tracks the slider
+  /// is driving.
+  Future<void> setParticipantVolume({
+    required String userId,
+    required bool screenShare,
+    required double volume,
+  }) async {
+    screenShare
+        ? _voice.setScreenShareVolume(userId, volume)
+        : _voice.setMicrophoneVolume(userId, volume);
+    if (kIsWeb) return;
+    final track = (screenShare ? _screenShareAudioTracks : _microphoneAudioTracks)[userId];
+    if (track == null) return; // Preference saved; nothing live to apply it to yet.
+    try {
+      await Helper.setVolume(volume, track.mediaStreamTrack);
+    } on Object catch (error) {
+      debugPrint('voice: setVolume failed: $error');
+    }
+  }
+
+  /// Call from the slider's `onChangeEnd`, not on every drag tick.
+  Future<void> persistParticipantVolumes() => _voice.persistVolumes();
+
+  /// Opt-in subscription to someone else's screen share — the "watch
+  /// stream" / "leave stream" action. Mirrors `setScreenShareViewing` in
+  /// `livekit/voice.ts`: updates the local preference, then subscribes or
+  /// unsubscribes the two tracks that make up a screen share (the picture
+  /// and, if they captured it, its audio).
+  Future<void> setScreenShareViewing(String userId, {required bool viewing}) async {
+    _voice.setScreenShareViewing(userId, viewing: viewing);
+    final participant = _room?.remoteParticipants[userId];
+    if (participant == null) return;
+    for (final source in [TrackSource.screenShareVideo, TrackSource.screenShareAudio]) {
+      final publication = participant.getTrackPublicationBySource(source);
+      if (publication == null) continue;
+      try {
+        await (viewing ? publication.subscribe() : publication.unsubscribe());
+      } on Object catch (error) {
+        debugPrint('voice: setScreenShareViewing($source, $viewing) failed: $error');
       }
     }
   }

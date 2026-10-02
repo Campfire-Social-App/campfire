@@ -202,9 +202,11 @@ void main() {
       ..setConnection(_voiceChannel, VoiceConnectionStatus.connected)
       ..setSpeaking(['u2'])
       ..setLocalCameraEnabled(enabled: true)
-      ..setLocalScreenShareEnabled(enabled: true);
+      ..setLocalScreenShareEnabled(enabled: true)
+      ..setScreenShareViewing('u2', viewing: true);
 
     expect(stateOf(container).speakingUserIds, {'u2'});
+    expect(stateOf(container).viewingScreenShares, {'u2'});
 
     notifier.setConnection(null, VoiceConnectionStatus.disconnected);
     final state = stateOf(container);
@@ -213,9 +215,20 @@ void main() {
     expect(state.speakingUserIds, isEmpty);
     expect(state.localCameraEnabled, isFalse);
     expect(state.localScreenShareEnabled, isFalse);
+    expect(state.viewingScreenShares, isEmpty);
     // Mute and deafen are the user's standing preference, not the room's: they
     // survive, so the next join starts muted if this one was.
     expect(state.localMuted, isFalse);
+  });
+
+  test('setScreenShareViewing tracks who we opted into watching', () {
+    final container = containerWith();
+    final notifier = notifierOf(container)..setScreenShareViewing('u2', viewing: true);
+
+    expect(stateOf(container).viewingScreenShares, {'u2'});
+
+    notifier.setScreenShareViewing('u2', viewing: false);
+    expect(stateOf(container).viewingScreenShares, isEmpty);
   });
 
   test('mute is remembered across a disconnect', () {

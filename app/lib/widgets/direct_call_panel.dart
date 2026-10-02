@@ -30,6 +30,15 @@ class DirectCallPanel extends ConsumerWidget {
     final ringing = ref.watch(callsProvider).outgoing == conversation.id;
     final inThisCall = voice.isConnectedTo(conversation.id);
 
+    final compactLandscape = isCompactLandscape(context);
+    final screenSize = MediaQuery.sizeOf(context);
+    // Sideways, height is the scarce resource — the 25%-of-height formula
+    // would eat nearly a third of what is left; a slice of the width, which
+    // is what a phone on its side has to spare, instead.
+    final stageHeight = compactLandscape
+        ? (screenSize.width * 0.22).clamp(96.0, 160.0)
+        : (screenSize.height * 0.25).clamp(120.0, 208.0);
+
     // Someone is in the room without us: a call we left, or one we declined and
     // they stayed on. Offer the way back in rather than pretending it is over.
     final elsewhere = !inThisCall && participants.isNotEmpty;
@@ -80,7 +89,7 @@ class DirectCallPanel extends ConsumerWidget {
           if (inThisCall && tiles.isNotEmpty) ...[
             const SizedBox(height: 10),
             SizedBox(
-              height: (MediaQuery.sizeOf(context).height * 0.25).clamp(120.0, 208.0),
+              height: stageHeight,
               child: CallStage(
                 key: ValueKey(conversation.id),
                 tiles: tiles,
