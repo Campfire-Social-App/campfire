@@ -54,6 +54,8 @@ class SessionStore {
   static const _refreshTokenKey = 'campfire.refresh_token';
   static const _userKey = 'campfire.user';
   static const _noiseSuppressionKey = 'campfire.noise_suppression';
+  static const _microphoneVolumesKey = 'campfire.participant_mic_volumes';
+  static const _screenShareVolumesKey = 'campfire.participant_screen_volumes';
 
   final SecureStore _store;
 
@@ -70,6 +72,33 @@ class SessionStore {
 
   Future<void> writeNoiseSuppressionEnabled({required bool enabled}) =>
       _store.write(_noiseSuppressionKey, '$enabled');
+
+  Future<Map<String, double>> readMicrophoneVolumes() => _readVolumeMap(_microphoneVolumesKey);
+
+  Future<void> writeMicrophoneVolumes(Map<String, double> volumes) =>
+      _writeVolumeMap(_microphoneVolumesKey, volumes);
+
+  Future<Map<String, double>> readScreenShareVolumes() => _readVolumeMap(_screenShareVolumesKey);
+
+  Future<void> writeScreenShareVolumes(Map<String, double> volumes) =>
+      _writeVolumeMap(_screenShareVolumesKey, volumes);
+
+  Future<Map<String, double>> _readVolumeMap(String key) async {
+    final raw = await _store.read(key);
+    if (raw == null) return const {};
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      return decoded.map((userId, volume) => MapEntry(userId, (volume as num).toDouble()));
+    } on FormatException {
+      // Same reasoning as the user payload below: an unparseable map from an
+      // older build is not worth failing over, just start fresh.
+      await _store.delete(key);
+      return const {};
+    }
+  }
+
+  Future<void> _writeVolumeMap(String key, Map<String, double> volumes) =>
+      _store.write(key, jsonEncode(volumes));
 
   Future<String?> readRefreshToken() => _store.read(_refreshTokenKey);
 

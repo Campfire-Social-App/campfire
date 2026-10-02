@@ -30,6 +30,7 @@ dependencies:
     sdk: flutter
   flutter_riverpod: ^3.4.2        # the zustand stores map onto providers 1:1
   flutter_secure_storage: ^11.0.0 # Keychain/Keystore, where secureStore.ts used a plugin store
+  flutter_webrtc: ^1.6.0          # Helper.setVolume for per-participant listener volume (no web plugin — see livekit/voice.dart)
   freezed_annotation: ^3.1.0
   go_router: ^17.5.0
   image_picker: ^1.2.3             # camera and gallery, which file_picker does not cover

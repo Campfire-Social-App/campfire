@@ -1,3 +1,4 @@
+import 'package:campfire/core/secure_store.dart';
 import 'package:campfire/core/sounds.dart';
 import 'package:campfire/models/events.dart';
 import 'package:campfire/models/server.dart';
@@ -28,6 +29,10 @@ class VoiceState {
     this.speakingUserIds = const {},
     this.cameraTracks = const {},
     this.screenShareTracks = const {},
+    this.microphoneVolumes = const {},
+    this.screenShareVolumes = const {},
+    this.screenShareAudioUserIds = const {},
+    this.viewingScreenShares = const {},
   });
 
   /// Who the *server* says is in a voice channel, anywhere on the server —
@@ -52,6 +57,25 @@ class VoiceState {
   final Map<String, VideoTrack> cameraTracks;
   final Map<String, VideoTrack> screenShareTracks;
 
+  /// Local listening preference, 0.0-1.0, keyed by remote user id. Absence
+  /// means "never touched the slider", not muted — `livekit/voice.dart`
+  /// applies 1.0 in that case. Never cleared on disconnect: it is a standing
+  /// preference, not room state.
+  final Map<String, double> microphoneVolumes;
+  final Map<String, double> screenShareVolumes;
+
+  /// Remote participants currently publishing a screen-share *audio* track —
+  /// distinct from `screenShareTracks`, which is the picture. Room-scoped, so
+  /// it resets like `speakingUserIds` on disconnect. Drives whether the
+  /// second slider in the volume sheet has anything to control.
+  final Set<String> screenShareAudioUserIds;
+
+  /// Remote users whose screen share we have opted into subscribing to — the
+  /// opt-in model from `state/voice.ts`'s `viewingScreenShares`. Room-scoped:
+  /// resets like `speakingUserIds` on disconnect, since a subscription choice
+  /// about one room means nothing in the next.
+  final Set<String> viewingScreenShares;
+
   bool get isConnected => status == VoiceConnectionStatus.connected;
 
   /// Whether we are in [channelId]'s room right now.
@@ -72,6 +96,10 @@ class VoiceState {
     Set<String>? speakingUserIds,
     Map<String, VideoTrack>? cameraTracks,
     Map<String, VideoTrack>? screenShareTracks,
+    Map<String, double>? microphoneVolumes,
+    Map<String, double>? screenShareVolumes,
+    Set<String>? screenShareAudioUserIds,
+    Set<String>? viewingScreenShares,
   }) {
     return VoiceState(
       participants: participants ?? this.participants,
@@ -85,11 +113,24 @@ class VoiceState {
       speakingUserIds: speakingUserIds ?? this.speakingUserIds,
       cameraTracks: cameraTracks ?? this.cameraTracks,
       screenShareTracks: screenShareTracks ?? this.screenShareTracks,
+      microphoneVolumes: microphoneVolumes ?? this.microphoneVolumes,
+      screenShareVolumes: screenShareVolumes ?? this.screenShareVolumes,
+      screenShareAudioUserIds: screenShareAudioUserIds ?? this.screenShareAudioUserIds,
+      viewingScreenShares: viewingScreenShares ?? this.viewingScreenShares,
     );
   }
 }
 
 class VoiceNotifier extends Notifier<VoiceState> {
+  Future<void> _ready = Future<void>.value();
+
+  /// Completes once the stored volume preferences have been read, whether or
+  /// not there were any. `persistVolumes` awaits this so a write that lands
+  /// before hydration finishes cannot be clobbered by it.
+  Future<void> get ready => _ready;
+
+  SessionStore get _store => ref.read(sessionStoreProvider);
+
   @override
   VoiceState build() {
     listenToGateway(ref, (event) {
@@ -102,7 +143,32 @@ class VoiceNotifier extends Notifier<VoiceState> {
           break;
       }
     });
+    _ready = _loadVolumes();
     return const VoiceState();
+  }
+
+  Future<void> _loadVolumes() async {
+    try {
+      final mic = await _store.readMicrophoneVolumes();
+      final screen = await _store.readScreenShareVolumes();
+      // Merge rather than overwrite: a slider touched in the gap between
+      // `build()` returning and this future resolving must win over whatever
+      // was on disk, or the hydration would stomp the user's own just-made
+      // change.
+      state = state.copyWith(
+        microphoneVolumes: {...mic, ...state.microphoneVolumes},
+        screenShareVolumes: {...screen, ...state.screenShareVolumes},
+      );
+    } on Object catch (error, stackTrace) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'campfire',
+          context: ErrorDescription('reading stored participant volumes'),
+        ),
+      );
+    }
   }
 
   void _applyVoiceStateUpdate(VoiceStateUpdateData data) {
@@ -200,6 +266,8 @@ class VoiceNotifier extends Notifier<VoiceState> {
       speakingUserIds: disconnected ? const {} : null,
       cameraTracks: disconnected ? const {} : null,
       screenShareTracks: disconnected ? const {} : null,
+      screenShareAudioUserIds: disconnected ? const {} : null,
+      viewingScreenShares: disconnected ? const {} : null,
       localCameraEnabled: disconnected ? false : null,
       localScreenShareEnabled: disconnected ? false : null,
     );
@@ -256,6 +324,34 @@ class VoiceNotifier extends Notifier<VoiceState> {
       next[userId] = track;
     }
     return next;
+  }
+
+  void setMicrophoneVolume(String userId, double volume) => state = state.copyWith(
+        microphoneVolumes: {...state.microphoneVolumes, userId: volume},
+      );
+
+  void setScreenShareVolume(String userId, double volume) => state = state.copyWith(
+        screenShareVolumes: {...state.screenShareVolumes, userId: volume},
+      );
+
+  void setScreenShareAudioActive(String userId, {required bool active}) {
+    final next = {...state.screenShareAudioUserIds};
+    active ? next.add(userId) : next.remove(userId);
+    state = state.copyWith(screenShareAudioUserIds: next);
+  }
+
+  void setScreenShareViewing(String userId, {required bool viewing}) {
+    final next = {...state.viewingScreenShares};
+    viewing ? next.add(userId) : next.remove(userId);
+    state = state.copyWith(viewingScreenShares: next);
+  }
+
+  /// Called from `VoiceSession.persistParticipantVolumes`, on a slider's
+  /// `onChangeEnd` — not on every drag tick.
+  Future<void> persistVolumes() async {
+    await _ready;
+    await _store.writeMicrophoneVolumes(state.microphoneVolumes);
+    await _store.writeScreenShareVolumes(state.screenShareVolumes);
   }
 }
 

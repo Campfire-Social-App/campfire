@@ -2,6 +2,7 @@ import 'package:campfire/livekit/voice.dart';
 import 'package:campfire/state/voice.dart';
 import 'package:campfire/theme/icons.dart';
 import 'package:campfire/theme/tokens.dart';
+import 'package:campfire/widgets/call_stage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -189,10 +190,15 @@ class _ControlButton extends StatelessWidget {
         ),
       (true, _ActiveStyle.danger) => (CampfireTokens.destructive, Colors.white),
     };
+    // Lying down on a phone, the bar gets the same squeeze the DM panel's
+    // `dense` already asks for — not just the DM case needs tighter buttons.
+    // The tap target itself stays at the 48dp minimum either way; only the
+    // padding around it and the icon inside shrink.
+    final compact = dense || isCompactLandscape(context);
     const diameter = 48.0;
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: dense ? 3 : 6),
+      padding: EdgeInsets.symmetric(horizontal: compact ? 3 : 6),
       child: Tooltip(
         message: label,
         child: Material(
@@ -204,7 +210,7 @@ class _ControlButton extends StatelessWidget {
             child: SizedBox(
               width: diameter,
               height: diameter,
-              child: Icon(icon, size: dense ? 17 : 21, color: foreground),
+              child: Icon(icon, size: compact ? 17 : 21, color: foreground),
             ),
           ),
         ),
