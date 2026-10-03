@@ -8,8 +8,10 @@ import 'package:campfire/theme/icons.dart';
 import 'package:campfire/theme/tokens.dart';
 import 'package:campfire/widgets/call_tiles.dart';
 import 'package:campfire/widgets/participant_volume_sheet.dart';
+import 'package:campfire/widgets/voice_controls.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Paisagem num aparelho de bolso: curto o bastante para que o padding e os
@@ -57,10 +59,16 @@ void _leaveIfScreenShare(WidgetRef ref, CallTile tile) {
 /// Shared, touch-friendly grid and focused view for channels and private calls.
 /// The parent supplies a bounded height so the grid can scroll on small screens.
 class CallStage extends StatefulWidget {
-  const CallStage({required this.tiles, required this.speaking, super.key});
+  const CallStage({
+    required this.tiles,
+    required this.speaking,
+    required this.onHangUp,
+    super.key,
+  });
 
   final List<CallTile> tiles;
   final Set<String> speaking;
+  final Future<void> Function() onHangUp;
 
   @override
   State<CallStage> createState() => _CallStageState();
@@ -85,6 +93,7 @@ class _CallStageState extends State<CallStage> {
             focused: focused,
             tiles: widget.tiles,
             onFocus: (key) => setState(() => _focusedKey = key),
+            onHangUp: widget.onHangUp,
           )
         : _TileGrid(
             tiles: widget.tiles,
@@ -143,15 +152,36 @@ class _TileGrid extends ConsumerWidget {
 
 /// One tile blown up, with the rest as a strip underneath — the web client's
 /// focus mode, which is how a shared screen becomes readable.
-class _FocusedStage extends ConsumerWidget {
-  const _FocusedStage({required this.focused, required this.tiles, required this.onFocus});
+class _FocusedStage extends ConsumerStatefulWidget {
+  const _FocusedStage({
+    required this.focused,
+    required this.tiles,
+    required this.onFocus,
+    required this.onHangUp,
+  });
 
   final CallTile focused;
   final List<CallTile> tiles;
   final void Function(String? key) onFocus;
+  final Future<void> Function() onHangUp;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_FocusedStage> createState() => _FocusedStageState();
+}
+
+class _FocusedStageState extends ConsumerState<_FocusedStage> {
+  bool _fullscreenOpen = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Landscape plus focused means a real fullscreen — pushed next frame
+    // rather than mid-build, which the Navigator does not allow.
+    final isLandscape = MediaQuery.orientationOf(context) == Orientation.landscape;
+    if (isLandscape && !_fullscreenOpen) {
+      _fullscreenOpen = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_openFullscreen()));
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         // The strip shrinks with the height we get instead of staying locked
@@ -173,50 +203,40 @@ class _FocusedStage extends ConsumerWidget {
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: CampfireTokens.glassBorder),
                         ),
-                        child: TileVisual(tile: focused, scale: TileScale.large),
+                        child: TileVisual(tile: widget.focused, scale: TileScale.large),
                       ),
                     ),
                   ),
                   Positioned(
                     top: 8,
                     right: 8,
-                    child: Material(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      shape: const CircleBorder(),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () {
-                          _leaveIfScreenShare(ref, focused);
-                          onFocus(null);
-                        },
-                        child: const SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: Icon(CampfireIcons.close, size: 16, color: Colors.white),
-                        ),
-                      ),
+                    child: _CloseButton(
+                      onTap: () {
+                        _leaveIfScreenShare(ref, widget.focused);
+                        widget.onFocus(null);
+                      },
                     ),
                   ),
                 ],
               ),
             ),
-            if (tiles.length > 1)
+            if (widget.tiles.length > 1)
               SizedBox(
                 height: stripHeight,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.only(top: 8),
-                  itemCount: tiles.length,
+                  itemCount: widget.tiles.length,
                   separatorBuilder: (_, _) => const SizedBox(width: 8),
                   itemBuilder: (context, index) {
-                    final tile = tiles[index];
+                    final tile = widget.tiles[index];
                     return AspectRatio(
                       aspectRatio: 16 / 9,
                       child: _TileFrame(
                         tile: tile,
                         scale: TileScale.compact,
-                        selected: tile.key == focused.key,
-                        onTap: () => _watchThenFocus(ref, tile, onFocus),
+                        selected: tile.key == widget.focused.key,
+                        onTap: () => _watchThenFocus(ref, tile, widget.onFocus),
                       ),
                     );
                   },
@@ -225,6 +245,170 @@ class _FocusedStage extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+
+  Future<void> _openFullscreen() async {
+    await Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        barrierColor: Colors.black,
+        pageBuilder: (_, _, _) => _CallFullscreenPage(
+          focused: widget.focused,
+          onExit: () {
+            _leaveIfScreenShare(ref, widget.focused);
+            widget.onFocus(null);
+          },
+          onHangUp: widget.onHangUp,
+        ),
+      ),
+    );
+    // Only comes back here once the route is popped (either the × or a
+    // rotation back to portrait). If we are still focused, the orientation
+    // check above has already flipped to false by now, so this will not
+    // immediately reopen it.
+    if (mounted) _fullscreenOpen = false;
+  }
+}
+
+/// The close button that floats over a focused tile, in the same spot in the
+/// theater view and the real fullscreen page.
+class _CloseButton extends StatelessWidget {
+  const _CloseButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: const SizedBox(
+          width: 32,
+          height: 32,
+          child: Icon(CampfireIcons.close, size: 16, color: Colors.white),
+        ),
+      ),
+    );
+  }
+}
+
+/// The real thing: system status/nav bars hidden, the tile edge-to-edge, and
+/// the only UI a tap reveals — the close button and the full voice control
+/// bar, so muting or hanging up does not require leaving fullscreen first.
+class _CallFullscreenPage extends ConsumerStatefulWidget {
+  const _CallFullscreenPage({
+    required this.focused,
+    required this.onExit,
+    required this.onHangUp,
+  });
+
+  final CallTile focused;
+  final VoidCallback onExit;
+  final Future<void> Function() onHangUp;
+
+  @override
+  ConsumerState<_CallFullscreenPage> createState() => _CallFullscreenPageState();
+}
+
+class _CallFullscreenPageState extends ConsumerState<_CallFullscreenPage> {
+  bool _controlsVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky));
+  }
+
+  @override
+  void dispose() {
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Fullscreen only makes sense lying down — rotating back out exits it on
+    // its own, keeping the tile focused; the close button is what unfocuses
+    // for good.
+    if (MediaQuery.orientationOf(context) == Orientation.portrait) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(Navigator.of(context).maybePop());
+      });
+    }
+
+    // `widget.focused` is only a snapshot from the moment this route was
+    // pushed — a screen share accepted *after* the push (the normal case,
+    // since the subscription is opt-in) would otherwise show "Joining
+    // stream…" forever. Re-derive the live tile from current state instead,
+    // the same way `buildTiles` does.
+    final userId = widget.focused.participant.userId;
+    final voice = ref.watch(voiceProvider);
+    final liveParticipant =
+        voice.participants.where((p) => p.userId == userId).firstOrNull ??
+            widget.focused.participant;
+    final stillAvailable = widget.focused.kind == CallTileKind.screen
+        ? liveParticipant.screenSharing
+        : voice.participants.any((p) => p.userId == userId);
+    if (!stillAvailable) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.onExit();
+          unawaited(Navigator.of(context).maybePop());
+        }
+      });
+    }
+    final liveTile = CallTile(
+      key: widget.focused.key,
+      kind: widget.focused.kind,
+      participant: liveParticipant,
+      track: widget.focused.kind == CallTileKind.screen
+          ? voice.screenShareTracks[userId]
+          : voice.cameraTracks[userId],
+    );
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: () => setState(() => _controlsVisible = !_controlsVisible),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            TileVisual(tile: liveTile, scale: TileScale.large),
+            if (_controlsVisible)
+              SafeArea(
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: _CloseButton(
+                        onTap: () {
+                          widget.onExit();
+                          unawaited(Navigator.of(context).maybePop());
+                        },
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 16,
+                      // Glass tints are tuned against the app's own dark
+                      // background, not an arbitrary screen share — opaque
+                      // here gives each button its own flat, solid color
+                      // instead of letting the video show through the gaps.
+                      child: Center(
+                        child: VoiceControls(onHangUp: widget.onHangUp, opaque: true),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

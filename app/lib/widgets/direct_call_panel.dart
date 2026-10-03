@@ -94,6 +94,7 @@ class DirectCallPanel extends ConsumerWidget {
                 key: ValueKey(conversation.id),
                 tiles: tiles,
                 speaking: voice.speakingUserIds,
+                onHangUp: () => ref.read(callsProvider.notifier).hangUp(conversation.id),
               ),
             ),
           ],
