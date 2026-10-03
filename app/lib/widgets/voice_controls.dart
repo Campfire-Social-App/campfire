@@ -14,7 +14,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// the plan puts it (PLANO_FLUTTER.md §12): controls in thumb reach rather than
 /// in a header nobody can reach one-handed.
 class VoiceControls extends ConsumerWidget {
-  const VoiceControls({required this.onHangUp, this.dense = false, super.key});
+  const VoiceControls({
+    required this.onHangUp,
+    this.dense = false,
+    this.opaque = false,
+    super.key,
+  });
 
   /// Leaving means different things in the two places this appears: a voice
   /// channel is left, a 1:1 call is hung up (which also ends the ring).
@@ -22,6 +27,12 @@ class VoiceControls extends ConsumerWidget {
 
   /// The tighter row the DM panel uses, where the chat is the main event.
   final bool dense;
+
+  /// The glass tint is tuned against the app's own dark background — over an
+  /// arbitrary screen share in fullscreen it just lets the video show through
+  /// between icons. This swaps each button's background for a flat, fully
+  /// opaque color instead, leaving the gaps between them transparent.
+  final bool opaque;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,6 +57,7 @@ class VoiceControls extends ConsumerWidget {
           label: voice.localMuted ? 'Unmute' : 'Mute',
           active: voice.localMuted,
           dense: dense,
+          opaque: opaque,
           onTap: () => session.setMicrophoneMuted(muted: !voice.localMuted),
         ),
         _ControlButton(
@@ -53,6 +65,7 @@ class VoiceControls extends ConsumerWidget {
           label: voice.localDeafened ? 'Undeafen' : 'Deafen',
           active: voice.localDeafened,
           dense: dense,
+          opaque: opaque,
           onTap: () => session.setDeafened(deafened: !voice.localDeafened),
         ),
         _ControlButton(
@@ -61,6 +74,7 @@ class VoiceControls extends ConsumerWidget {
           active: voice.localCameraEnabled,
           activeStyle: _ActiveStyle.primary,
           dense: dense,
+          opaque: opaque,
           onTap: () => guarded(
             () => session.setCameraEnabled(enabled: !voice.localCameraEnabled),
             'Couldn’t access the camera.',
@@ -74,6 +88,7 @@ class VoiceControls extends ConsumerWidget {
             label: 'Switch camera',
             active: false,
             dense: dense,
+            opaque: opaque,
             onTap: () => guarded(session.switchCamera, 'Couldn’t switch camera.'),
           ),
         if (_canShareScreen)
@@ -85,6 +100,7 @@ class VoiceControls extends ConsumerWidget {
             active: voice.localScreenShareEnabled,
             activeStyle: _ActiveStyle.primary,
             dense: dense,
+            opaque: opaque,
             onTap: () async {
               if (voice.localScreenShareEnabled) {
                 await guarded(
@@ -110,6 +126,7 @@ class VoiceControls extends ConsumerWidget {
           active: true,
           activeStyle: _ActiveStyle.danger,
           dense: dense,
+          opaque: opaque,
           onTap: onHangUp,
         ),
       ],
@@ -167,6 +184,7 @@ class _ControlButton extends StatelessWidget {
     required this.onTap,
     this.activeStyle = _ActiveStyle.muted,
     this.dense = false,
+    this.opaque = false,
   });
 
   final IconData icon;
@@ -174,20 +192,19 @@ class _ControlButton extends StatelessWidget {
   final bool active;
   final _ActiveStyle activeStyle;
   final bool dense;
+  final bool opaque;
   final Future<void> Function() onTap;
 
   @override
   Widget build(BuildContext context) {
     final (background, foreground) = switch ((active, activeStyle)) {
-      (false, _) => (CampfireTokens.glass, CampfireTokens.mutedForeground),
-      (true, _ActiveStyle.muted) => (
-          CampfireTokens.destructive.withValues(alpha: 0.15),
-          CampfireTokens.destructive,
-        ),
-      (true, _ActiveStyle.primary) => (
-          CampfireTokens.primary.withValues(alpha: 0.15),
-          CampfireTokens.primary,
-        ),
+      (false, _) => (opaque ? Colors.black : CampfireTokens.glass, CampfireTokens.mutedForeground),
+      (true, _ActiveStyle.muted) => opaque
+          ? (CampfireTokens.destructive, Colors.white)
+          : (CampfireTokens.destructive.withValues(alpha: 0.15), CampfireTokens.destructive),
+      (true, _ActiveStyle.primary) => opaque
+          ? (CampfireTokens.primary, Colors.white)
+          : (CampfireTokens.primary.withValues(alpha: 0.15), CampfireTokens.primary),
       (true, _ActiveStyle.danger) => (CampfireTokens.destructive, Colors.white),
     };
     // Lying down on a phone, the bar gets the same squeeze the DM panel's

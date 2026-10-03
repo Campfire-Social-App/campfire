@@ -68,6 +68,7 @@ class _VoiceChannelViewState extends ConsumerState<VoiceChannelView> {
                     key: ValueKey(widget.channel.id),
                     tiles: tiles,
                     speaking: voice.speakingUserIds,
+                    onHangUp: ref.read(voiceSessionProvider).leave,
                   ),
                 ),
         ),
