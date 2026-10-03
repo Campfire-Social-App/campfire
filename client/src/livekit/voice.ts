@@ -23,6 +23,7 @@ import {
   logAudioEvent,
 } from "@/lib/audioDiagnostics";
 import { emptyCallGrace } from "./emptyCallGrace";
+import { logToFile } from "@/lib/clientLog";
 import { getVoiceToken, updateOwnVoiceState } from "@/api/endpoints";
 import {
   isNativeCaptureAvailable,
@@ -122,12 +123,13 @@ function startScreenShareStatsMonitor(currentRoom: Room): void {
       try {
         const layers = await track.getSenderStats();
         for (const layer of layers) {
-          console.info(
+          const line =
             `[screen-share:webrtc] rid=${layer.rid || "-"} fps=${layer.framesPerSecond?.toFixed(1) ?? "?"} ` +
-              `framesSent=${layer.framesSent} size=${layer.frameWidth}x${layer.frameHeight} ` +
-              `targetBitrateKbps=${layer.targetBitrate ? Math.round(layer.targetBitrate / 1000) : "?"} ` +
-              `qualityLimitation=${layer.qualityLimitationReason ?? "none"}`,
-          );
+            `framesSent=${layer.framesSent} size=${layer.frameWidth}x${layer.frameHeight} ` +
+            `targetBitrateKbps=${layer.targetBitrate ? Math.round(layer.targetBitrate / 1000) : "?"} ` +
+            `qualityLimitation=${layer.qualityLimitationReason ?? "none"}`;
+          console.info(line);
+          logToFile(line);
         }
       } catch {
         // Best-effort diagnostics only.

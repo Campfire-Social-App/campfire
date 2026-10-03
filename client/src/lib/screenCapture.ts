@@ -1,4 +1,5 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
+import { logToFile } from "./clientLog";
 import { screenShareProfile, type CaptureQuality } from "./screenShareProfile";
 export type { CaptureQuality } from "./screenShareProfile";
 
@@ -169,13 +170,14 @@ export async function startNativeCapture(
   let lastArrival: number | null = null;
   const logStats = (): void => {
     const secs = STATS_LOG_INTERVAL_MS / 1000;
-    console.info(
+    const line =
       `[screen-share] captureId=${captureId} receivedFps=${(received / secs).toFixed(1)} ` +
-        `processedFps=${(processed / secs).toFixed(1)} staleDropped=${staleDropped} ` +
-        `processAvgMs=${(processed ? processMsSum / processed : 0).toFixed(1)} processMaxMs=${processMsMax.toFixed(1)} ` +
-        `arrivalGapAvgMs=${(received > 1 ? arrivalGapSum / (received - 1) : 0).toFixed(1)} ` +
-        `arrivalGapMaxMs=${arrivalGapMax.toFixed(1)}`,
-    );
+      `processedFps=${(processed / secs).toFixed(1)} staleDropped=${staleDropped} ` +
+      `processAvgMs=${(processed ? processMsSum / processed : 0).toFixed(1)} processMaxMs=${processMsMax.toFixed(1)} ` +
+      `arrivalGapAvgMs=${(received > 1 ? arrivalGapSum / (received - 1) : 0).toFixed(1)} ` +
+      `arrivalGapMaxMs=${arrivalGapMax.toFixed(1)}`;
+    console.info(line);
+    logToFile(line);
     received = 0;
     processed = 0;
     staleDropped = 0;

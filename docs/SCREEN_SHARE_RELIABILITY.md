@@ -65,34 +65,51 @@ periódicos (uma linha a cada ~2s por estágio, não por frame), para isolar em
 qual ponto o frame rate está caindo — por exemplo, ao comparar antes/depois de
 abrir um jogo:
 
-1. **Rust, captura/encode** (`src-tauri/src/capture.rs`) — aparece no terminal
-   que executa `tauri dev` (ou no console redirecionado de um build com
-   `windows_subsystem` desabilitado). Linhas `[capture:screen]`/`[capture:window]`
-   trazem `produced_fps` (cadência da própria OS/xcap — WGC para tela, chamada
-   de captura para janela, independente do que descartamos depois),
-   `sent_fps`, `coalesced` (frames do recorder descartados por estarem
-   obsoletos), `dropped_interval` (descartados pelo limite de FPS pedido) e
-   `dropped_backpressure` (descartados porque o frontend ainda não confirmou o
-   frame anterior), além de `encode_avg_ms`/`encode_max_ms` (JPEG + IPC) e
+1. **Rust, captura/encode** (`src-tauri/src/capture.rs`) — via `log::info!`.
+   Linhas `[capture:screen]`/`[capture:window]` trazem `produced_fps`
+   (cadência da própria OS/xcap — WGC para tela, chamada de captura para
+   janela, independente do que descartamos depois), `sent_fps`, `coalesced`
+   (frames do recorder descartados por estarem obsoletos), `dropped_interval`
+   (descartados pelo limite de FPS pedido) e `dropped_backpressure`
+   (descartados porque o frontend ainda não confirmou o frame anterior), além
+   de `encode_avg_ms`/`encode_max_ms` (JPEG + IPC) e
    `recv_gap_avg_ms`/`grab_avg_ms` (cadência bruta da fonte). Uma queda em
    `produced_fps` aponta para a captura do Windows (WGC/driver/GPU), não para
    este processo — é o sinal mais provável quando o problema só aparece com um
    jogo aberto, já que jogos em tela cheia exclusiva ou com alto uso de GPU
    competem diretamente com a captura por acesso à GPU.
-2. **WebView, decodificação/pintura** (`src/lib/screenCapture.ts`) — aparece no
-   DevTools da janela do app (`Ctrl+Shift+I` ou o painel de inspeção do
-   WebView2). Linhas `[screen-share]` trazem `receivedFps` (quanto chega via
-   IPC), `processedFps`, `staleDropped` (frames substituídos antes de serem
+2. **WebView, decodificação/pintura** (`src/lib/screenCapture.ts`). Linhas
+   `[screen-share]` trazem `receivedFps` (quanto chega via IPC),
+   `processedFps`, `staleDropped` (frames substituídos antes de serem
    decodificados) e `processAvgMs`/`processMaxMs` (decodificar + desenhar no
    canvas). Se `receivedFps` do Rust está saudável mas `processedFps` aqui cai,
    o problema é a thread principal do WebView — plausível se o jogo estiver
    roubando prioridade de CPU/GPU do processo do Campfire.
-3. **Codificador WebRTC** (`src/livekit/voice.ts`) — também no DevTools.
-   Linhas `[screen-share:webrtc]` vêm de `LocalVideoTrack.getSenderStats()` e
+3. **Codificador WebRTC** (`src/livekit/voice.ts`). Linhas
+   `[screen-share:webrtc]` vêm de `LocalVideoTrack.getSenderStats()` e
    trazem `fps`, `framesSent`, `targetBitrateKbps` e `qualityLimitation`.
    `qualityLimitation=cpu` indica que o próprio codificador de vídeo do
    navegador está disputando CPU/GPU — a etapa final do pipeline, depois do
    encode JPEG intermediário da captura nativa.
+
+### Onde ver essas linhas
+
+Um build empacotado não tem console visível e o DevTools do WebView2 vem
+desabilitado por padrão em release — por isso os três estágios escrevem num
+arquivo único, em vez de dependerem só da saída do console:
+
+- As linhas de `capture.rs` (estágio 1) vão para `log` via `tauri-plugin-log`,
+  que grava em `app_log_dir()` (no Windows, a pasta de logs do app) e também
+  no stdout.
+- As linhas de `screenCapture.ts` e `voice.ts` (estágios 2 e 3) são logadas no
+  `console.info` do DevTools **e** espelhadas no mesmo arquivo via o comando
+  `log_client_event` (`src/lib/clientLog.ts` → `log_client_event` em
+  `lib.rs`), com o prefixo `client`.
+- Para abrir a pasta sem precisar saber o caminho: ícone do Campfire na
+  bandeja do Windows → **Abrir pasta de logs**.
+- O DevTools (F12 / botão direito → Inspecionar) agora funciona também em
+  build de release (`tauri`'s feature `devtools` habilitada no
+  `Cargo.toml`), útil para olhar o console em tempo real além do arquivo.
 
 Essas linhas existem só para diagnóstico local; nada é enviado ao servidor.
 

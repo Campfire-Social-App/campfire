@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "0.2.5"
+version = "0.2.6"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -18,13 +18,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+# `devtools` keeps the WebView2 inspector (F12 / right-click → Inspect)
+# reachable in release builds too — without it the feature is compiled out
+# and the shortcut silently does nothing.
+tauri = { version = "2", features = ["tray-icon", "devtools"] }
 tauri-plugin-opener = "2"
 tauri-plugin-store = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-updater = "2"
+# File-backed logging: console output (stderr, DevTools) doesn't survive a
+# packaged app being launched normally (no console attached) or DevTools
+# being closed, so diagnostics need to land somewhere durable.
+log = "0.4"
+tauri-plugin-log = "2"
 # Only here so the frontend can relaunch the app once an update is in place.
 tauri-plugin-process = "2"
 # `wgc` swaps the legacy GDI grab for Windows.Graphics.Capture, which is the

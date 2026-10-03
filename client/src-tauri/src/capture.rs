@@ -114,7 +114,7 @@ impl FrameStats {
             return;
         }
         let secs = elapsed.as_secs_f64();
-        eprintln!(
+        log::info!(
             "[capture:{label}] id={capture_id} target_fps={target_fps} sent_fps={:.1} produced_fps={:.1} coalesced={} dropped_interval={} dropped_backpressure={} encode_avg_ms={:.1} encode_max_ms={:.1} {produce_label}_avg_ms={:.1} {produce_label}_max_ms={:.1}",
             f64::from(self.sent) / secs,
             f64::from(self.produced) / secs,
@@ -639,7 +639,7 @@ pub fn start_capture(
     } else {
         DETAIL_FRAME_QUALITY
     };
-    eprintln!(
+    log::info!(
         "[capture] starting id={capture_id} source={source_id} fps={fps} max_height={max_height} quality={quality} game_mode={game_mode} audio={capture_audio}"
     );
     let session = Arc::new(CaptureSession::new(capture_id));
@@ -683,8 +683,8 @@ pub fn start_capture(
             }
         };
         match &result {
-            Ok(()) => eprintln!("[capture] id={} ended", session.id),
-            Err(error) => eprintln!("[capture] id={} ended with error: {error}", session.id),
+            Ok(()) => log::info!("[capture] id={} ended", session.id),
+            Err(error) => log::error!("[capture] id={} ended with error: {error}", session.id),
         }
         // A capture that dies on its own — window closed, device lost — has to say
         // so: the frontend is still holding a track that nothing will feed again.
