@@ -25,6 +25,9 @@ use wasapi::{
 #[cfg(target_os = "windows")]
 use windows_version::OsVersion;
 
+#[cfg(target_os = "windows")]
+mod gpu_win;
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::Serialize;
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -166,6 +169,10 @@ struct CaptureSession {
     id: String,
     stop: AtomicBool,
     in_flight: AtomicUsize,
+    /// Set by `request_keyframe` when the frontend's decoder loses sync. Only
+    /// the GPU path can act on it; the JPEG path has no inter-frame state to
+    /// recover.
+    keyframe_requested: AtomicBool,
 }
 
 impl CaptureSession {
@@ -174,7 +181,19 @@ impl CaptureSession {
             id,
             stop: AtomicBool::new(false),
             in_flight: AtomicUsize::new(0),
+            keyframe_requested: AtomicBool::new(false),
         }
+    }
+
+    /// Unlike `reserve_frame`, this never refuses: an encoded frame has
+    /// already been produced and dropping it would corrupt the stream up to
+    /// the next keyframe. The count is used to throttle *capture* instead.
+    fn note_in_flight(&self) {
+        self.in_flight.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn in_flight_count(&self) -> usize {
+        self.in_flight.load(Ordering::Relaxed)
     }
 
     fn reserve_frame(&self) -> bool {
@@ -226,6 +245,14 @@ impl CaptureManager {
         if let Ok(active) = self.active.lock() {
             if let Some(session) = active.as_ref().filter(|session| session.id == capture_id) {
                 session.acknowledge_frame();
+            }
+        }
+    }
+
+    fn request_keyframe(&self, capture_id: &str) {
+        if let Ok(active) = self.active.lock() {
+            if let Some(session) = active.as_ref().filter(|session| session.id == capture_id) {
+                session.keyframe_requested.store(true, Ordering::Relaxed);
             }
         }
     }
@@ -464,6 +491,196 @@ fn stream_system_audio(
     result
 }
 
+/// Frames from the GPU path are H.264 access units, not whole images, so they
+/// carry a header the frontend parses before handing the payload to its
+/// decoder. JPEG frames from the fallback path start with the JPEG marker
+/// instead, which is how the frontend tells the two apart without extra
+/// signalling.
+#[cfg(target_os = "windows")]
+const GPU_FRAME_MAGIC: &[u8; 4] = b"CFV1";
+#[cfg(target_os = "windows")]
+const GPU_FRAME_HEADER: usize = 32;
+/// How many sent access units may still be unacknowledged before we stop
+/// feeding the encoder. Capture is throttled rather than output dropped.
+#[cfg(target_os = "windows")]
+const GPU_MAX_IN_FLIGHT: usize = 4;
+
+#[cfg(target_os = "windows")]
+struct GpuStats {
+    window_start: Instant,
+    sent: u32,
+    keyframes: u32,
+    bytes: u64,
+    dropped_stale: u32,
+    starved: u32,
+    scale_ms_sum: f64,
+    scale_ms_max: f64,
+    encode_ms_sum: f64,
+    encode_ms_max: f64,
+    ipc_ms_sum: f64,
+    ipc_ms_max: f64,
+}
+
+#[cfg(target_os = "windows")]
+impl GpuStats {
+    fn new() -> Self {
+        Self {
+            window_start: Instant::now(),
+            sent: 0,
+            keyframes: 0,
+            bytes: 0,
+            dropped_stale: 0,
+            starved: 0,
+            scale_ms_sum: 0.0,
+            scale_ms_max: 0.0,
+            encode_ms_sum: 0.0,
+            encode_ms_max: 0.0,
+            ipc_ms_sum: 0.0,
+            ipc_ms_max: 0.0,
+        }
+    }
+
+    fn maybe_log(&mut self, capture_id: &str, target_fps: u32) {
+        let elapsed = self.window_start.elapsed();
+        if elapsed < STATS_LOG_INTERVAL {
+            return;
+        }
+        let secs = elapsed.as_secs_f64();
+        let sent = f64::from(self.sent).max(1.0);
+        log::info!(
+            "[capture:gpu] id={capture_id} target_fps={target_fps} sent_fps={:.1} keyframes={} au_bytes_avg={} dropped_stale={} starved={} scale_avg_ms={:.2} scale_max_ms={:.2} encode_avg_ms={:.2} encode_max_ms={:.2} ipc_avg_ms={:.2} ipc_max_ms={:.2}",
+            f64::from(self.sent) / secs,
+            self.keyframes,
+            self.bytes / u64::from(self.sent.max(1)),
+            self.dropped_stale,
+            self.starved,
+            self.scale_ms_sum / sent,
+            self.scale_ms_max,
+            self.encode_ms_sum / sent,
+            self.encode_ms_max,
+            self.ipc_ms_sum / sent,
+            self.ipc_ms_max,
+        );
+        *self = Self::new();
+    }
+}
+
+/// Ships encoded frames to the frontend over the same channel the JPEG path
+/// uses, and keeps the counters that make a regression attributable to a
+/// stage.
+#[cfg(target_os = "windows")]
+struct ChannelSink<'a> {
+    session: &'a CaptureSession,
+    channel: &'a Channel<InvokeResponseBody>,
+    target_fps: u32,
+    stats: GpuStats,
+    sequence: u32,
+    /// Set once anything reached the frontend: after that a failure can no
+    /// longer fall back to the JPEG path, because the frontend has already
+    /// configured a decoder for this stream.
+    pub delivered: bool,
+    pub error: Option<String>,
+}
+
+#[cfg(target_os = "windows")]
+impl<'a> ChannelSink<'a> {
+    fn new(
+        session: &'a CaptureSession,
+        channel: &'a Channel<InvokeResponseBody>,
+        target_fps: u32,
+    ) -> Self {
+        Self {
+            session,
+            channel,
+            target_fps,
+            stats: GpuStats::new(),
+            sequence: 0,
+            delivered: false,
+            error: None,
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl gpu_win::GpuSink for ChannelSink<'_> {
+    fn keep_going(&self) -> bool {
+        self.error.is_none() && !self.session.stop.load(Ordering::Relaxed)
+    }
+
+    fn congested(&self) -> bool {
+        self.session.in_flight_count() >= GPU_MAX_IN_FLIGHT
+    }
+
+    fn frame(&mut self, frame: gpu_win::GpuFrame) -> bool {
+        let config = frame.config.unwrap_or_default();
+        let mut payload = Vec::with_capacity(GPU_FRAME_HEADER + config.len() + frame.encoded.data.len());
+        let mut flags = 0u8;
+        if frame.encoded.keyframe {
+            flags |= 1;
+        }
+        if !config.is_empty() {
+            flags |= 2;
+        }
+        payload.extend_from_slice(GPU_FRAME_MAGIC);
+        payload.push(1); // header version
+        payload.push(flags);
+        payload.extend_from_slice(&0u16.to_le_bytes()); // reserved
+        payload.extend_from_slice(&self.sequence.to_le_bytes());
+        payload.extend_from_slice(&frame.encoded.timestamp_us.to_le_bytes());
+        payload.extend_from_slice(&(frame.width as u16).to_le_bytes());
+        payload.extend_from_slice(&(frame.height as u16).to_le_bytes());
+        payload.extend_from_slice(&(config.len() as u32).to_le_bytes());
+        payload.extend_from_slice(&(frame.encoded.data.len() as u32).to_le_bytes());
+        payload.extend_from_slice(&config);
+        payload.extend_from_slice(&frame.encoded.data);
+        self.sequence = self.sequence.wrapping_add(1);
+
+        self.stats.sent += 1;
+        self.stats.bytes += frame.encoded.data.len() as u64;
+        if frame.encoded.keyframe {
+            self.stats.keyframes += 1;
+        }
+        self.stats.scale_ms_sum += frame.scale_ms;
+        self.stats.scale_ms_max = self.stats.scale_ms_max.max(frame.scale_ms);
+        self.stats.encode_ms_sum += frame.encode_ms;
+        self.stats.encode_ms_max = self.stats.encode_ms_max.max(frame.encode_ms);
+
+        let started = Instant::now();
+        let sent = self.channel.send(InvokeResponseBody::Raw(payload));
+        let ipc_ms = started.elapsed().as_secs_f64() * 1000.0;
+        self.stats.ipc_ms_sum += ipc_ms;
+        self.stats.ipc_ms_max = self.stats.ipc_ms_max.max(ipc_ms);
+        self.stats.maybe_log(&self.session.id, self.target_fps);
+
+        match sent {
+            Ok(()) => {
+                self.delivered = true;
+                self.session.note_in_flight();
+                true
+            }
+            Err(error) => {
+                self.error = Some(error.to_string());
+                false
+            }
+        }
+    }
+
+    fn keyframe_requested(&mut self) -> bool {
+        self.session
+            .keyframe_requested
+            .swap(false, Ordering::Relaxed)
+    }
+
+    fn dropped_stale(&mut self, count: u32) {
+        self.stats.dropped_stale += count;
+    }
+
+    fn starved(&mut self) {
+        self.stats.starved += 1;
+        self.stats.maybe_log(&self.session.id, self.target_fps);
+    }
+}
+
 fn find_monitor(id: u32) -> Result<Monitor, String> {
     Monitor::all()
         .map_err(|error| error.to_string())?
@@ -674,14 +891,21 @@ pub fn start_capture(
     }
 
     thread::spawn(move || {
-        let result = match target {
-            Target::Screen(id) => {
-                stream_screen(id, max_height, interval, quality, fps, &session, &on_frame)
-            }
-            Target::Window(id) => {
-                stream_window(id, max_height, interval, quality, fps, &session, &on_frame)
-            }
+        // The GPU path is tried first and falls back to the CPU one only
+        // before anything has reached the frontend — once a decoder has been
+        // configured for an H.264 stream, handing it JPEGs would be worse than
+        // failing.
+        #[cfg(target_os = "windows")]
+        let result = match stream_gpu(&target, max_height, fps, game_mode, &session, &on_frame) {
+            GpuAttempt::Done(result) => result,
+            GpuAttempt::FallBack => stream_cpu(
+                &target, max_height, interval, quality, fps, &session, &on_frame,
+            ),
         };
+        #[cfg(not(target_os = "windows"))]
+        let result = stream_cpu(
+            &target, max_height, interval, quality, fps, &session, &on_frame,
+        );
         match &result {
             Ok(()) => log::info!("[capture] id={} ended", session.id),
             Err(error) => log::error!("[capture] id={} ended with error: {error}", session.id),
@@ -698,9 +922,97 @@ pub fn start_capture(
     Ok(())
 }
 
+fn stream_cpu(
+    target: &Target,
+    max_height: u32,
+    interval: Duration,
+    quality: u8,
+    fps: u32,
+    session: &CaptureSession,
+    channel: &Channel<InvokeResponseBody>,
+) -> Result<(), String> {
+    match target {
+        Target::Screen(id) => stream_screen(*id, max_height, interval, quality, fps, session, channel),
+        Target::Window(id) => stream_window(*id, max_height, interval, quality, fps, session, channel),
+    }
+}
+
+/// Whether the GPU attempt settled the capture or left it to the CPU path.
+#[cfg(target_os = "windows")]
+enum GpuAttempt {
+    Done(Result<(), String>),
+    FallBack,
+}
+
+#[cfg(target_os = "windows")]
+fn stream_gpu(
+    target: &Target,
+    max_height: u32,
+    fps: u32,
+    game_mode: bool,
+    session: &CaptureSession,
+    channel: &Channel<InvokeResponseBody>,
+) -> GpuAttempt {
+    let gpu_target = match target {
+        Target::Screen(id) => gpu_win::CaptureTarget::Screen(*id),
+        Target::Window(id) => gpu_win::CaptureTarget::Window(*id),
+    };
+    let config = gpu_win::GpuConfig::new(max_height, fps, game_mode);
+    let mut sink = ChannelSink::new(session, channel, config.fps);
+
+    let outcome = gpu_win::stream(gpu_target, &config, &mut sink);
+    if let Some(error) = sink.error {
+        return GpuAttempt::Done(Err(error));
+    }
+    match outcome {
+        Ok(gpu_win::GpuStop::Stopped) => GpuAttempt::Done(Ok(())),
+        Ok(gpu_win::GpuStop::SourceClosed) => {
+            GpuAttempt::Done(Err("The shared source was closed".to_string()))
+        }
+        Ok(gpu_win::GpuStop::DeviceLost) => {
+            log::warn!(
+                "[capture:gpu] id={} graphics device lost; {}",
+                session.id,
+                if sink.delivered {
+                    "ending the share"
+                } else {
+                    "falling back to the CPU path"
+                }
+            );
+            if sink.delivered {
+                GpuAttempt::Done(Err("The graphics device was reset".to_string()))
+            } else {
+                GpuAttempt::FallBack
+            }
+        }
+        Err(error) => {
+            // Before the first frame this is just "this machine can't do it";
+            // after it, the frontend is already decoding and has to be told.
+            if sink.delivered {
+                GpuAttempt::Done(Err(error.reason().to_string()))
+            } else {
+                log::info!(
+                    "[capture:gpu] id={} unavailable ({}): {} — using the CPU path",
+                    session.id,
+                    error.kind(),
+                    error.reason()
+                );
+                GpuAttempt::FallBack
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub fn acknowledge_capture(manager: tauri::State<'_, CaptureManager>, capture_id: String) {
     manager.acknowledge(&capture_id);
+}
+
+/// The frontend's decoder lost sync (a dropped access unit, or a decoder
+/// error) and needs an IDR to recover.
+#[tauri::command]
+pub fn request_keyframe(manager: tauri::State<'_, CaptureManager>, capture_id: String) {
+    manager.request_keyframe(&capture_id);
 }
 
 #[tauri::command]

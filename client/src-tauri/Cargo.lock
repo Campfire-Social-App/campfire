@@ -699,7 +699,7 @@ dependencies = [
 
 [[package]]
 name = "client"
-version = "0.2.6"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "log",
@@ -716,6 +716,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-winrt-notification",
  "wasapi",
+ "windows 0.62.2",
  "windows-version",
  "xcap",
 ]

@@ -3,22 +3,46 @@
 ## Comparação com o Discord
 
 O Campfire e o Discord usam WebRTC e encaminham a mídia por um servidor, em vez
-de criar uma conexão direta entre quem transmite e cada espectador. A pilha não
-é a mesma: o Campfire usa LiveKit como SFU e, na captura nativa, xcap/WGC → RGBA
-→ JPEG → IPC do Tauri → canvas do WebView → codificador WebRTC. No navegador,
-usa `getDisplayMedia()` → codificador WebRTC → LiveKit.
+de criar uma conexão direta entre quem transmite e cada espectador. O Campfire
+usa LiveKit como SFU. No navegador, o caminho é `getDisplayMedia()` →
+codificador WebRTC → LiveKit.
 
 No aplicativo Tauri, o seletor e a captura são sempre nativos. A detecção usa a
 API oficial `isTauri()`; `getDisplayMedia()` fica restrito à versão web e também
 é bloqueado caso algum fluxo tente chamá-lo dentro do cliente.
 
+No Windows, a captura nativa roda inteira na GPU: Windows.Graphics.Capture
+entrega uma textura D3D11, o video processor do D3D11 escala e converte para
+NV12, e um transform do Media Foundation codifica H.264 por hardware — o pixel
+nunca passa pela CPU antes de estar comprimido. Só o bitstream atravessa a IPC
+do Tauri, onde o WebCodecs (`VideoDecoder`) o decodifica por hardware e entrega
+os frames a um track generator, que o LiveKit publica como qualquer outra
+faixa. Isso existe porque o caminho anterior — RGBA → resize → JPEG na CPU —
+foi medido em 65-99 ms por frame em produção, limitando a transmissão a 10-13
+FPS independentemente do que o usuário pedia. O caminho antigo permanece como
+fallback automático (ver "Fallback" abaixo).
+
 O Discord documenta código próprio de captura e codificação integrado às APIs do
 sistema e aos drivers de vídeo, com codificação por hardware quando disponível,
-e usa WebRTC para transporte. Isso elimina a etapa JPEG/canvas que ainda existe
-na captura nativa do Campfire. Portanto, compartilhamos o protocolo e a ideia de
-SFU/adaptação de banda, mas não os mesmos frameworks nem o mesmo caminho de
-captura. Referências oficiais: [visão geral do Go Live](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
+e usa WebRTC para transporte. A diferença que resta em relação a ele é o encode
+final: no Campfire o bitstream intermediário é decodificado e recodificado pelo
+WebRTC do Chromium, enquanto o Discord entrega o quadro codificado direto ao
+transporte. O intermediário roda com bitrate alto (25-50 Mbps, já que a IPC é
+local), o que torna a perda da dupla compressão desprezível; o custo é ~1-2
+frames de latência. Referências oficiais: [visão geral do Go Live](https://discord.com/blog/how-it-all-goes-live-an-overview-of-discords-streaming-technology)
 e [correções de FPS e encoder](https://discord.com/blog/from-blocky-to-brilliant-improving-video-quality-on-discord-go-live-on-amd-gpus).
+
+### Fallback
+
+A pipeline antiga (xcap → RGBA → JPEG → canvas) continua no código e é usada
+automaticamente, sem opção na interface, quando o caminho GPU não inicializa:
+sem encoder H.264 de hardware (VM, GPU antiga, driver quebrado), falha de
+D3D11/Media Foundation, ou fora do Windows. O motivo vai para o log como
+`[capture:gpu] ... unavailable`. A troca só acontece antes do primeiro frame —
+depois disso o frontend já configurou um decoder para o stream H.264, e mandar
+JPEG seria pior que falhar. O frontend reconhece qual pipeline recebeu pelo
+cabeçalho `CFV1` dos quadros do caminho GPU (JPEG começa com o próprio marcador),
+e escolhe o sink correspondente.
 
 ## Correções no cliente
 
@@ -65,26 +89,30 @@ periódicos (uma linha a cada ~2s por estágio, não por frame), para isolar em
 qual ponto o frame rate está caindo — por exemplo, ao comparar antes/depois de
 abrir um jogo:
 
-1. **Rust, captura/encode** (`src-tauri/src/capture.rs`) — via `log::info!`.
-   Linhas `[capture:screen]`/`[capture:window]` trazem `produced_fps`
-   (cadência da própria OS/xcap — WGC para tela, chamada de captura para
-   janela, independente do que descartamos depois), `sent_fps`, `coalesced`
-   (frames do recorder descartados por estarem obsoletos), `dropped_interval`
-   (descartados pelo limite de FPS pedido) e `dropped_backpressure`
-   (descartados porque o frontend ainda não confirmou o frame anterior), além
-   de `encode_avg_ms`/`encode_max_ms` (JPEG + IPC) e
-   `recv_gap_avg_ms`/`grab_avg_ms` (cadência bruta da fonte). Uma queda em
-   `produced_fps` aponta para a captura do Windows (WGC/driver/GPU), não para
-   este processo — é o sinal mais provável quando o problema só aparece com um
-   jogo aberto, já que jogos em tela cheia exclusiva ou com alto uso de GPU
-   competem diretamente com a captura por acesso à GPU.
-2. **WebView, decodificação/pintura** (`src/lib/screenCapture.ts`). Linhas
+1. **Rust, captura/encode** (`src-tauri/src/capture.rs` e
+   `src-tauri/src/capture/gpu_win.rs`) — via `log::info!`.
+   No caminho GPU, as linhas `[capture:gpu]` trazem `sent_fps`, `keyframes`,
+   `au_bytes_avg` (tamanho médio do access unit), `dropped_stale` (frames do
+   pool descartados por já estarem obsoletos — sempre **antes** do encode),
+   `starved` (o encoder pediu quadro e a captura não tinha nenhum),
+   `scale_avg_ms` (VideoProcessorBlt), `encode_avg_ms`/`encode_max_ms`
+   (latência submit→saída da MFT) e `ipc_avg_ms`/`ipc_max_ms`. Na inicialização
+   há também uma linha com `encoder=` (nome amigável da MFT, que revela
+   NVENC/QuickSync/AMF) e `tuned=` (quais ajustes de `ICodecAPI` o driver
+   aceitou — varia por fornecedor).
+   No caminho de fallback, as linhas `[capture:screen]`/`[capture:window]`
+   seguem com os campos antigos: `produced_fps`, `sent_fps`, `coalesced`,
+   `dropped_interval`, `dropped_backpressure`, `encode_avg_ms` (resize + JPEG
+   + IPC) e `recv_gap_avg_ms`/`grab_avg_ms`.
+2. **WebView, decodificação** (`src/lib/screenCapture.ts`). Linhas
    `[screen-share]` trazem `receivedFps` (quanto chega via IPC),
-   `processedFps`, `staleDropped` (frames substituídos antes de serem
-   decodificados) e `processAvgMs`/`processMaxMs` (decodificar + desenhar no
-   canvas). Se `receivedFps` do Rust está saudável mas `processedFps` aqui cai,
-   o problema é a thread principal do WebView — plausível se o jogo estiver
-   roubando prioridade de CPU/GPU do processo do Campfire.
+   `processedFps` (quanto chega ao track), `sink` (qual implementação foi
+   escolhida: `video-track-generator`, `media-stream-track-generator` ou
+   `canvas`), `codec`, `decodeAvgMs`/`decodeMaxMs`, `decodeQueue`, `keyWaits`
+   (quadros descartados à espera de um keyframe depois de um reset) e
+   `decoderErrors`. `sink=canvas` com `codec` H.264 significa que o track
+   generator não estava disponível e sobrou um `drawImage` por frame — vale
+   medir, mas ainda é melhor que o JPEG.
 3. **Codificador WebRTC** (`src/livekit/voice.ts`). Linhas
    `[screen-share:webrtc]` vêm de `LocalVideoTrack.getSenderStats()` e
    trazem `fps`, `framesSent`, `targetBitrateKbps` e `qualityLimitation`.
