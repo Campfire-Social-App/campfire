@@ -46,6 +46,31 @@ base64 = "0.22"
 wasapi = "0.24"
 tauri-winrt-notification = "0.7.3"
 windows-version = "0.1"
+# GPU capture/encode path: Windows.Graphics.Capture hands us a D3D11 texture,
+# the D3D11 video processor scales and converts it to NV12, and a Media
+# Foundation transform encodes H.264 — all without the frame ever reaching the
+# CPU. This version matches the one xcap and wasapi already resolve to.
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Foundation_Metadata",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_System_WinRT_Graphics_Capture",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 notify-rust = "4.18"

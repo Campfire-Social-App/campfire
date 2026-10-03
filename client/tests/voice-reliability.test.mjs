@@ -57,67 +57,175 @@ for (const scenario of ["peer returns", "local reconnect", "new room", "empty DM
   });
 }
 
+/** An H.264 access unit as the Rust GPU path frames it: a 32-byte header,
+ * then optional SPS/PPS, then the payload. */
+function gpuFrame({ keyframe = true, parameterSets = null, payload = [0, 0, 1, 0x65], timestamp = 0 } = {}) {
+  const config = parameterSets ?? [];
+  const buffer = new ArrayBuffer(32 + config.length + payload.length);
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  bytes.set([0x43, 0x46, 0x56, 0x31], 0); // "CFV1"
+  view.setUint8(4, 1);
+  view.setUint8(5, (keyframe ? 1 : 0) | (config.length ? 2 : 0));
+  view.setBigUint64(12, BigInt(timestamp), true);
+  view.setUint16(20, 1920, true);
+  view.setUint16(22, 1080, true);
+  view.setUint32(24, config.length, true);
+  view.setUint32(28, payload.length, true);
+  bytes.set(config, 32);
+  bytes.set(payload, 32 + config.length);
+  return buffer;
+}
+
+/** A minimal SPS announcing High profile, so the codec string is derived from
+ * the stream rather than the fallback. */
+const TEST_SPS = [0, 0, 1, 0x67, 0x64, 0x00, 0x28];
+
 function captureHarness(t, start, overrides = {}) {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   let stops = 0;
   let acknowledgements = 0;
   let trackStops = 0;
-  let paints = 0;
+  let keyframeRequests = 0;
+  let written = 0;
   let channel;
-  const track = { requestFrame() {}, stop() { trackStops++; } };
-  const canvas = {
-    width: 0, height: 0,
-    getContext: () => ({ drawImage() { paints++; } }),
-    captureStream: () => ({ getVideoTracks: () => [track] }),
+  let decoder;
+  const track = { kind: "video", requestFrame() {}, stop() { trackStops++; } };
+  const generator = {
+    track,
+    writable: {
+      getWriter: () => ({
+        ready: Promise.resolve(),
+        write: async () => { written++; },
+        close: async () => {},
+      }),
+    },
   };
+  const frame = (timestamp = 0) => ({
+    timestamp,
+    displayWidth: 1920,
+    displayHeight: 1080,
+    close() {},
+    clone() { return frame(timestamp); },
+  });
+  class VideoDecoder {
+    static configs = [];
+    static async isConfigSupported(config) {
+      VideoDecoder.configs.push(config);
+      return { supported: config.codec.startsWith("avc3") };
+    }
+    constructor(handlers) { this.handlers = handlers; this.decodeQueueSize = 0; decoder = this; }
+    configure(config) { this.config = config; }
+    decode() { this.handlers.output(frame()); }
+    reset() { this.wasReset = true; }
+    close() { this.closed = true; }
+  }
   const api = load("../src/lib/screenCapture.ts", {
     "./screenShareProfile": profileModule,
+    "./clientLog": { logToFile() {} },
     "@tauri-apps/api/core": {
       Channel: class {},
       isTauri: () => true,
       invoke: async (command, args) => {
         if (command === "stop_capture") { stops++; return; }
         if (command === "acknowledge_capture") { acknowledgements++; return; }
+        if (command === "request_keyframe") { keyframeRequests++; return; }
         channel = args.onFrame;
         await start(channel);
       },
     },
   }, {
-    ArrayBuffer, Blob, crypto: { randomUUID: () => "test-capture-id" },
+    ArrayBuffer, Blob, DataView, Uint8Array, performance,
+    crypto: { randomUUID: () => "test-capture-id" },
     window: { setTimeout, clearTimeout, setInterval, clearInterval },
-    document: { createElement: () => canvas },
+    VideoDecoder,
+    EncodedVideoChunk: class { constructor(init) { Object.assign(this, init); } },
+    VideoFrame: class { constructor(source, init) { Object.assign(this, frame(init?.timestamp ?? 0)); } },
+    VideoTrackGenerator: class { constructor() { return generator; } },
+    ImageBitmap: class {},
     createImageBitmap: async () => ({ width: 1920, height: 1080, close() {} }),
     ...overrides,
   });
   return {
-    api, canvas, track,
+    api, track, generator,
     get stops() { return stops; },
     get trackStops() { return trackStops; },
     get acknowledgements() { return acknowledgements; },
-    get paints() { return paints; },
+    get keyframeRequests() { return keyframeRequests; },
+    get written() { return written; },
+    get decoder() { return decoder; },
+    get decoderConfigs() { return VideoDecoder.configs; },
     send: (message) => channel.onmessage(message),
   };
 }
 
-test("a first frame arriving before the IPC reply starts a static screen", async (t) => {
+test("a first decoded frame arriving before the IPC reply starts a static screen", async (t) => {
   const h = captureHarness(t, async (channel) => {
-    channel.onmessage(new ArrayBuffer(1));
-    await Promise.resolve(); // decode completes before invoke returns
+    channel.onmessage(gpuFrame({ parameterSets: TEST_SPS }));
+    // The decode and the sink write both settle before invoke returns.
+    for (let tick = 0; tick < 8; tick += 1) await Promise.resolve();
   });
   const capture = await h.api.startNativeCapture("screen:1", "1080p", 30, assert.fail);
   assert.equal(h.api.isNativeCaptureAvailable(), true);
   assert.equal(capture.track, h.track);
-  assert.equal(h.canvas.width, 1920);
   assert.equal(capture.maxBitrate, 6_000_000);
+  // Published straight from the track generator: no canvas draw per frame.
+  assert.equal(h.written, 1);
   assert.equal(h.acknowledgements, 1);
+  // Configured for the profile the stream's own SPS announced.
+  assert.equal(h.decoder.config.codec, "avc3.640028");
+  assert.equal(h.decoder.config.optimizeForLatency, true);
+  assert.equal(h.decoder.config.hardwareAcceleration, "prefer-hardware");
   await capture.stop();
   assert.equal(h.stops, 1);
   assert.equal(h.trackStops, 1);
-  const paints = h.paints;
+  assert.equal(h.decoder.closed, true);
+  const written = h.written;
   t.mock.timers.tick(10_000);
-  h.send(new ArrayBuffer(1));
+  h.send(gpuFrame());
   await Promise.resolve();
-  assert.equal(h.paints, paints);
+  assert.equal(h.written, written);
+});
+
+test("a JPEG frame from the CPU fallback path still paints a canvas track", async (t) => {
+  const canvasTrack = { kind: "video", requestFrame() {}, stop() {} };
+  let paints = 0;
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ({ drawImage() { paints++; } }),
+    captureStream: () => ({ getVideoTracks: () => [canvasTrack] }),
+  };
+  const h = captureHarness(t, async (channel) => {
+    // No GPU header: the frontend has to recognise a JPEG and fall back.
+    channel.onmessage(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]).buffer);
+    for (let tick = 0; tick < 8; tick += 1) await Promise.resolve();
+  }, { document: { createElement: () => canvas } });
+  const capture = await h.api.startNativeCapture("screen:1", "720p", 30, assert.fail);
+  assert.equal(capture.track, canvasTrack);
+  assert.equal(canvas.width, 1920);
+  assert.ok(paints >= 1);
+  assert.equal(h.decoder, undefined, "a JPEG stream must not configure a video decoder");
+  await capture.stop();
+});
+
+test("deltas before the first keyframe are skipped and acknowledged", async (t) => {
+  const h = captureHarness(t, async (channel) => {
+    channel.onmessage(gpuFrame({ parameterSets: TEST_SPS }));
+    for (let tick = 0; tick < 8; tick += 1) await Promise.resolve();
+  });
+  const capture = await h.api.startNativeCapture("screen:1", "720p", 30, assert.fail);
+  // A decoder error resets the stream; everything until the next keyframe is
+  // unusable, and the Rust side has to be asked for one.
+  h.decoder.handlers.error(new Error("decode failed"));
+  assert.equal(h.keyframeRequests, 1);
+  const before = h.written;
+  h.send(gpuFrame({ keyframe: false }));
+  await Promise.resolve();
+  assert.equal(h.written, before, "a delta after a reset must not be decoded");
+  h.send(gpuFrame({ keyframe: true }));
+  for (let tick = 0; tick < 8; tick += 1) await Promise.resolve();
+  assert.equal(h.written, before + 1, "the next keyframe resumes the stream");
+  await capture.stop();
 });
 
 test("an early native error rejects immediately and releases capture", async (t) => {
@@ -137,13 +245,18 @@ test("missing first frame times out and releases capture", async (t) => {
   assert.equal(h.stops, 1);
 });
 
-test("canvas track failure also releases the native recorder", async (t) => {
+test("no usable decoder configuration releases the native capture", async (t) => {
+  class Unsupported {
+    static async isConfigSupported() { return { supported: false }; }
+  }
   const h = captureHarness(t, async (channel) => {
-    channel.onmessage(new ArrayBuffer(1));
-    await Promise.resolve();
-  });
-  h.canvas.captureStream = () => { throw new Error("Unsupported canvas capture"); };
-  await assert.rejects(h.api.startNativeCapture("screen:1", "720p", 30, assert.fail), /Unsupported/);
+    channel.onmessage(gpuFrame({ parameterSets: TEST_SPS }));
+    for (let tick = 0; tick < 8; tick += 1) await Promise.resolve();
+  }, { VideoDecoder: Unsupported });
+  await assert.rejects(
+    h.api.startNativeCapture("screen:1", "720p", 30, assert.fail),
+    /No hardware decoder/,
+  );
   assert.equal(h.stops, 1);
 });
 
@@ -233,6 +346,7 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
     "@/lib/audioDiagnostics": {
       startAudioDiagnosticsSession() {}, endAudioDiagnosticsSession() {}, logAudioEvent() {},
     },
+    "@/lib/clientLog": { logToFile() {} },
     "@/lib/sounds": {
       playJoinSound() {}, playLeaveSound() {},
       playDeafenSound() {}, playMicrophoneMuteSound() {},
@@ -241,7 +355,9 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
       playStreamStopSound() { sounds.streamStops++; },
     },
     sonner: { toast: {} },
-  }, { queueMicrotask, console });
+    // The sender-stats monitor is diagnostics, not behaviour under test; a
+    // real interval here would also keep the test process alive.
+  }, { queueMicrotask, console, setInterval: () => 1, clearInterval: () => {} });
   return { api, state, settings, rooms, sounds };
 }
 

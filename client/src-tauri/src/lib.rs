@@ -88,6 +88,7 @@ pub fn run() {
             capture::list_capture_sources,
             capture::start_capture,
             capture::acknowledge_capture,
+            capture::request_keyframe,
             capture::stop_capture,
             open_windows_sound_settings,
             log_client_event,
