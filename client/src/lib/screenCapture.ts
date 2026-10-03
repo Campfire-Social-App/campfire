@@ -32,6 +32,13 @@ export interface NativeCapture {
  * guards the first one — if capture can't start at all, fail fast and loudly. */
 const FIRST_FRAME_TIMEOUT_MS = 8000;
 
+/** How often the running frame-timing counters below are flushed to the
+ * console. Driven by a timer rather than by frame arrival, so a total stall
+ * (nothing arriving over IPC at all) still prints "receivedFps=0" instead of
+ * going silent — useful when diagnosing frame-rate drops, e.g. once a game
+ * is launched alongside the share. */
+const STATS_LOG_INTERVAL_MS = 2000;
+
 const SYSTEM_AUDIO_WORKLET = `
 class CampfireSystemAudioProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -148,14 +155,49 @@ export async function startNativeCapture(
   let rejectFirstFrame: ((error: Error) => void) | null = null;
   const systemAudio = captureAudio ? await createSystemAudioTrack() : null;
 
+  // Diagnostic counters only — reset every STATS_LOG_INTERVAL_MS. `received`
+  // is every frame that arrived over IPC; `processed` is every one actually
+  // decoded and painted. The gap between them (plus `staleDropped`) shows
+  // whether the bottleneck is upstream (Rust/IPC) or here in the WebView.
+  let received = 0;
+  let processed = 0;
+  let staleDropped = 0;
+  let processMsSum = 0;
+  let processMsMax = 0;
+  let arrivalGapSum = 0;
+  let arrivalGapMax = 0;
+  let lastArrival: number | null = null;
+  const logStats = (): void => {
+    const secs = STATS_LOG_INTERVAL_MS / 1000;
+    console.info(
+      `[screen-share] captureId=${captureId} receivedFps=${(received / secs).toFixed(1)} ` +
+        `processedFps=${(processed / secs).toFixed(1)} staleDropped=${staleDropped} ` +
+        `processAvgMs=${(processed ? processMsSum / processed : 0).toFixed(1)} processMaxMs=${processMsMax.toFixed(1)} ` +
+        `arrivalGapAvgMs=${(received > 1 ? arrivalGapSum / (received - 1) : 0).toFixed(1)} ` +
+        `arrivalGapMaxMs=${arrivalGapMax.toFixed(1)}`,
+    );
+    received = 0;
+    processed = 0;
+    staleDropped = 0;
+    processMsSum = 0;
+    processMsMax = 0;
+    arrivalGapSum = 0;
+    arrivalGapMax = 0;
+  };
+  const statsTimer = window.setInterval(logStats, STATS_LOG_INTERVAL_MS);
+
   const paint = async (buffer: ArrayBuffer): Promise<void> => {
     if (decoding) {
       // Replacing a stale queued frame releases its producer credit immediately.
-      if (queued) void invoke("acknowledge_capture", { captureId });
+      if (queued) {
+        void invoke("acknowledge_capture", { captureId });
+        staleDropped += 1;
+      }
       queued = buffer;
       return;
     }
     decoding = true;
+    const processStarted = performance.now();
     try {
       const bitmap = await createImageBitmap(new Blob([buffer], { type: "image/jpeg" }));
       if (stopped) {
@@ -175,6 +217,10 @@ export async function startNativeCapture(
     } catch {
       // A single corrupt frame isn't worth tearing the share down for.
     } finally {
+      const processMs = performance.now() - processStarted;
+      processed += 1;
+      processMsSum += processMs;
+      processMsMax = Math.max(processMsMax, processMs);
       void invoke("acknowledge_capture", { captureId });
       decoding = false;
       const next = queued;
@@ -187,6 +233,14 @@ export async function startNativeCapture(
   channel.onmessage = (message) => {
     if (stopped) return;
     if (message instanceof ArrayBuffer) {
+      const now = performance.now();
+      received += 1;
+      if (lastArrival !== null) {
+        const gap = now - lastArrival;
+        arrivalGapSum += gap;
+        arrivalGapMax = Math.max(arrivalGapMax, gap);
+      }
+      lastArrival = now;
       void paint(message);
     } else if (typeof message === "object" && "error" in message) {
       captureError = message.error;
@@ -205,6 +259,7 @@ export async function startNativeCapture(
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    window.clearInterval(statsTimer);
     queued = null;
     onFirstFrame = null;
     rejectFirstFrame = null;

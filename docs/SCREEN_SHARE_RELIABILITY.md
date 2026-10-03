@@ -58,6 +58,44 @@ e [correções de FPS e encoder](https://discord.com/blog/from-blocky-to-brillia
   com a fonte e o perfil atuais. É possível trocar janela/monitor, qualidade,
   FPS e áudio, aplicar as alterações ou encerrar a transmissão.
 
+## Diagnóstico de FPS: onde cada etapa loga
+
+O pipeline de captura nativa tem três estágios instrumentados com contadores
+periódicos (uma linha a cada ~2s por estágio, não por frame), para isolar em
+qual ponto o frame rate está caindo — por exemplo, ao comparar antes/depois de
+abrir um jogo:
+
+1. **Rust, captura/encode** (`src-tauri/src/capture.rs`) — aparece no terminal
+   que executa `tauri dev` (ou no console redirecionado de um build com
+   `windows_subsystem` desabilitado). Linhas `[capture:screen]`/`[capture:window]`
+   trazem `produced_fps` (cadência da própria OS/xcap — WGC para tela, chamada
+   de captura para janela, independente do que descartamos depois),
+   `sent_fps`, `coalesced` (frames do recorder descartados por estarem
+   obsoletos), `dropped_interval` (descartados pelo limite de FPS pedido) e
+   `dropped_backpressure` (descartados porque o frontend ainda não confirmou o
+   frame anterior), além de `encode_avg_ms`/`encode_max_ms` (JPEG + IPC) e
+   `recv_gap_avg_ms`/`grab_avg_ms` (cadência bruta da fonte). Uma queda em
+   `produced_fps` aponta para a captura do Windows (WGC/driver/GPU), não para
+   este processo — é o sinal mais provável quando o problema só aparece com um
+   jogo aberto, já que jogos em tela cheia exclusiva ou com alto uso de GPU
+   competem diretamente com a captura por acesso à GPU.
+2. **WebView, decodificação/pintura** (`src/lib/screenCapture.ts`) — aparece no
+   DevTools da janela do app (`Ctrl+Shift+I` ou o painel de inspeção do
+   WebView2). Linhas `[screen-share]` trazem `receivedFps` (quanto chega via
+   IPC), `processedFps`, `staleDropped` (frames substituídos antes de serem
+   decodificados) e `processAvgMs`/`processMaxMs` (decodificar + desenhar no
+   canvas). Se `receivedFps` do Rust está saudável mas `processedFps` aqui cai,
+   o problema é a thread principal do WebView — plausível se o jogo estiver
+   roubando prioridade de CPU/GPU do processo do Campfire.
+3. **Codificador WebRTC** (`src/livekit/voice.ts`) — também no DevTools.
+   Linhas `[screen-share:webrtc]` vêm de `LocalVideoTrack.getSenderStats()` e
+   trazem `fps`, `framesSent`, `targetBitrateKbps` e `qualityLimitation`.
+   `qualityLimitation=cpu` indica que o próprio codificador de vídeo do
+   navegador está disputando CPU/GPU — a etapa final do pipeline, depois do
+   encode JPEG intermediário da captura nativa.
+
+Essas linhas existem só para diagnóstico local; nada é enviado ao servidor.
+
 ## Infraestrutura: ponto pendente
 
 O template `infra/livekit/livekit.yaml` anuncia TURN/TLS na porta 5349 com

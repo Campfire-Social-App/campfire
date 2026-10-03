@@ -49,6 +49,86 @@ const RECORDER_TIMEOUT: Duration = Duration::from_millis(500);
 const MAX_IN_FLIGHT_FRAMES: usize = 1;
 /// Windows below this are dialogs, tooltips and tray popups — noise in the grid.
 const MIN_WINDOW_SIDE: u32 = 96;
+/// How often the running frame-timing counters below are flushed to stderr.
+/// Per-frame logging would flood the terminal; a 2s summary is still fine
+/// grained enough to see a regression start (e.g. when a game is launched).
+const STATS_LOG_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Running counters for diagnosing where frame rate is lost between the OS
+/// capture source and the frontend. `produced` tracks the source's own
+/// cadence (recorder delivery gap for a screen, grab-call duration for a
+/// window) independently of anything we choose to drop, so a regression here
+/// points at the OS/driver/game rather than at this process. `dropped_backpressure`
+/// is set when `CaptureSession::reserve_frame` refuses a frame because the
+/// frontend hasn't acknowledged the previous one yet — a regression here
+/// points at the WebView (decode/paint) instead.
+struct FrameStats {
+    window_start: Instant,
+    produced: u32,
+    coalesced: u32,
+    dropped_interval: u32,
+    dropped_backpressure: u32,
+    sent: u32,
+    produce_ms_sum: f64,
+    produce_ms_max: f64,
+    encode_ms_sum: f64,
+    encode_ms_max: f64,
+}
+
+impl FrameStats {
+    fn new() -> Self {
+        Self {
+            window_start: Instant::now(),
+            produced: 0,
+            coalesced: 0,
+            dropped_interval: 0,
+            dropped_backpressure: 0,
+            sent: 0,
+            produce_ms_sum: 0.0,
+            produce_ms_max: 0.0,
+            encode_ms_sum: 0.0,
+            encode_ms_max: 0.0,
+        }
+    }
+
+    fn record_produce(&mut self, elapsed: Duration) {
+        self.produced += 1;
+        let ms = elapsed.as_secs_f64() * 1000.0;
+        self.produce_ms_sum += ms;
+        self.produce_ms_max = self.produce_ms_max.max(ms);
+    }
+
+    fn record_encode(&mut self, elapsed: Duration) {
+        self.sent += 1;
+        let ms = elapsed.as_secs_f64() * 1000.0;
+        self.encode_ms_sum += ms;
+        self.encode_ms_max = self.encode_ms_max.max(ms);
+    }
+
+    /// Called every loop iteration — including iterations where nothing
+    /// happened — so a total stall (OS stops delivering frames at all) shows
+    /// up as an explicit "produced_fps=0.0" line instead of silence.
+    fn maybe_log(&mut self, label: &str, capture_id: &str, target_fps: u32, produce_label: &str) {
+        let elapsed = self.window_start.elapsed();
+        if elapsed < STATS_LOG_INTERVAL {
+            return;
+        }
+        let secs = elapsed.as_secs_f64();
+        eprintln!(
+            "[capture:{label}] id={capture_id} target_fps={target_fps} sent_fps={:.1} produced_fps={:.1} coalesced={} dropped_interval={} dropped_backpressure={} encode_avg_ms={:.1} encode_max_ms={:.1} {produce_label}_avg_ms={:.1} {produce_label}_max_ms={:.1}",
+            f64::from(self.sent) / secs,
+            f64::from(self.produced) / secs,
+            self.coalesced,
+            self.dropped_interval,
+            self.dropped_backpressure,
+            if self.sent > 0 { self.encode_ms_sum / f64::from(self.sent) } else { 0.0 },
+            self.encode_ms_max,
+            if self.produced > 0 { self.produce_ms_sum / f64::from(self.produced) } else { 0.0 },
+            self.produce_ms_max,
+        );
+        *self = FrameStats::new();
+    }
+}
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -405,6 +485,7 @@ fn stream_screen(
     max_height: u32,
     interval: Duration,
     quality: u8,
+    fps: u32,
     session: &CaptureSession,
     channel: &Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
@@ -414,10 +495,17 @@ fn stream_screen(
         .map_err(|error| error.to_string())?;
     recorder.start().map_err(|error| error.to_string())?;
 
+    let mut stats = FrameStats::new();
+    let mut last_produced: Option<Instant> = None;
+
     // Always release the recorder, including failures in encoding or IPC.
     let result = (|| {
         let mut last_sent: Option<Instant> = None;
         while !session.stop.load(Ordering::Relaxed) {
+            // Logged every iteration (not just when a frame arrives) so a total
+            // stall in the recorder itself shows up as "produced_fps=0.0"
+            // instead of the terminal going silent.
+            stats.maybe_log("screen", &session.id, fps, "recv_gap");
             let mut frame = match frames.recv_timeout(RECORDER_TIMEOUT) {
                 Ok(frame) => frame,
                 // Nothing on screen changed; loop back and re-check the stop flag.
@@ -426,12 +514,22 @@ fn stream_screen(
                     return Err("Screen capture stopped unexpectedly".to_string());
                 }
             };
+            // The gap between deliveries reflects the recorder/OS cadence
+            // (xcap/WGC), independent of anything we choose to drop below.
+            let produced_at = Instant::now();
+            if let Some(previous) = last_produced {
+                stats.record_produce(produced_at - previous);
+            }
+            last_produced = Some(produced_at);
+
             // Frames arrive at the display's refresh rate — anything above the
             // requested rate is dropped here, before the cost of encoding it.
             if last_sent.is_some_and(|at| at.elapsed() < interval) {
+                stats.dropped_interval += 1;
                 continue;
             }
             if !session.reserve_frame() {
+                stats.dropped_backpressure += 1;
                 continue;
             }
             // Encoding and IPC can briefly take longer than a display refresh. A
@@ -439,13 +537,18 @@ fn stream_screen(
             // its newest frame so congestion reduces FPS instead of adding delay.
             for newer in frames.try_iter() {
                 frame = newer;
+                stats.coalesced += 1;
             }
             // Include encoding time in the frame interval instead of adding it
             // on top of the interval and silently undershooting the requested FPS.
             last_sent = Some(Instant::now());
+            let encode_started = Instant::now();
             let sent = RgbaImage::from_raw(frame.width, frame.height, frame.raw)
                 .ok_or_else(|| "Capture produced a malformed frame".to_string())
                 .and_then(|image| send_frame(channel, image, max_height, quality));
+            if sent.is_ok() {
+                stats.record_encode(encode_started.elapsed());
+            }
             if let Err(error) = sent {
                 session.acknowledge_frame();
                 return Err(error);
@@ -463,6 +566,7 @@ fn stream_window(
     max_height: u32,
     interval: Duration,
     quality: u8,
+    fps: u32,
     session: &CaptureSession,
     channel: &Channel<InvokeResponseBody>,
 ) -> Result<(), String> {
@@ -470,18 +574,30 @@ fn stream_window(
     // polled: the frame rate is the one the user asked for rather than the
     // display's, and a dead window surfaces as a capture error on the next tick.
     let window = find_window(id)?;
+    let mut stats = FrameStats::new();
 
     while !session.stop.load(Ordering::Relaxed) {
+        // "grab" here is the window.capture_image() call duration itself, since
+        // this path is self-paced by the sleep below rather than by a recorder.
+        stats.maybe_log("window", &session.id, fps, "grab");
         let started = Instant::now();
         if session.reserve_frame() {
-            let sent = window
-                .capture_image()
-                .map_err(|error| error.to_string())
-                .and_then(|image| send_frame(channel, image, max_height, quality));
+            let grab_started = Instant::now();
+            let captured = window.capture_image().map_err(|error| error.to_string());
+            if captured.is_ok() {
+                stats.record_produce(grab_started.elapsed());
+            }
+            let encode_started = Instant::now();
+            let sent = captured.and_then(|image| send_frame(channel, image, max_height, quality));
+            if sent.is_ok() {
+                stats.record_encode(encode_started.elapsed());
+            }
             if let Err(error) = sent {
                 session.acknowledge_frame();
                 return Err(error);
             }
+        } else {
+            stats.dropped_backpressure += 1;
         }
         if let Some(remaining) = interval.checked_sub(started.elapsed()) {
             thread::sleep(remaining);
@@ -523,6 +639,9 @@ pub fn start_capture(
     } else {
         DETAIL_FRAME_QUALITY
     };
+    eprintln!(
+        "[capture] starting id={capture_id} source={source_id} fps={fps} max_height={max_height} quality={quality} game_mode={game_mode} audio={capture_audio}"
+    );
     let session = Arc::new(CaptureSession::new(capture_id));
     manager.start(session.clone());
 
@@ -557,12 +676,16 @@ pub fn start_capture(
     thread::spawn(move || {
         let result = match target {
             Target::Screen(id) => {
-                stream_screen(id, max_height, interval, quality, &session, &on_frame)
+                stream_screen(id, max_height, interval, quality, fps, &session, &on_frame)
             }
             Target::Window(id) => {
-                stream_window(id, max_height, interval, quality, &session, &on_frame)
+                stream_window(id, max_height, interval, quality, fps, &session, &on_frame)
             }
         };
+        match &result {
+            Ok(()) => eprintln!("[capture] id={} ended", session.id),
+            Err(error) => eprintln!("[capture] id={} ended with error: {error}", session.id),
+        }
         // A capture that dies on its own — window closed, device lost — has to say
         // so: the frontend is still holding a track that nothing will feed again.
         if let Err(error) = result {

@@ -102,6 +102,46 @@ function baselineMicrophoneCaptureOptions(): AudioCaptureOptions {
 /** Set while the screen share is coming from our own capture rather than the
  * WebView's — it owns a Rust capture thread that has to be torn down with it. */
 let nativeCapture: NativeCapture | null = null;
+/** Diagnostic timer polling the screen-share sender's own WebRTC stats — see
+ * startScreenShareStatsMonitor(). */
+let screenShareStatsTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Logs the encoder's own view of the outgoing screen-share track: this is the
+ * last stage of the pipeline (after our JPEG/canvas bridge for native capture,
+ * or directly after getDisplayMedia() on the web), so a drop that only shows
+ * up here — especially `qualityLimitationReason: "cpu"` — points at the
+ * browser's video encoder fighting another process (e.g. a game) for
+ * CPU/GPU time, rather than at capture or IPC upstream of it. */
+function startScreenShareStatsMonitor(currentRoom: Room): void {
+  stopScreenShareStatsMonitor();
+  screenShareStatsTimer = setInterval(() => {
+    void (async () => {
+      const publication = currentRoom.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+      const track = publication?.track as LocalVideoTrack | undefined;
+      if (!track) return;
+      try {
+        const layers = await track.getSenderStats();
+        for (const layer of layers) {
+          console.info(
+            `[screen-share:webrtc] rid=${layer.rid || "-"} fps=${layer.framesPerSecond?.toFixed(1) ?? "?"} ` +
+              `framesSent=${layer.framesSent} size=${layer.frameWidth}x${layer.frameHeight} ` +
+              `targetBitrateKbps=${layer.targetBitrate ? Math.round(layer.targetBitrate / 1000) : "?"} ` +
+              `qualityLimitation=${layer.qualityLimitationReason ?? "none"}`,
+          );
+        }
+      } catch {
+        // Best-effort diagnostics only.
+      }
+    })();
+  }, 2000);
+}
+
+function stopScreenShareStatsMonitor(): void {
+  if (screenShareStatsTimer) {
+    clearInterval(screenShareStatsTimer);
+    screenShareStatsTimer = null;
+  }
+}
 /** Remote audio elements keyed by track SID, so they can be torn down on unsubscribe. */
 const audioElements = new Map<string, HTMLMediaElement>();
 
@@ -903,6 +943,7 @@ export async function startNativeScreenShare(
     native: true,
   };
   useVoiceStore.getState().setLocalScreenShareEnabled(true);
+  startScreenShareStatsMonitor(currentRoom);
   void syncOwnVoiceState();
 }
 
@@ -960,6 +1001,7 @@ export async function startWebViewScreenShare(
       gameMode: false,
       native: false,
     };
+    startScreenShareStatsMonitor(currentRoom);
     void syncOwnVoiceState();
     if (captureAudio) {
       const publication = currentRoom.localParticipant.getTrackPublication(
@@ -1011,6 +1053,7 @@ async function configureScreenShareAudio(track: LocalAudioTrack): Promise<void> 
 export async function stopScreenShare(): Promise<void> {
   const capture = nativeCapture;
   nativeCapture = null;
+  stopScreenShareStatsMonitor();
 
   if (capture) {
     if (capture.audioTrack) {
@@ -1032,6 +1075,7 @@ async function stopNativeCapture(): Promise<void> {
   const capture = nativeCapture;
   nativeCapture = null;
   activeScreenShareSettings = null;
+  stopScreenShareStatsMonitor();
   if (capture) await capture.stop();
 }
 
