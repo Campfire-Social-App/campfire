@@ -41,6 +41,7 @@ xcap = { version = "0.9.8", features = ["image", "wgc"] }
 base64 = "0.22"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.55"
 # WASAPI loopback captures the desktop mix without invoking WebView2's browser
 # picker, preserving the native source-selection flow.
 wasapi = "0.24"

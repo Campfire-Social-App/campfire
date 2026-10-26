@@ -6,6 +6,11 @@ name: Check client
 on:
   push:
   workflow_dispatch:
+    inputs:
+      build_installer:
+        description: Build an unsigned NSIS installer for Windows VM validation
+        type: boolean
+        default: true
 
 jobs:
   check:
@@ -38,3 +43,28 @@ jobs:
       - name: Check Rust
         working-directory: client/src-tauri
         run: cargo check --all-targets
+
+      - name: Test Windows startup settings UI
+        working-directory: client
+        run: npm run test:startup
+
+      - name: Test Windows startup registration
+        working-directory: client/src-tauri
+        run: cargo test --lib startup::
+
+      - name: Build NSIS installer for validation
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer
+        working-directory: client
+        shell: pwsh
+        run: |
+          $validationConfig = Join-Path $env:RUNNER_TEMP 'campfire-validation.json'
+          '{"bundle":{"createUpdaterArtifacts":false}}' | Set-Content -LiteralPath $validationConfig
+          npm run tauri -- build --bundles nsis --no-sign --config $validationConfig
+
+      - name: Upload Windows validation installer
+        if: github.event_name == 'workflow_dispatch' && inputs.build_installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: campfire-windows-validation
+          path: client/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error

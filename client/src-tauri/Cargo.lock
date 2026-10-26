@@ -718,6 +718,7 @@ dependencies = [
  "wasapi",
  "windows 0.62.2",
  "windows-version",
+ "winreg",
  "xcap",
 ]
 

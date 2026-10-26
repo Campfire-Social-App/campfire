@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "test:notifications": "node --test tests/notifications.test.mjs",
     "test:voice": "node --test tests/voice-reliability.test.mjs",
+    "test:startup": "node --test tests/windows-startup.test.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

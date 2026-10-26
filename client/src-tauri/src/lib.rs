@@ -1,5 +1,6 @@
 mod capture;
 mod notifications;
+mod startup;
 
 use tauri::Manager;
 
@@ -91,6 +92,8 @@ pub fn run() {
             capture::request_keyframe,
             capture::stop_capture,
             open_windows_sound_settings,
+            startup::get_startup_enabled,
+            startup::set_startup_enabled,
             log_client_event,
             open_log_folder,
             notifications::send_chat_notification,
