@@ -23,6 +23,7 @@ import {
   logAudioEvent,
 } from "@/lib/audioDiagnostics";
 import { emptyCallGrace } from "./emptyCallGrace";
+import { microphoneRecovery, type MicRecovery } from "./micRecovery";
 import { logToFile } from "@/lib/clientLog";
 import { getVoiceToken, updateOwnVoiceState } from "@/api/endpoints";
 import {
@@ -144,6 +145,133 @@ function stopScreenShareStatsMonitor(): void {
     screenShareStatsTimer = null;
   }
 }
+/** Recovery for a microphone the OS dropped mid-call (loose connector, USB
+ * re-enumeration) — see micRecovery.ts. One per room. */
+let micRecovery: MicRecovery | null = null;
+let stopMicrophoneWatch: (() => void) | null = null;
+/** Non-zero while our own setMicrophoneEnabled call is in flight, so the
+ * TrackMuted it causes is not mistaken for an involuntary device loss. */
+let explicitMicTransitions = 0;
+const MIC_RECOVERY_TOAST = "mic-recovery";
+
+function localMicrophoneTrack(currentRoom: Room): LocalAudioTrack | undefined {
+  return currentRoom.localParticipant.getTrackPublication(Track.Source.Microphone)?.track as
+    | LocalAudioTrack
+    | undefined;
+}
+
+async function audioInputs(): Promise<MediaDeviceInfo[]> {
+  const devices = await navigator.mediaDevices?.enumerateDevices().catch(() => []);
+  return (devices ?? []).filter((device) => device.kind === "audioinput");
+}
+
+/** One reacquire attempt: the chosen device when it is present again,
+ * otherwise whatever the OS default is now, with our full capture options. */
+async function reacquireMicrophone(currentRoom: Room): Promise<boolean> {
+  const track = localMicrophoneTrack(currentRoom);
+  if (!track) return false;
+  if (!track.isMuted && track.mediaStreamTrack.readyState === "live") return true;
+  const inputs = await audioInputs();
+  if (inputs.length === 0) return false;
+  const preferred = useSettingsStore.getState().audioInputDeviceId;
+  const usePreferred = !!preferred && inputs.some((device) => device.deviceId === preferred);
+  try {
+    await track.restartTrack({
+      ...microphoneCaptureOptions(useSettingsStore.getState().noiseSuppressionEnabled),
+      deviceId: usePreferred ? { exact: preferred! } : "default",
+    });
+    if (track.isMuted) await track.unmute();
+  } catch (error) {
+    logAudioEvent("mic_recovery_attempt_failed", { error: String(error) });
+    return false;
+  }
+  if (room !== currentRoom || useVoiceStore.getState().localMuted) return true;
+  await applyNoiseGate(useSettingsStore.getState().noiseGateMode).catch(() => {});
+  useVoiceStore.getState().setParticipantMuted(currentRoom.localParticipant.identity, false);
+  return true;
+}
+
+/** LiveKit's own fallback for an ended mic is the default device. When the
+ * device the user actually uses comes back, move the live mic back onto it. */
+async function restorePreferredMicrophone(currentRoom: Room): Promise<void> {
+  if (useVoiceStore.getState().localMuted) return;
+  const track = localMicrophoneTrack(currentRoom);
+  if (!track || track.isMuted || track.mediaStreamTrack.readyState !== "live") return;
+  const inputs = await audioInputs();
+  const current = track.mediaStreamTrack.getSettings();
+  const preferred = useSettingsStore.getState().audioInputDeviceId;
+  if (preferred) {
+    if (current.deviceId === preferred) return;
+    if (!inputs.some((device) => device.deviceId === preferred)) return;
+    logAudioEvent("mic_restoring_preferred_device", { from: current.deviceId ?? "?" });
+    await currentRoom.switchActiveDevice("audioinput", preferred).catch(() => false);
+    await applyNoiseGate(useSettingsStore.getState().noiseGateMode).catch(() => {});
+    return;
+  }
+  // Following the OS default: Chromium lists it as "default" sharing the
+  // groupId of the physical device behind it.
+  const osDefault = inputs.find((device) => device.deviceId === "default");
+  if (!osDefault?.groupId || !current.groupId || osDefault.groupId === current.groupId) return;
+  logAudioEvent("mic_following_os_default", { label: osDefault.label });
+  await track
+    .restartTrack({
+      ...microphoneCaptureOptions(useSettingsStore.getState().noiseSuppressionEnabled),
+      deviceId: "default",
+    })
+    .catch((error) => logAudioEvent("mic_follow_default_failed", { error: String(error) }));
+  await applyNoiseGate(useSettingsStore.getState().noiseGateMode).catch(() => {});
+}
+
+function watchMicrophone(currentRoom: Room): void {
+  stopMicrophoneWatch?.();
+  const recovery = microphoneRecovery({
+    shouldRecover: () =>
+      room === currentRoom &&
+      currentRoom.state !== ConnectionState.Disconnected &&
+      !useVoiceStore.getState().localMuted,
+    attempt: () => reacquireMicrophone(currentRoom),
+    onRecovered: (attempts) => {
+      logAudioEvent("mic_recovered", { attempts });
+      toast.success("Microphone reconnected.", { id: MIC_RECOVERY_TOAST });
+    },
+    onPollingExhausted: () => {
+      logAudioEvent("mic_recovery_polling_exhausted");
+      toast.warning(
+        "Microphone still disconnected. Plug it back in and Campfire will pick it up.",
+        { id: MIC_RECOVERY_TOAST, duration: 10_000 },
+      );
+    },
+  });
+  micRecovery = recovery;
+  // A loose connector can flap several times a second; act once it settles.
+  let debounce: ReturnType<typeof setTimeout> | null = null;
+  const deviceChanged = () => {
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      debounce = null;
+      if (room !== currentRoom) return;
+      if (recovery.active) recovery.nudge();
+      else void restorePreferredMicrophone(currentRoom);
+    }, 400);
+  };
+  navigator.mediaDevices?.addEventListener?.("devicechange", deviceChanged);
+  stopMicrophoneWatch = () => {
+    if (debounce) clearTimeout(debounce);
+    navigator.mediaDevices?.removeEventListener?.("devicechange", deviceChanged);
+    recovery.cancel();
+    if (micRecovery === recovery) micRecovery = null;
+    stopMicrophoneWatch = null;
+  };
+}
+
+function handleLocalMicrophoneMuted(): void {
+  if (explicitMicTransitions > 0 || useVoiceStore.getState().localMuted) return;
+  if (!micRecovery || micRecovery.active) return;
+  logAudioEvent("mic_lost_involuntarily");
+  toast.warning("Microphone disconnected. Reconnecting…", { id: MIC_RECOVERY_TOAST });
+  micRecovery.trigger();
+}
+
 /** Remote audio elements keyed by track SID, so they can be torn down on unsubscribe. */
 const audioElements = new Map<string, HTMLMediaElement>();
 
@@ -344,6 +472,7 @@ export async function joinVoiceChannel(
     },
   });
   room = nextRoom;
+  watchMicrophone(nextRoom);
 
   const emptyCall = emptyCallGrace(
     () => room === nextRoom && nextRoom.state === ConnectionState.Connected &&
@@ -502,6 +631,7 @@ export async function joinVoiceChannel(
       if (publication.source === Track.Source.Microphone) {
         if (participant.identity === nextRoom.localParticipant.identity) {
           logAudioEvent("local_mic_track_muted");
+          if (room === nextRoom) handleLocalMicrophoneMuted();
         }
         useVoiceStore.getState().setParticipantMuted(participant.identity, true);
       } else if (publication.kind === Track.Kind.Video) {
@@ -543,6 +673,7 @@ export async function joinVoiceChannel(
       console.info("Voice room disconnected", { reason });
       logAudioEvent("room_disconnected", { reason: String(reason) });
       void stopNativeCapture();
+      stopMicrophoneWatch?.();
       cleanupAudioElements();
       // Only sound off if we'd actually finished joining — a mid-setup failure
       // (e.g. mic permission denied) disconnects too, but never played a join sound.
@@ -604,6 +735,7 @@ export async function joinVoiceChannel(
     }
   } catch (err) {
     logAudioEvent("join_failed", { error: String(err) });
+    stopMicrophoneWatch?.();
     cleanupAudioElements();
     useVoiceStore.getState().setConnection(null, "disconnected");
     room = null;
@@ -677,6 +809,7 @@ export async function leaveVoiceChannel(): Promise<void> {
   room = null;
   logAudioEvent("call_left");
   endAudioDiagnosticsSession();
+  stopMicrophoneWatch?.();
   await stopNativeCapture();
   await current.disconnect();
   cleanupAudioElements();
@@ -692,6 +825,12 @@ export async function setMicrophoneMuted(
   // output audio is deafened.
   useVoiceStore.getState().setMicrophoneMutedByDeafen(false);
   const wasDeafened = useVoiceStore.getState().localDeafened;
+  // The user's own action supersedes any automatic recovery in progress.
+  if (micRecovery?.active) {
+    micRecovery.cancel();
+    toast.dismiss(MIC_RECOVERY_TOAST);
+  }
+  explicitMicTransitions++;
   try {
     await room?.localParticipant.setMicrophoneEnabled(
       !muted,
@@ -702,6 +841,8 @@ export async function setMicrophoneMuted(
   } catch (error) {
     logAudioEvent("mic_mute_by_user_failed", { muted, error: String(error) });
     throw error;
+  } finally {
+    explicitMicTransitions--;
   }
   // "explicit" because it went through our own setMicrophoneEnabled call —
   // contrast with local_mic_track_muted/_unmuted, which fire for ANY mute of
