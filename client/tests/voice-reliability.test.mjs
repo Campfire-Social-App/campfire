@@ -57,6 +57,78 @@ for (const scenario of ["peer returns", "local reconnect", "new room", "empty DM
   });
 }
 
+function micRecoveryHarness(t, { available = () => false, wanted = () => true } = {}) {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const { microphoneRecovery } = load("../src/livekit/micRecovery.ts", {}, { Date });
+  const events = { attempts: 0, recovered: [], exhausted: 0 };
+  const recovery = microphoneRecovery({
+    shouldRecover: wanted,
+    attempt: async () => {
+      events.attempts++;
+      return available();
+    },
+    onRecovered: (n) => events.recovered.push(n),
+    onPollingExhausted: () => events.exhausted++,
+  });
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  const advance = async (ms) => {
+    t.mock.timers.tick(ms);
+    await flush();
+    await flush();
+  };
+  return { recovery, events, advance, flush };
+}
+
+test("a mic lost to a loose connector is reacquired once it reappears", async (t) => {
+  let present = false;
+  const { recovery, events, advance } = micRecoveryHarness(t, { available: () => present });
+  recovery.trigger();
+  recovery.trigger(); // a second mute event must not start a parallel loop
+  await advance(250);
+  await advance(750);
+  assert.equal(events.attempts, 2);
+  assert.deepEqual(events.recovered, []);
+  present = true;
+  await advance(1500);
+  assert.deepEqual(events.recovered, [3]);
+  assert.equal(recovery.active, false);
+  await advance(60_000);
+  assert.equal(events.attempts, 3);
+});
+
+test("muting by hand stops automatic mic recovery", async (t) => {
+  let wanted = true;
+  const { recovery, events, advance } = micRecoveryHarness(t, { wanted: () => wanted });
+  recovery.trigger();
+  await advance(250);
+  wanted = false;
+  await advance(750);
+  assert.equal(events.attempts, 1);
+  assert.equal(recovery.active, false);
+  assert.deepEqual(events.recovered, []);
+});
+
+test("after polling gives up, a device change still brings the mic back", async (t) => {
+  let present = false;
+  const { recovery, events, advance, flush } = micRecoveryHarness(t, { available: () => present });
+  recovery.trigger();
+  for (let i = 0; i < 60; i++) await advance(3000);
+  assert.equal(events.exhausted, 1);
+  const attemptsBefore = events.attempts;
+  await advance(60_000);
+  assert.equal(events.attempts, attemptsBefore);
+  recovery.nudge(); // devicechange with the device still missing
+  await flush();
+  await flush();
+  assert.equal(events.exhausted, 1);
+  present = true;
+  recovery.nudge();
+  await flush();
+  await flush();
+  assert.equal(events.recovered.length, 1);
+  assert.equal(recovery.active, false);
+});
+
 /** An H.264 access unit as the Rust GPU path frames it: a 32-byte header,
  * then optional SPS/PPS, then the payload. */
 function gpuFrame({ keyframe = true, parameterSets = null, payload = [0, 0, 1, 0x65], timestamp = 0 } = {}) {
@@ -262,6 +334,19 @@ test("no usable decoder configuration releases the native capture", async (t) =>
 
 function voiceHarness(t, nativeCaptureAvailable = false) {
   t.mock.timers.enable({ apis: ["setTimeout"] });
+  const media = {
+    devices: [],
+    listeners: new Set(),
+    changed() { for (const listener of this.listeners) listener(); },
+  };
+  const navigator = {
+    mediaDevices: {
+      enumerateDevices: async () => media.devices,
+      getSupportedConstraints: () => ({}),
+      addEventListener: (_type, listener) => media.listeners.add(listener),
+      removeEventListener: (_type, listener) => media.listeners.delete(listener),
+    },
+  };
   const rooms = [];
   const state = {
     localMuted: true, localDeafened: false, localScreenShareEnabled: false,
@@ -324,6 +409,7 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
       Track: { Source: { Microphone: "microphone", ScreenShare: "screen", ScreenShareAudio: "screen-audio" }, Kind: { Video: "video" } },
     },
     "./emptyCallGrace": load("../src/livekit/emptyCallGrace.ts"),
+    "./micRecovery": load("../src/livekit/micRecovery.ts", {}, { Date }),
     "@/lib/screenShareProfile": profileModule,
     "@/lib/screenCapture": {
       isNativeCaptureAvailable: () => nativeCaptureAvailable,
@@ -354,12 +440,85 @@ function voiceHarness(t, nativeCaptureAvailable = false) {
       playStreamStartSound() { sounds.streamStarts++; },
       playStreamStopSound() { sounds.streamStops++; },
     },
-    sonner: { toast: {} },
+    sonner: { toast: Object.assign(() => {}, {
+      warning() {}, success() {}, error() {}, dismiss() {},
+    }) },
     // The sender-stats monitor is diagnostics, not behaviour under test; a
     // real interval here would also keep the test process alive.
-  }, { queueMicrotask, console, setInterval: () => 1, clearInterval: () => {} });
-  return { api, state, settings, rooms, sounds };
+  }, { queueMicrotask, console, navigator, setInterval: () => 1, clearInterval: () => {} });
+  return { api, state, settings, rooms, sounds, media };
 }
+
+function fakeMicrophone(room) {
+  const mic = {
+    isMuted: false,
+    restarts: [],
+    mediaStreamTrack: { readyState: "live", getSettings: () => ({}) },
+    async restartTrack(options) {
+      if (!room.inputsPresent()) throw new Error("NotFoundError");
+      this.restarts.push(options);
+      this.mediaStreamTrack = { readyState: "live", getSettings: () => ({}) };
+    },
+    async mute() { this.isMuted = true; room.emit("TrackMuted", { source: "microphone" }, room.localParticipant); },
+    async unmute() { this.isMuted = false; room.emit("TrackUnmuted", { source: "microphone" }, room.localParticipant); },
+    getProcessor: () => undefined,
+    async setProcessor() {},
+  };
+  room.localParticipant.getTrackPublication = (source) =>
+    source === "microphone" ? { track: mic } : undefined;
+  room.localParticipant.setMicrophoneEnabled = (enabled) => (enabled ? mic.unmute() : mic.mute());
+  return mic;
+}
+
+const settle = async () => {
+  for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+};
+
+test("a microphone dropped by a loose connector comes back by itself", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  const room = h.rooms[0];
+  room.inputsPresent = () => h.media.devices.length > 0;
+  const mic = fakeMicrophone(room);
+  h.state.localMuted = false;
+
+  // The device vanishes; LiveKit's single fallback restart failed and muted.
+  mic.mediaStreamTrack = { readyState: "ended", getSettings: () => ({}) };
+  await mic.mute();
+  t.mock.timers.tick(250);
+  await settle();
+  assert.equal(mic.isMuted, true);
+
+  // Contact is made again: the OS re-enumerates the device.
+  h.media.devices = [{ kind: "audioinput", deviceId: "default", groupId: "g" }];
+  h.media.changed();
+  t.mock.timers.tick(400);
+  await settle();
+  assert.equal(mic.isMuted, false);
+  assert.equal(mic.restarts.length, 1);
+  assert.equal(mic.restarts[0].deviceId, "default");
+  assert.equal(mic.restarts[0].echoCancellation, true);
+  assert.equal(h.state.localMuted, false);
+});
+
+test("a microphone the user muted is never reopened automatically", async (t) => {
+  const h = voiceHarness(t);
+  await h.api.joinVoiceChannel("voice");
+  const room = h.rooms[0];
+  h.media.devices = [{ kind: "audioinput", deviceId: "default", groupId: "g" }];
+  room.inputsPresent = () => true;
+  const mic = fakeMicrophone(room);
+  h.state.localMuted = false;
+  h.state.setLocalMuted = function (muted) { this.localMuted = muted; };
+  h.state.setMicrophoneMutedByDeafen = () => {};
+  await h.api.setMicrophoneMuted(true);
+  t.mock.timers.tick(10_000);
+  h.media.changed();
+  t.mock.timers.tick(400);
+  await settle();
+  assert.equal(mic.isMuted, true);
+  assert.equal(mic.restarts.length, 0);
+});
 
 test("screen share sounds play once for each real start and stop", async (t) => {
   const h = voiceHarness(t);
